@@ -219,7 +219,7 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
     modules = ['dist']
     if profiler is not None:
         # Build only a subset of targets and collect profiles
-        modules = ['libc', 'libLLVM-host64']
+        modules = ['libc', 'libLLVM_android-host64']
 
         key, val = profiler.getProfileFileEnvVar()
         env[key] = val
