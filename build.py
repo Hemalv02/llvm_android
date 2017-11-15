@@ -26,6 +26,8 @@ import utils
 import android_version
 from version import Version
 
+import mapfile
+
 ORIG_ENV = dict(os.environ)
 STAGE2_TARGETS = 'AArch64;ARM;Mips;X86'
 
@@ -327,6 +329,13 @@ def build_asan_test(stage2_install):
         asan_test_bin_path = os.path.join(asan_test_path, 'asan_test')
         open(asan_test_bin_path, 'w+').close()
 
+def build_asan_map_files(stage2_install, clang_version):
+    lib_dir = os.path.join(stage2_install,
+                           clang_resource_dir(clang_version.long_version(), ''))
+    for arch in ('aarch64', 'arm', 'i686', 'x86_64', 'mips', 'mips64'):
+        lib_file = os.path.join(lib_dir, 'libclang_rt.asan-{}-android.so'.format(arch))
+        map_file = os.path.join(lib_dir, 'libclang_rt.asan-{}-android.map.txt'.format(arch))
+        mapfile.create_map_file(lib_file, map_file)
 
 def build_libcxx(stage2_install, clang_version):
     for (arch, llvm_triple, libcxx_defines,
@@ -801,6 +810,7 @@ def build_runtimes(stage2_install):
     # libcxx build.
     # build_libcxx(stage2_install, version)
     build_asan_test(stage2_install)
+    build_asan_map_files(stage2_install, version)
 
 
 def install_wrappers(llvm_install_path):
