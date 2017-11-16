@@ -135,7 +135,10 @@ def clang_prebuilt_lib_dir():
 
 
 def arch_from_triple(triple):
-    return triple.split('-')[0]
+    arch = triple.split('-')[0]
+    if arch == 'i686':
+        arch = 'i386'
+    return arch
 
 
 def clang_resource_dir(version, arch):
