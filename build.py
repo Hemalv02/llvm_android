@@ -74,7 +74,7 @@ def pgo_profdata_file(version_str):
 
 
 def ndk_base():
-    ndk_version = 'r15'
+    ndk_version = 'r16'
     return utils.android_path('toolchain/prebuilts/ndk', ndk_version)
 
 
