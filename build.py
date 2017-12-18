@@ -87,8 +87,8 @@ def android_api(arch, platform=False):
         return '21'
 
 
-def ndk_path(arch):
-    platform_level = 'android-' + android_api(arch)
+def ndk_path(arch, platform=False):
+    platform_level = 'android-' + android_api(arch, platform)
     return os.path.join(ndk_base(), 'platforms', platform_level)
 
 
@@ -257,7 +257,7 @@ def cross_compile_configs(stage2_install, platform=False):
         toolchain_root = utils.android_path('prebuilts/gcc',
                                             utils.build_os_type())
         toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
-        sysroot_libs = os.path.join(ndk_path(arch), 'arch-' + ndk_arch)
+        sysroot_libs = os.path.join(ndk_path(arch, platform), 'arch-' + ndk_arch)
         sysroot = os.path.join(ndk_base(), 'sysroot')
         if arch == 'arm':
             sysroot_headers = os.path.join(sysroot, 'usr', 'include',
@@ -386,7 +386,12 @@ def build_crts(stage2_install, clang_version):
         crt_defines['ANDROID'] = '1'
         crt_defines['LLVM_CONFIG_PATH'] = llvm_config
         crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
-        crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
+        # FIXME: Disable WError build until upstream fixed the compiler-rt
+        # personality routine warnings caused by r309226.
+        # crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
+
+        cflags.append('-isystem ' + support_headers())
+
         crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         crt_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         crt_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
@@ -395,16 +400,13 @@ def build_crts(stage2_install, clang_version):
         crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
         crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
 
-        # libcxxabi is statically linked into libc++ and we need to add libc++
-        # manually here.
-        crt_defines['SANITIZER_CXX_ABI'] = 'libc++'
-        # The following two lines can be removed after r309074.
+        crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+
+        crt_defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
         if arch == 'arm':
-          crt_defines['ASAN_DYNAMIC_LIBS'] = 'c++abi -lunwind -latomic -nostdlib++'
-          crt_defines['UBSAN_DYNAMIC_LIBS'] = 'c++abi -lunwind -latomic -nostdlib++'
+          crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-latomic -landroid_support'
         else:
-          crt_defines['ASAN_DYNAMIC_LIBS'] = 'c++abi -latomic -nostdlib++'
-          crt_defines['UBSAN_DYNAMIC_LIBS'] = 'c++abi -latomic -nostdlib++'
+          crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-landroid_support'
 
         crt_defines.update(base_cmake_defines())
 
@@ -420,6 +422,7 @@ def build_crts(stage2_install, clang_version):
 
 
 def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
+    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
 
     for (arch, llvm_triple, libfuzzer_defines, cflags) in cross_compile_configs(
             stage2_install, platform=(not ndk_cxx)):
@@ -429,10 +432,8 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         if ndk_cxx:
             libfuzzer_path += '-ndk-cxx'
 
-        libfuzzer_defines['CMAKE_BUILD_TYPE'] = 'Release'
-        libfuzzer_defines['LLVM_USE_SANITIZER'] = 'Address'
-        libfuzzer_defines['LLVM_USE_SANITIZE_COVERAGE'] = 'YES'
-        libfuzzer_defines['CMAKE_CXX_STANDARD'] = '11'
+        libfuzzer_defines['ANDROID'] = '1'
+        libfuzzer_defines['LLVM_CONFIG_PATH'] = llvm_config
 
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
 
@@ -444,7 +445,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         # CMAKE_*_LINKER_FLAGS to the trycompile() step.
         libfuzzer_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
-        libfuzzer_cmake_path = utils.llvm_path('lib', 'Fuzzer')
+        libfuzzer_cmake_path = utils.llvm_path('projects', 'compiler-rt')
         libfuzzer_env = dict(ORIG_ENV)
         rm_cmake_cache(libfuzzer_path)
         invoke_cmake(
@@ -452,9 +453,14 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
             defines=libfuzzer_defines,
             env=libfuzzer_env,
             cmake_path=libfuzzer_cmake_path,
+            target='fuzzer',
             install=False)
         # We need to install libfuzzer manually.
-        static_lib = os.path.join(libfuzzer_path, 'libLLVMFuzzer.a')
+        sarch = arch
+        if sarch == 'i386':
+            sarch = 'i686'
+        static_lib_filename = 'libclang_rt.fuzzer-' + sarch + '-android.a'
+        static_lib = os.path.join(libfuzzer_path, 'lib', 'linux', static_lib_filename)
         triple_arch = arch_from_triple(llvm_triple)
         if ndk_cxx:
             lib_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
@@ -483,7 +489,6 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
 
         logger().info('Building libomp for %s (ndk_cxx? %s)', arch, ndk_cxx)
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
-        cflags.append('-isystem %s' % support_headers())
 
         libomp_path = utils.out_path('lib', 'libomp-' + arch)
         if ndk_cxx:
@@ -925,7 +930,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     necessary_bin_files = [
         'clang' + ext,
         'clang++' + ext,
-        'clang-5.0' + ext,
+        'clang-6.0' + ext,
         'clang-format' + ext,
         'clang-tidy' + ext,
         'git-clang-format',  # No extension here
@@ -935,6 +940,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'llvm-dis' + ext,
         'llvm-link' + ext,
         'llvm-profdata' + ext,
+        'llvm-readelf' + ext,
         'llvm-symbolizer' + ext,
         'sancov' + ext,
         'sanstats' + ext,
