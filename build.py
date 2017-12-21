@@ -400,6 +400,7 @@ def build_crts(stage2_install, clang_version):
         crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
         crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
 
+        # Build libfuzzer separately.
         crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
         crt_defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
@@ -716,6 +717,10 @@ def build_stage1(stage1_install, build_llvm_tools=False):
     if utils.host_is_darwin():
         stage1_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
+    # Don't build libfuzzer, since it's broken on Darwin and we don't need it
+    # anyway.
+    stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+
     build_llvm(
         targets=stage1_targets,
         build_dir=stage1_path,
@@ -744,6 +749,10 @@ def build_stage2(stage1_install,
     stage2_extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_CAN_USE_CXXABI'] = 'OFF'
+
+    # Don't build libfuzzer, since it's broken on Darwin and we don't need it
+    # anyway.
+    stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
     if use_lld:
         stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
