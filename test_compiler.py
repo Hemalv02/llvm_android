@@ -34,8 +34,12 @@ DEFAULT_TIDY_CHECKS = ('*', '-readability-*', '-google-readability-*',
 # We may introduce some new warnings after rebasing and we need to disable them
 # before we fix those warnings.
 DISABLED_WARNINGS = [
+    '-Wno-error=enum-compare',
+    '-Wno-error=enum-compare-switch',
+    '-Wno-error=null-pointer-arithmetic',
+    '-Wno-error=tautological-constant-compare',
+    '-Wno-error=unknown-warning-option',
     '-Wno-error=zero-as-null-pointer-constant',
-    '-Wno-error=unknown-warning-option'
 ]
 
 
