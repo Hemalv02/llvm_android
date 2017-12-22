@@ -949,7 +949,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'llvm-dis' + ext,
         'llvm-link' + ext,
         'llvm-profdata' + ext,
-        'llvm-readelf' + ext,
+        'llvm-readobj' + ext,
         'llvm-symbolizer' + ext,
         'sancov' + ext,
         'sanstats' + ext,
