@@ -548,9 +548,9 @@ def build_crts_host_i686(stage2_install, clang_version):
     # Due to CMake and Clang oddities, we need to explicitly set
     # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
     # relying on auto-detection from the Compiler-rt CMake files.
-    crt_defines['CMAKE_C_COMPILER_TARGET'] = 'i686-linux-gnu'
+    crt_defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
 
-    cflags = ['--target=i686-linux-gnu', "-march=i686"]
+    cflags = ['--target=i386-linux-gnu', "-march=i686"]
     crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     crt_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
 
@@ -558,11 +558,13 @@ def build_crts_host_i686(stage2_install, clang_version):
     crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
     crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
     crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
-    crt_defines['SANITIZER_CXX_ABI'] = 'libc++'
+    crt_defines['SANITIZER_CXX_ABI'] = 'libstdc++'
+
+    crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
     crt_env = dict(ORIG_ENV)
 
-    crt_path = utils.out_path('lib', 'clangrt-i686-host')
+    crt_path = utils.out_path('lib', 'clangrt-i386-host')
     rm_cmake_cache(crt_path)
     invoke_cmake(
         out_path=crt_path,
