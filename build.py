@@ -719,6 +719,7 @@ def build_stage1(stage1_install, build_llvm_tools=False):
 
         # Workaround for missing DISPATCH_NOESCAPE symbol in old XCode versions.
         stage1_extra_defines['CMAKE_C_FLAGS'] = '-DDISPATCH_NOESCAPE'
+        stage1_extra_defines['CMAKE_CXX_FLAGS'] = '-DDISPATCH_NOESCAPE'
 
     # Don't build libfuzzer, since it's broken on Darwin and we don't need it
     # anyway.
@@ -805,6 +806,7 @@ def build_stage2(stage1_install,
 
         # Workaround for missing DISPATCH_NOESCAPE symbol in old XCode versions.
         stage2_extra_defines['CMAKE_C_FLAGS'] = '-DDISPATCH_NOESCAPE'
+        stage2_extra_defines['CMAKE_CXX_FLAGS'] = '-DDISPATCH_NOESCAPE'
 
     # Point CMake to the libc++ from stage1.  It is possible that once built,
     # the newly-built libc++ may override this because of the rpath pointing to
