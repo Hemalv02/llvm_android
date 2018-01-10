@@ -474,7 +474,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         shutil.copy2(static_lib, os.path.join(lib_dir, 'libFuzzer.a'))
 
     # Install libfuzzer headers.
-    header_src = utils.llvm_path('lib', 'Fuzzer')
+    header_src = utils.llvm_path('projects', 'compiler-rt', 'lib', 'fuzzer')
     header_dst = os.path.join(stage2_install, 'prebuilt_include', 'llvm', 'lib',
                               'Fuzzer')
     check_create_path(header_dst)
