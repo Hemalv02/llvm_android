@@ -38,7 +38,7 @@ PREBUILT_COMPILER_PATH_KEY = 'ANDROID_LLVM_PREBUILT_COMPILER_PATH'
 DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
 
 
-def process_arg_file(arg_file):
+def ProcessArgFile(arg_file):
     args = []
     # Read in entire file at once and parse as if in shell
     with open(arg_file, 'rb') as f:
@@ -107,7 +107,7 @@ class CompilerWrapper():
     def add_flags(self):
         self.args = self.prepend_flags + self.args + self.append_flags
 
-    def prepare_compiler_args(self, enable_fallback):
+    def prepare_compiler_args(self, enable_fallback=False):
         self.set_real_compiler()
         self.parse_custom_flags()
         # Goma should not be enabled for new prebuilt.
