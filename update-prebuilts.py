@@ -38,7 +38,7 @@ def logger():
 def unchecked_call(cmd, *args, **kwargs):
     """subprocess.call with logging."""
     logger().info('unchecked_call: %s', subprocess.list2cmdline(cmd))
-    subprocess.call(cmd, *args, **kwargs)
+    return subprocess.call(cmd, *args, **kwargs)
 
 
 def check_call(cmd, *args, **kwargs):
@@ -117,6 +117,12 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     version_file_path = os.path.join(install_subdir, 'AndroidVersion.txt')
     with open(version_file_path) as version_file:
         version = version_file.read().strip()
+
+    # If there is no difference with the new files, we are already done.
+    diff = unchecked_call(['git', 'diff', '--cached', '--quiet'])
+    if diff == 0:
+        logger().info('Bypassed commit with no diff')
+        return
 
     message_lines = [
         'Update prebuilt Clang to build {}.'.format(build_number),
