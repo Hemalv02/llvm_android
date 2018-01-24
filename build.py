@@ -998,6 +998,12 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         os.path.join(version.long_version()),
         os.path.join(resdir_top, version.short_version()))
 
+    # Next, we copy over stdatomic.h from bionic.
+    stdatomic_path = utils.android_path('bionic', 'libc', 'include',
+                                        'stdatomic.h')
+    header_path = os.path.join(resdir_top, version.short_version(), 'include')
+    install_file(stdatomic_path, header_path)
+
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
 
