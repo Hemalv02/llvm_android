@@ -199,6 +199,8 @@ def base_cmake_defines():
     defines['LLVM_LIBDIR_SUFFIX'] = '64'
     defines['LLVM_VERSION_PATCH'] = android_version.patch_level
     defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
+    defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/clang'
+    defines['LLVM_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm'
     return defines
 
 
@@ -576,13 +578,14 @@ def build_crts_host_i686(stage2_install, clang_version):
 def build_llvm(targets,
                build_dir,
                install_dir,
+               build_name,
                extra_defines=None,
                extra_env=None):
     cmake_defines = base_cmake_defines()
     cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
     cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
     cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
-    cmake_defines['CLANG_VENDOR'] = 'Android '
+    cmake_defines['CLANG_VENDOR'] = 'Android (' + build_name + ') '
     cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
         'toolchain/binutils/binutils-2.27/include')
 
@@ -604,6 +607,7 @@ def build_llvm_for_windows(targets,
                            enable_assertions,
                            build_dir,
                            install_dir,
+                           build_name,
                            native_clang_install,
                            is_32_bit=False):
 
@@ -670,10 +674,11 @@ def build_llvm_for_windows(targets,
         targets=targets,
         build_dir=build_dir,
         install_dir=install_dir,
+        build_name=build_name,
         extra_defines=windows_extra_defines)
 
 
-def build_stage1(stage1_install, build_llvm_tools=False):
+def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     # Build/install the stage 1 toolchain
     stage1_path = utils.out_path('stage1')
     stage1_targets = 'X86'
@@ -727,12 +732,14 @@ def build_stage1(stage1_install, build_llvm_tools=False):
         targets=stage1_targets,
         build_dir=stage1_path,
         install_dir=stage1_install,
+        build_name=build_name,
         extra_defines=stage1_extra_defines)
 
 
 def build_stage2(stage1_install,
                  stage2_install,
                  stage2_targets,
+                 build_name,
                  use_lld=False,
                  enable_assertions=False,
                  debug_build=False,
@@ -813,6 +820,7 @@ def build_stage2(stage1_install,
         targets=stage2_targets,
         build_dir=stage2_path,
         install_dir=stage2_install,
+        build_name=build_name,
         extra_defines=stage2_extra_defines,
         extra_env=stage2_extra_env)
 
@@ -1122,7 +1130,8 @@ def main():
 
         instrumented = utils.host_is_linux() and args.build_instrumented
 
-        build_stage1(stage1_install, build_llvm_tools=instrumented)
+        build_stage1(stage1_install, args.build_name,
+                     build_llvm_tools=instrumented)
 
         long_version = extract_clang_long_version(stage1_install)
         profdata = pgo_profdata_file(long_version)
@@ -1133,8 +1142,8 @@ def main():
                                long_version)
 
         build_stage2(stage1_install, stage2_install, STAGE2_TARGETS,
-                     args.use_lld, args.enable_assertions, args.debug,
-                     instrumented, profdata)
+                     args.build_name, args.use_lld, args.enable_assertions,
+                     args.debug, instrumented, profdata)
 
     if do_build and utils.host_is_linux():
         build_runtimes(stage2_install)
@@ -1150,6 +1159,7 @@ def main():
             enable_assertions=args.enable_assertions,
             build_dir=windows64_path,
             install_dir=windows64_install,
+            build_name=args.build_name,
             native_clang_install=stage2_install)
 
         # Build 32-bit clang for Windows
@@ -1159,6 +1169,7 @@ def main():
             enable_assertions=args.enable_assertions,
             build_dir=windows32_path,
             install_dir=windows32_install,
+            build_name=args.build_name,
             native_clang_install=stage2_install,
             is_32_bit=True)
 
