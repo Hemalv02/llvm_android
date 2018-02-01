@@ -585,7 +585,8 @@ def build_llvm(targets,
     cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
     cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
     cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
-    cmake_defines['CLANG_VENDOR'] = 'Android (' + build_name + ') '
+    cmake_defines['CLANG_VENDOR'] = 'Android (' + build_name + ' based on ' + \
+        android_version.svn_revision + ') '
     cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
         'toolchain/binutils/binutils-2.27/include')
 
@@ -1019,6 +1020,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     version_file_path = os.path.join(install_dir, 'AndroidVersion.txt')
     with open(version_file_path, 'w') as version_file:
         version_file.write('{}\n'.format(version.long_version()))
+        version_file.write('based on {}\n'.format(android_version.svn_revision))
 
     # Package up the resulting trimmed install/ directory.
     tarball_name = package_name + '-' + host
