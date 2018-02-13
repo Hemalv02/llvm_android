@@ -950,7 +950,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     necessary_bin_files = [
         'clang' + ext,
         'clang++' + ext,
-        'clang-6.0' + ext,
+        'clang-' + version.short_version() + ext,
         'clang-format' + ext,
         'clang-tidy' + ext,
         'git-clang-format',  # No extension here
