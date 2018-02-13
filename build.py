@@ -16,6 +16,7 @@
 #
 
 import argparse
+import datetime
 import glob
 import logging
 import os
@@ -39,7 +40,9 @@ def logger():
 
 def check_call(cmd, *args, **kwargs):
     """subprocess.check_call with logging."""
-    logger().info('check_call: %s', subprocess.list2cmdline(cmd))
+    logger().info('check_call:%s %s',
+                  datetime.datetime.now().strftime("%H:%M:%S"),
+                  subprocess.list2cmdline(cmd))
     subprocess.check_call(cmd, *args, **kwargs)
 
 
