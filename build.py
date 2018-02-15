@@ -30,7 +30,7 @@ from version import Version
 import mapfile
 
 ORIG_ENV = dict(os.environ)
-STAGE2_TARGETS = 'AArch64;ARM;Mips;X86'
+STAGE2_TARGETS = 'AArch64;ARM;BPF;Mips;X86'
 
 
 def logger():
