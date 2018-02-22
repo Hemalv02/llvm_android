@@ -872,6 +872,55 @@ def install_wrappers(llvm_install_path):
     install_file(bisect_path, bin_path)
 
 
+# Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
+# is just one library, whose SONAME entry matches the actual name.
+def normalize_llvm_host_libs(install_dir, host, version):
+    if host == 'linux-x86':
+        libs = {'libLLVM': 'libLLVM-{version}svn.so',
+                'libclang': 'libclang.so.{version}',
+                'libc++': 'libc++.so.{version}',
+                'libc++abi': 'libc++abi.so.{version}'
+               }
+    else:
+        libs = {'libc++': 'libc++.{version}.dylib',
+                'libc++abi': 'libc++abi.{version}.dylib'
+               }
+
+    def getVersions(libname):
+        if not libname.startswith('libc++'):
+            return version.short_version(), version.major
+        else:
+            return '1.0', '1'
+
+    libdir = os.path.join(install_dir, 'lib64')
+    for libname, libformat in libs.iteritems():
+        short_version, major = getVersions(libname)
+
+        real_lib = os.path.join(libdir, libformat.format(version=short_version))
+        soname_lib = os.path.join(libdir, libformat.format(version=major))
+
+        if libname == 'libLLVM':
+            # Hack: soname_lib doesn't exist for LLVM.  No need to move
+            soname_lib = real_lib
+        else:
+            # Rename the library to match its SONAME
+            if not os.path.isfile(real_lib):
+                raise RuntimeError(real_lib + ' must be a regular file')
+            if not os.path.islink(soname_lib):
+                raise RuntimeError(soname_lib + ' must be a symlink')
+
+            shutil.move(real_lib, soname_lib)
+
+        # Retain only soname_lib and delete other files for this library.
+        all_libs = [lib for lib in os.listdir(libdir) if
+                        lib.startswith(libname + '.') or # so libc++abi is ignored
+                        lib.startswith(libname + '-')]
+        for lib in all_libs:
+            lib = os.path.join(libdir, lib)
+            if lib != soname_lib:
+                remove(lib)
+
+
 def install_license_files(install_dir):
     projects = (
         'llvm',
@@ -1006,6 +1055,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
 
     if not is_windows:
         install_wrappers(install_dir)
+        normalize_llvm_host_libs(install_dir, host, version)
 
     # Symlink lib*/clang/<short-version> to lib*/clang/<long-version>
     resdir_top = os.path.join(install_dir, lib_dir, 'clang')
