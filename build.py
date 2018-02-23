@@ -46,6 +46,14 @@ def check_call(cmd, *args, **kwargs):
     subprocess.check_call(cmd, *args, **kwargs)
 
 
+def check_output(cmd, *args, **kwargs):
+    """subprocess.check_output with logging."""
+    logger().info('check_output:%s %s',
+                  datetime.datetime.now().strftime("%H:%M:%S"),
+                  subprocess.list2cmdline(cmd))
+    return subprocess.check_output(cmd, *args, **kwargs)
+
+
 def install_file(src, dst):
     """Proxy for shutil.copy2 with logging and dry-run support."""
     import shutil
@@ -541,6 +549,8 @@ def build_crts_host_i686(stage2_install, clang_version):
                                clang_version.long_version())
     crt_cmake_path = utils.llvm_path('projects', 'compiler-rt')
 
+    cflags, ldflags = host_gcc_toolchain_flags(is_32_bit=True)
+
     crt_defines = base_cmake_defines()
     crt_defines['CMAKE_C_COMPILER'] = os.path.join(stage2_install, 'bin',
                                                    'clang')
@@ -555,9 +565,8 @@ def build_crts_host_i686(stage2_install, clang_version):
     # relying on auto-detection from the Compiler-rt CMake files.
     crt_defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
 
-    cflags = ['--target=i386-linux-gnu', "-march=i686"]
-    crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    crt_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+    cflags.append('--target=i386-linux-gnu')
+    cflags.append('-march=i686')
 
     crt_defines['LLVM_CONFIG_PATH'] = llvm_config
     crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
@@ -566,6 +575,14 @@ def build_crts_host_i686(stage2_install, clang_version):
     crt_defines['SANITIZER_CXX_ABI'] = 'libstdc++'
 
     crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+
+    # Set the compiler and linker flags
+    crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
+    crt_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+
+    crt_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
+    crt_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
+    crt_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
 
     crt_env = dict(ORIG_ENV)
 
@@ -682,8 +699,65 @@ def build_llvm_for_windows(targets,
         extra_defines=windows_extra_defines)
 
 
+def host_gcc_toolchain_flags(is_32_bit=False):
+    def formatFlags(flags, **values):
+        flagsStr = ' '.join(flags)
+        flagsStr = flagsStr.format(**values)
+        return flagsStr.split(' ')
+
+    if utils.host_is_darwin():
+        xcrun_command = ['xcrun', '--show-sdk-path']
+        macSdkRoot = (check_output(xcrun_command)).strip()
+        # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
+        macMinVersion = '10.9'
+
+        cflags = ['-isysroot {macSdkRoot}',
+                  '-mmacosx-version-min={macMinVersion}',
+                  '-DMACOSX_DEPLOYMENT_TARGET={macMinVersion}',
+                  ]
+        ldflags = ['-isysroot {macSdkRoot}',
+                   '-Wl,-syslibroot,{macSdkRoot}',
+                   '-mmacosx-version-min={macMinVersion}',
+                   ]
+
+        cflags = formatFlags(cflags, macSdkRoot=macSdkRoot,
+                             macMinVersion=macMinVersion)
+        ldflags = formatFlags(ldflags, macSdkRoot=macSdkRoot,
+                              macMinVersion=macMinVersion)
+        return cflags, ldflags
+    else:
+        gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
+                                     'host/x86_64-linux-glibc2.15-4.8')
+        gccTriple = 'x86_64-linux'
+        gccVersion = '4.8'
+
+        cflags = ['--gcc-toolchain={gccRoot}',
+                  '--sysroot={gccRoot}/sysroot',
+                  '-B{gccRoot}/{gccTriple}/bin',
+                  ]
+
+        gccLibDir = '{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
+        gccBuiltinDir = '{gccRoot}/{gccTriple}/lib64'
+        if is_32_bit:
+            gccLibDir += '/32'
+            gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
+
+        ldflags = ['-B' + gccLibDir,
+                   '-L' + gccLibDir,
+                   '-L' + gccBuiltinDir,
+                   ]
+
+        cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
+                             gccVersion=gccVersion)
+        ldflags = formatFlags(ldflags, gccRoot=gccRoot, gccTriple=gccTriple,
+                              gccVersion=gccVersion)
+        return cflags, ldflags
+
+
 def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     # Build/install the stage 1 toolchain
+    cflags, ldflags = host_gcc_toolchain_flags()
+
     stage1_path = utils.out_path('stage1')
     stage1_targets = 'X86'
 
@@ -708,10 +782,8 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
 
     # ... and point CMake to the libc++.so from the prebuilts.  Install an rpath
     # to prevent linking with the newly-built libc++.so
-    ldflags = ['-Wl,-rpath,' + clang_prebuilt_lib_dir()]
-    stage1_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage1_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage1_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
+    ldflags.append('-L' + clang_prebuilt_lib_dir())
+    ldflags.append('-Wl,-rpath,' + clang_prebuilt_lib_dir())
 
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
@@ -732,6 +804,14 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     # anyway.
     stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
+    # Set the compiler and linker flags
+    stage1_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
+    stage1_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+
+    stage1_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
+    stage1_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
+    stage1_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
+
     build_llvm(
         targets=stage1_targets,
         build_dir=stage1_path,
@@ -749,6 +829,8 @@ def build_stage2(stage1_install,
                  debug_build=False,
                  build_instrumented=False,
                  profdata_file=None):
+    cflags, ldflags = host_gcc_toolchain_flags()
+
     # TODO(srhines): Build LTO plugin (Chromium folks say ~10% perf speedup)
 
     # Build/install the stage2 toolchain
@@ -762,6 +844,7 @@ def build_stage2(stage1_install,
     stage2_extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
+    stage2_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
 
     # Don't build libfuzzer, since it's broken on Darwin and we don't need it
     # anyway.
@@ -817,8 +900,17 @@ def build_stage2(stage1_install,
     # the newly-built libc++ may override this because of the rpath pointing to
     # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
     # the same sources.
+    ldflags.append('-L' + os.path.join(stage1_install, 'lib64'))
     stage2_extra_env = dict()
     stage2_extra_env['LD_LIBRARY_PATH'] = os.path.join(stage1_install, 'lib64')
+
+    # Set the compiler and linker flags
+    stage2_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
+    stage2_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+
+    stage2_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
+    stage2_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
+    stage2_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
 
     build_llvm(
         targets=stage2_targets,
