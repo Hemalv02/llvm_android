@@ -880,6 +880,8 @@ def build_stage2(stage1_install,
                 'Cannot simultaneously instrument and use profiles')
 
         stage2_extra_defines['LLVM_PROFDATA_FILE'] = profdata_file
+        cflags.append('-Wno-profile-instr-out-of-date')
+        cflags.append('-Wno-profile-instr-unprofiled')
 
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
