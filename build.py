@@ -1060,16 +1060,11 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         install_wrappers(install_dir)
         normalize_llvm_host_libs(install_dir, host, version)
 
-    # Symlink lib*/clang/<short-version> to lib*/clang/<long-version>
-    resdir_top = os.path.join(install_dir, lib_dir, 'clang')
-    os.symlink(
-        os.path.join(version.long_version()),
-        os.path.join(resdir_top, version.short_version()))
-
     # Next, we copy over stdatomic.h from bionic.
     stdatomic_path = utils.android_path('bionic', 'libc', 'include',
                                         'stdatomic.h')
-    header_path = os.path.join(resdir_top, version.short_version(), 'include')
+    resdir_top = os.path.join(install_dir, lib_dir, 'clang')
+    header_path = os.path.join(resdir_top, version.long_version(), 'include')
     install_file(stdatomic_path, header_path)
 
     # Install license files as NOTICE in the toolchain install dir.
