@@ -652,8 +652,8 @@ def build_llvm_for_windows(targets,
     if enable_assertions:
         windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
-    cflags = []
-    cxxflags = []
+    cflags = ['-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64']
+    cxxflags = list(cflags)
     # http://b/62787860 - mingw can't properly de-duplicate some functions
     # on 64-bit Windows builds. This mostly happens on builds without
     # assertions, because of llvm_unreachable() on functions that should
