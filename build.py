@@ -911,10 +911,16 @@ def normalize_llvm_host_libs(install_dir, host, version):
 
             shutil.move(real_lib, soname_lib)
 
-        # Retain only soname_lib and delete other files for this library.
+        # Retain only soname_lib and delete other files for this library.  We
+        # still need libc++.so or libc++.dylib symlinks for a subsequent stage1
+        # build using these prebuilts (where CMake tries to find C++ atomics
+        # support) to succeed.
+        libcxx_name = 'libc++.so' if host == 'linux-x86' else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
-                        lib.startswith(libname + '.') or # so libc++abi is ignored
-                        lib.startswith(libname + '-')]
+                        lib != libcxx_name and
+                        (lib.startswith(libname + '.') or # so libc++abi is ignored
+                         lib.startswith(libname + '-'))]
+
         for lib in all_libs:
             lib = os.path.join(libdir, lib)
             if lib != soname_lib:
