@@ -129,7 +129,7 @@ def support_headers():
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 def clang_prebuilt_version():
-    return 'clang-4393122'
+    return 'clang-4639204'
 
 
 def clang_prebuilt_base_dir():
@@ -503,6 +503,7 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
 
         logger().info('Building libomp for %s (ndk_cxx? %s)', arch, ndk_cxx)
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
+        cflags.append('-fPIC')
 
         libomp_path = utils.out_path('lib', 'libomp-' + arch)
         if ndk_cxx:
@@ -513,12 +514,13 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
         libomp_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
         libomp_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+        libomp_defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
 
         # Minimum version for OpenMP's CMake is too low for the CMP0056 policy
         # to be ON by default.
         libomp_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
-        libomp_cmake_path = utils.llvm_path('projects', 'openmp', 'runtime')
+        libomp_cmake_path = utils.llvm_path('projects', 'openmp')
         libomp_env = dict(ORIG_ENV)
         rm_cmake_cache(libomp_path)
         invoke_cmake(
@@ -529,7 +531,7 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
             install=False)
 
         # We need to install libomp manually.
-        static_lib = os.path.join(libomp_path, 'src', 'libomp.a')
+        static_lib = os.path.join(libomp_path, 'runtime', 'src', 'libomp.a')
         triple_arch = arch_from_triple(llvm_triple)
         if ndk_cxx:
             lib_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
