@@ -868,11 +868,14 @@ def build_stage2(stage1_install,
         llvm_profdata = os.path.join(stage1_install, 'bin', 'llvm-profdata')
         stage2_extra_defines['LLVM_PROFDATA'] = llvm_profdata
 
-        # libcxx, libcxxabi build with -nodefaultlibs and cannot link with
-        # -fprofile-instr-generate because libclang_rt.profile depends on libc.
-        # Skip building runtimes and use libstdc++.
-        stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'OFF'
-        stage2_extra_defines['LLVM_BUILD_RUNTIME'] = 'OFF'
+        # Building libcxx, libcxxabi with instrumentation causes linker errors
+        # because these are built with -nodefaultlibs and prevent libc symbols
+        # needed by libclang_rt.profile from being resolved.  Manually adding
+        # the libclang_rt.profile to linker flags fixes the issue.
+        version = extract_clang_long_version(stage1_install)
+        resource_dir = clang_resource_dir(version, '')
+        ldflags.append(os.path.join(stage1_install, resource_dir,
+                                    'libclang_rt.profile-x86_64.a'))
 
     if profdata_file:
         if build_instrumented:
