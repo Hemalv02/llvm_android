@@ -208,7 +208,7 @@ def base_cmake_defines():
     defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
     # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
     defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
-    defines['LLVM_ENABLE_THREADS'] = 'OFF'
+    defines['LLVM_ENABLE_THREADS'] = 'ON'
     defines['LLVM_LIBDIR_SUFFIX'] = '64'
     defines['LLVM_VERSION_PATCH'] = android_version.patch_level
     defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
