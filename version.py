@@ -40,3 +40,6 @@ class Version:
 
     def short_version(self):
         return '.'.join([self.major, self.minor])
+
+    def major_version(self):
+        return self.major

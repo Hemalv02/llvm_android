@@ -129,7 +129,7 @@ def support_headers():
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 def clang_prebuilt_version():
-    return 'clang-4639204'
+    return 'clang-4679922'
 
 
 def clang_prebuilt_base_dir():
@@ -461,6 +461,10 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         # CMAKE_*_LINKER_FLAGS to the trycompile() step.
         libfuzzer_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
+        # Do not link libcxx into fuzzer.  Currently this does not work with
+        # cross-compiles.
+        libfuzzer_defines['COMPILER_RT_FUZZER_LINK_LIBCXX'] = 'OFF'
+
         libfuzzer_cmake_path = utils.llvm_path('projects', 'compiler-rt')
         libfuzzer_env = dict(ORIG_ENV)
         rm_cmake_cache(libfuzzer_path)
@@ -666,8 +670,11 @@ def build_llvm_for_windows(targets,
     windows_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
     windows_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
 
+    # Set CMake path, toolchain file for native compilation (to build tablegen
+    # etc).  Also disable libfuzzer build during native compilation.
     windows_extra_defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = \
         '-DCMAKE_PREFIX_PATH=' + cmake_prebuilt_bin_dir() + ';' + \
+        '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF;'+ \
         '-DCMAKE_TOOLCHAIN_FILE=' + native_cmake_file_path
 
     if enable_assertions:
@@ -1000,8 +1007,8 @@ def normalize_llvm_host_libs(install_dir, host, version):
         real_lib = os.path.join(libdir, libformat.format(version=short_version))
         soname_lib = os.path.join(libdir, libformat.format(version=major))
 
-        if libname == 'libLLVM':
-            # Hack: soname_lib doesn't exist for LLVM.  No need to move
+        if libname in ('libLLVM', 'libclang'):
+            # libLLVM and libclang don't have SONAME mismatch
             soname_lib = real_lib
         else:
             # Rename the library to match its SONAME
@@ -1109,7 +1116,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     necessary_bin_files = [
         'clang' + ext,
         'clang++' + ext,
-        'clang-' + version.short_version() + ext,
+        'clang-' + version.major_version() + ext,
         'clang-format' + ext,
         'clang-tidy' + ext,
         'git-clang-format',  # No extension here
