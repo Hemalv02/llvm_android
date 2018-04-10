@@ -40,6 +40,7 @@ DISABLED_WARNINGS = [
     '-Wno-error=tautological-constant-compare',
     '-Wno-error=unknown-warning-option',
     '-Wno-error=zero-as-null-pointer-constant',
+    '-Wno-error=c++98-compat-extra-semi',
 ]
 
 
