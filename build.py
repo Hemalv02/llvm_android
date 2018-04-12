@@ -1007,10 +1007,7 @@ def normalize_llvm_host_libs(install_dir, host, version):
         real_lib = os.path.join(libdir, libformat.format(version=short_version))
         soname_lib = os.path.join(libdir, libformat.format(version=major))
 
-        if libname in ('libLLVM', 'libclang'):
-            # libLLVM and libclang don't have SONAME mismatch
-            soname_lib = real_lib
-        else:
+        if libname not in ('libLLVM', 'libclang'):
             # Rename the library to match its SONAME
             if not os.path.isfile(real_lib):
                 raise RuntimeError(real_lib + ' must be a regular file')
