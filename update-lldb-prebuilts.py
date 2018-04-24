@@ -119,8 +119,11 @@ def update_lldb(target, build_number, use_current_branch, download_dir, bug):
 
     android_package = os.path.join(download_dir,
             get_android_package(build_number))
-    manifest = os.path.join(download_dir, get_manifest(build_number))
+    android_dir = os.path.join(install_subdir, "android")
+    os.makedirs(android_dir)
+    extract_package(android_package, android_dir)
 
+    manifest = os.path.join(download_dir, get_manifest(build_number))
     shutil.copy(manifest, install_subdir)
 
     check_call(['git', 'add', install_subdir])
