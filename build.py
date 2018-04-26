@@ -30,7 +30,7 @@ from version import Version
 import mapfile
 
 ORIG_ENV = dict(os.environ)
-STAGE2_TARGETS = 'AArch64;ARM;BPF;X86'
+STAGE2_TARGETS = 'AArch64;ARM;BPF;Mips;X86'
 
 
 def logger():
@@ -92,7 +92,7 @@ def ndk_base():
 def android_api(arch, platform=False):
     if platform:
         return '26'
-    elif arch in ['arm', 'i386']:
+    elif arch in ['arm', 'i386', 'mips']:
         return '14'
     else:
         return '21'
@@ -116,7 +116,7 @@ def ndk_libcxxabi_headers():
 def ndk_toolchain_lib(arch, toolchain_root, host_tag):
     toolchain_lib = os.path.join(ndk_base(), 'toolchains', toolchain_root,
                                  'prebuilt', 'linux-x86_64', host_tag)
-    if arch in ['arm', 'i386']:
+    if arch in ['arm', 'i386', 'mips']:
         toolchain_lib = os.path.join(toolchain_lib, 'lib')
     else:
         toolchain_lib = os.path.join(toolchain_lib, 'lib64')
@@ -257,6 +257,12 @@ def cross_compile_configs(stage2_install, platform=False):
          'x86_64-linux-android', ''),
         ('i386', 'x86', 'x86/x86_64-linux-android-4.9/x86_64-linux-android',
          'i686-linux-android', '-m32'),
+        ('mips', 'mips',
+         'mips/mips64el-linux-android-4.9/mips64el-linux-android',
+         'mipsel-linux-android', '-m32'),
+        ('mips64', 'mips64',
+         'mips/mips64el-linux-android-4.9/mips64el-linux-android',
+         'mips64el-linux-android', '-m64'),
     ]
 
     cc = os.path.join(stage2_install, 'bin', 'clang')
@@ -286,6 +292,9 @@ def cross_compile_configs(stage2_install, platform=False):
         # The 32-bit libgcc.a is sometimes in a separate subdir
         if arch == 'i386':
             toolchain_builtins = os.path.join(toolchain_builtins, '32')
+        elif arch == 'mips':
+            toolchain_builtins = os.path.join(toolchain_builtins, '32',
+                                              'mips-r2')
         libcxx_libs = os.path.join(ndk_base(), 'sources', 'cxx-stl',
                                    'llvm-libc++', 'libs')
         if ndk_arch == 'arm':
@@ -310,6 +319,8 @@ def cross_compile_configs(stage2_install, platform=False):
             '-L' + toolchain_lib,
             '--sysroot=%s' % sysroot_libs
         ]
+        if arch != 'mips' and arch != 'mips64':
+            ldflags += ['-Wl,--hash-style=both']
         defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
@@ -330,7 +341,7 @@ def build_asan_test(stage2_install):
     # We can not build asan_test using current CMake building system. Since
     # those files are not used to build AOSP, we just simply touch them so that
     # we can pass the build checks.
-    for arch in ('aarch64', 'arm', 'i686'):
+    for arch in ('aarch64', 'arm', 'i686', 'mips', 'mips64'):
         asan_test_path = os.path.join(stage2_install, 'test', arch, 'bin')
         check_create_path(asan_test_path)
         asan_test_bin_path = os.path.join(asan_test_path, 'asan_test')
@@ -339,7 +350,7 @@ def build_asan_test(stage2_install):
 def build_asan_map_files(stage2_install, clang_version):
     lib_dir = os.path.join(stage2_install,
                            clang_resource_dir(clang_version.long_version(), ''))
-    for arch in ('aarch64', 'arm', 'i686', 'x86_64'):
+    for arch in ('aarch64', 'arm', 'i686', 'x86_64', 'mips', 'mips64'):
         lib_file = os.path.join(lib_dir, 'libclang_rt.asan-{}-android.so'.format(arch))
         map_file = os.path.join(lib_dir, 'libclang_rt.asan-{}-android.map.txt'.format(arch))
         mapfile.create_map_file(lib_file, map_file)
