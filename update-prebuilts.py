@@ -78,6 +78,12 @@ class ArgParser(argparse.ArgumentParser):
             default=False,
             help='Skip the cleanup, and leave intermediate files')
 
+        self.add_argument(
+            '--revision-suffix',
+            '-rs',
+            default='',
+            help='Suffix to append to the prebuilt path')
+
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
@@ -91,8 +97,18 @@ def extract_package(package, install_dir):
     check_call(cmd)
 
 
-def update_clang(host, build_number, use_current_branch, download_dir, bug,
-                 manifest):
+def extract_clang_info(clang_dir):
+    version_file_path = os.path.join(clang_dir, 'AndroidVersion.txt')
+    with open(version_file_path) as version_file:
+        # e.g. for contents: ['7.0.1', 'based on r326829']
+        contents = [l.strip() for l in version_file.readlines()]
+        version = contents[0]
+        revision = contents[1].split()[-1]
+        return version, revision
+
+
+def update_clang(host, build_number, revision_suffix, use_current_branch,
+                 download_dir, bug, manifest):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
     os.chdir(prebuilt_dir)
 
@@ -108,15 +124,19 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             download_dir, build_number, host_filename)
     manifest_file = '{}/{}'.format(download_dir, manifest)
 
-    install_subdir = 'clang-' + build_number
     extract_package(package, prebuilt_dir)
-    shutil.copy(manifest_file, prebuilt_dir + '/' +  install_subdir)
+
+    extract_subdir = 'clang-' + build_number
+    clang_version, svn_revision = extract_clang_info(extract_subdir)
+
+    # Install into clang-<revision><revision_suffix>
+    install_version = svn_revision + revision_suffix
+    install_subdir = 'clang-' + install_version
+    os.rename(extract_subdir, install_subdir)
+
+    shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
 
     check_call(['git', 'add', install_subdir])
-
-    version_file_path = os.path.join(install_subdir, 'AndroidVersion.txt')
-    with open(version_file_path) as version_file:
-        version = version_file.read().strip()
 
     # If there is no difference with the new files, we are already done.
     diff = unchecked_call(['git', 'diff', '--cached', '--quiet'])
@@ -125,9 +145,9 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         return
 
     message_lines = [
-        'Update prebuilt Clang to build {}.'.format(build_number),
-        '',
-        'Built from version {}.'.format(version),
+        'Update prebuilt Clang to {}.'.format(install_version),
+        '', 'clang {} (based on {}) from build {}.'.format(
+            clang_version, svn_revision, build_number)
     ]
     if bug is not None:
         message_lines.append('')
@@ -143,6 +163,11 @@ def main():
 
     do_fetch = not args.skip_fetch
     do_cleanup = not args.skip_cleanup
+    revision_suffix = args.revision_suffix
+    if revision_suffix and (len(revision_suffix) > 1 or
+                            not revision_suffix.islower()):
+        msgFormat = 'Version suffix \'{}\' is not a single lowercase character'
+        raise argparse.ArgumentTypeError(msgFormat.format(revision_suffix))
 
     download_dir = os.path.realpath('.download')
     if do_fetch:
@@ -165,8 +190,9 @@ def main():
                 fetch_artifact(branch, target, args.build, clang_pattern)
 
         for host in hosts:
-            update_clang(host, args.build, args.use_current_branch,
-                         download_dir, args.bug, manifest)
+            update_clang(host, args.build, args.revision_suffix,
+                         args.use_current_branch, download_dir, args.bug,
+                         manifest)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
