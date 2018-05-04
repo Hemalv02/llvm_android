@@ -44,6 +44,11 @@ def parse_args():
         default=False,
         help='Create new branch using `repo start` before '
         'merging from upstream.')
+    parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        default=False,
+        help='Dry run, does not actually commit changes to local workspace.')
     return parser.parse_args()
 
 
@@ -52,10 +57,11 @@ def sync_upstream_branch(path):
     subprocess.check_call(['repo', 'sync', jobs, '.'], cwd=path)
 
 
-def merge_projects(revision, create_new_branch):
+def merge_projects(revision, create_new_branch, dry_run):
     project_sha_dict = {}
     for (project, path) in PROJECT_PATH:
-        sync_upstream_branch(path)
+        if not dry_run:
+            sync_upstream_branch(path)
         sha = get_commit_hash(revision, path)
         if sha is None:
             return
@@ -66,13 +72,22 @@ def merge_projects(revision, create_new_branch):
         sha = project_sha_dict[project]
         if create_new_branch:
             branch_name = 'merge-upstream-r%s' % revision
-            subprocess.check_call(['repo', 'start', branch_name, '.'], cwd=path)
-        subprocess.check_call(
-            [
-                'git', 'merge', sha, '-m',
-                'Merge %s for LLVM update to %d' % (sha, revision)
-            ],
-            cwd=path)
+            if not dry_run:
+                subprocess.check_call(['repo', 'start', branch_name, '.'], cwd=path)
+            else:
+                print('Project %s: repo start %s .' % (project, branch_name))
+
+        if not dry_run:
+            subprocess.check_call(
+                [
+                    'git', 'merge', sha, '-m',
+                    'Merge %s for LLVM update to %d' % (sha, revision)
+                ],
+                cwd=path)
+        else:
+            print('Project %s: git merge %s' % (project, sha))
+
+        print
 
 
 def get_commit_hash(revision, path):
@@ -114,7 +129,7 @@ def parse_log(raw_log):
 
 def main():
     args = parse_args()
-    merge_projects(args.revision, args.create_new_branch)
+    merge_projects(args.revision, args.create_new_branch, args.dry_run)
 
 
 if __name__ == '__main__':
