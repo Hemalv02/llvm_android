@@ -16,7 +16,6 @@
 #
 
 import argparse
-import multiprocessing
 import os
 import re
 import subprocess
@@ -53,8 +52,7 @@ def parse_args():
 
 
 def sync_upstream_branch(path):
-    jobs = '-j{}'.format(multiprocessing.cpu_count())
-    subprocess.check_call(['repo', 'sync', jobs, '.'], cwd=path)
+    subprocess.check_call(['repo', 'sync', '.'], cwd=path)
 
 
 def merge_projects(revision, create_new_branch, dry_run):
