@@ -281,7 +281,6 @@ def build_clang(instrumented=False, pgo=True):
         stage2_install,
         build.STAGE2_TARGETS,
         build_name='dev',
-        use_lld=False,
         build_instrumented=instrumented,
         profdata_file=profdata)
     build.build_runtimes(stage2_install)
