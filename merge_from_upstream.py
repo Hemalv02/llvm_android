@@ -75,15 +75,62 @@ def merge_projects(revision, create_new_branch, dry_run):
             else:
                 print('Project %s: repo start %s .' % (project, branch_name))
 
+        # Get the info since the last tag, the format is
+        #   llvm-svn.[svn]-[number of changes since tag]-[sha of the current commit]
+        desc = subprocess.check_output(
+            ['git', 'describe', '--tags', '--long', '--match', 'llvm-svn.[0-9]*'],
+            cwd=path).strip()
+        _, svnNum, numChanges, _ = desc.split('-')
+
+        # Check changes since the previous merge point
+        reapplyList = []
+        for i in range(int(numChanges) - 1, -1, -1):
+            changeLog = subprocess.check_output(
+                ['git', 'show', 'HEAD~' + str(i), '--quiet', '--format=%h%x1f%B%x1e'],
+                cwd=path
+            )
+            changeLog = changeLog.strip('\n\x1e')
+            patchSha, patchRev = parse_log(changeLog)
+            if patchRev is None or patchRev > revision:
+                reapplyList.append(patchSha)
+
+        # Reset to previous branch point, if necessary
+        if int(numChanges) > 0:
+            if not dry_run:
+                subprocess.check_output(
+                    ['git', 'revert', '--no-commit', 'llvm-' + svnNum + '...HEAD'],
+                    cwd=path
+                )
+                subprocess.check_output(
+                    ['git', 'commit', '-m revert to previous base llvm-' + svnNum],
+                    cwd=path
+                )
+            else:
+                print('Project %s: git revert --no-commit llvm-%s...HEAD' % (project, svnNum))
+
+        # Merge upstream revision
         if not dry_run:
             subprocess.check_call(
                 [
-                    'git', 'merge', sha, '-m',
+                    'git', 'merge', '--quiet', sha, '-m',
                     'Merge %s for LLVM update to %d' % (sha, revision)
                 ],
                 cwd=path)
         else:
             print('Project %s: git merge %s' % (project, sha))
+
+        # Tag the merge point
+        if not dry_run:
+            subprocess.check_call(
+                ['git', 'tag', 'llvm-svn.' + str(revision)],
+                cwd=path
+            )
+        else:
+            print('Project %s: git tag llvm-svn.%s' % (project, revision))
+
+        # Reapply
+        for sha in reapplyList:
+            print "Project %s: You may need to reapply %s" % (project, str(sha))
 
         print
 
@@ -121,8 +168,10 @@ def parse_log(raw_log):
     log = raw_log.strip().split('\x1f')
     # Extract revision number from log data.
     revision_string = log[1].strip().split('\n')[-1]
-    revision = int(re.search(r'trunk@(\d+)', revision_string).group(1))
-    return (log[0], revision)
+    revision = re.search(r'trunk@(\d+)', revision_string)
+    if revision is None:
+        return (log[0], None)
+    return (log[0], int(revision.group(1)))
 
 
 def main():
