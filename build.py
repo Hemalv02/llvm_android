@@ -833,8 +833,6 @@ def build_stage2(stage1_install,
                  profdata_file=None):
     cflags, ldflags = host_gcc_toolchain_flags()
 
-    # TODO(srhines): Build LTO plugin (Chromium folks say ~10% perf speedup)
-
     # Build/install the stage2 toolchain
     stage2_cc = os.path.join(stage1_install, 'bin', 'clang')
     stage2_cxx = os.path.join(stage1_install, 'bin', 'clang++')
@@ -850,6 +848,7 @@ def build_stage2(stage1_install,
 
     if not utils.host_is_darwin():
         stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+        stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
     # Don't build libfuzzer, since it's broken on Darwin and we don't need it
     # anyway.
