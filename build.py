@@ -848,7 +848,11 @@ def build_stage2(stage1_install,
 
     if not utils.host_is_darwin():
         stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
-        stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
+
+        # lld, lto and pgo instrumentation doesn't work together
+        # http://b/79419131
+        if not build_instrumented:
+            stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
     # Don't build libfuzzer, since it's broken on Darwin and we don't need it
     # anyway.
