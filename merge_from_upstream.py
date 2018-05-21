@@ -20,7 +20,7 @@ import os
 import re
 import subprocess
 
-from utils import llvm_path
+from utils import llvm_path, yes_or_no
 
 PROJECT_PATH = (
     ('llvm', llvm_path()),
@@ -129,8 +129,48 @@ def merge_projects(revision, create_new_branch, dry_run):
             print('Project %s: git tag llvm-svn.%s' % (project, revision))
 
         # Reapply
+        FNULL = open(os.devnull, 'w')
         for sha in reapplyList:
-            print "Project %s: You may need to reapply %s" % (project, str(sha))
+            subprocess.check_call(
+                ['git', '--no-pager', 'show', sha, '--quiet'],
+                cwd=path
+            )
+
+            # Check whether applying this change will cause conflict
+            ret_code = subprocess.call(
+                ['git', 'cherry-pick', '--no-commit', '--no-ff', sha],
+                cwd=path,
+                stdout=FNULL,
+                stderr=FNULL
+            )
+            subprocess.check_call(
+                ['git', 'reset', '--hard'],
+                cwd=path,
+                stdout=FNULL,
+                stderr=FNULL
+            )
+
+            if ret_code != 0:
+                print 'Change cannot merge cleanly, please manual merge if needed'
+                print
+                continue
+
+            # Change can apply cleanly...
+            reapply = yes_or_no("Reapply change?", default=True)
+            if reapply:
+                if not dry_run:
+                    subprocess.check_call(
+                        ['git', 'cherry-pick', sha],
+                        cwd=path,
+                        stdout=FNULL,
+                        stderr=FNULL
+                    )
+                else:
+                    print('Project %s: git cherry-pick %s' % (project, sha))
+            else:
+                print 'Skipping ' + sha
+
+            print
 
         print
 
