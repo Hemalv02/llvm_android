@@ -69,3 +69,18 @@ def host_is_linux():
 
 def host_is_darwin():
     return build_os_type() == 'darwin-x86'
+
+
+def yes_or_no(prompt, default=True):
+    prompt += " (Y/n)" if default else " (y/N)"
+    prompt += ": "
+    while True:
+        reply = str(raw_input(prompt)).lower().strip()
+        if len(reply) == 0:
+            return default
+        elif reply[0] == 'y':
+            return True
+        elif reply[0] == 'n':
+            return False
+        else:
+            print "Unrecognized reply, try again"
