@@ -18,6 +18,7 @@
 import os
 import shutil
 import stat
+import subprocess
 import sys
 
 THIS_DIR = os.path.realpath(os.path.dirname(__file__))
@@ -84,3 +85,15 @@ def yes_or_no(prompt, default=True):
             return False
         else:
             print "Unrecognized reply, try again"
+
+def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
+    if not dry_run:
+        return subprocess.check_call(args, stdout=stdout, stderr=stderr, cwd=cwd)
+    else:
+        print "Project " + os.path.basename(cwd) + ": " + ' '.join(args)
+
+def check_output_d(args, stderr=None, cwd=None, dry_run=False):
+    if not dry_run:
+        return subprocess.check_output(args, stderr=stderr, cwd=cwd)
+    else:
+        print "Project " + os.path.basename(cwd) + ": " + ' '.join(args)

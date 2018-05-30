@@ -20,7 +20,7 @@ import os
 import re
 import subprocess
 
-from utils import llvm_path, yes_or_no
+from utils import *
 
 PROJECT_PATH = (
     ('llvm', llvm_path()),
@@ -70,10 +70,7 @@ def merge_projects(revision, create_new_branch, dry_run):
         sha = project_sha_dict[project]
         if create_new_branch:
             branch_name = 'merge-upstream-r%s' % revision
-            if not dry_run:
-                subprocess.check_call(['repo', 'start', branch_name, '.'], cwd=path)
-            else:
-                print('Project %s: repo start %s .' % (project, branch_name))
+            check_call_d(['repo', 'start', branch_name, '.'], cwd=path, dry_run=dry_run)
 
         # Get the info since the last tag, the format is
         #   llvm-svn.[svn]-[number of changes since tag]-[sha of the current commit]
@@ -96,37 +93,33 @@ def merge_projects(revision, create_new_branch, dry_run):
 
         # Reset to previous branch point, if necessary
         if int(numChanges) > 0:
-            if not dry_run:
-                subprocess.check_output(
-                    ['git', 'revert', '--no-commit', 'llvm-' + svnNum + '...HEAD'],
-                    cwd=path
-                )
-                subprocess.check_output(
-                    ['git', 'commit', '-m revert to previous base llvm-' + svnNum],
-                    cwd=path
-                )
-            else:
-                print('Project %s: git revert --no-commit llvm-%s...HEAD' % (project, svnNum))
+            check_output_d(
+                ['git', 'revert', '--no-commit', 'llvm-' + svnNum + '...HEAD'],
+                cwd=path,
+                dry_run=dry_run
+            )
+            check_output_d(
+                ['git', 'commit', '-m revert to previous base llvm-' + svnNum],
+                cwd=path,
+                dry_run=dry_run
+            )
 
         # Merge upstream revision
-        if not dry_run:
-            subprocess.check_call(
-                [
-                    'git', 'merge', '--quiet', sha, '-m',
-                    'Merge %s for LLVM update to %d' % (sha, revision)
-                ],
-                cwd=path)
-        else:
-            print('Project %s: git merge %s' % (project, sha))
+        check_call_d(
+            [
+                'git', 'merge', '--quiet', sha, '-m',
+                'Merge %s for LLVM update to %d' % (sha, revision)
+            ],
+            cwd=path,
+            dry_run=dry_run
+        )
 
         # Tag the merge point
-        if not dry_run:
-            subprocess.check_call(
-                ['git', 'tag', 'llvm-svn.' + str(revision)],
-                cwd=path
-            )
-        else:
-            print('Project %s: git tag llvm-svn.%s' % (project, revision))
+        check_call_d(
+            ['git', 'tag', 'llvm-svn.' + str(revision)],
+            cwd=path,
+            dry_run=dry_run
+        )
 
         # Reapply
         FNULL = open(os.devnull, 'w')
@@ -158,15 +151,13 @@ def merge_projects(revision, create_new_branch, dry_run):
             # Change can apply cleanly...
             reapply = yes_or_no("Reapply change?", default=True)
             if reapply:
-                if not dry_run:
-                    subprocess.check_call(
-                        ['git', 'cherry-pick', sha],
-                        cwd=path,
-                        stdout=FNULL,
-                        stderr=FNULL
-                    )
-                else:
-                    print('Project %s: git cherry-pick %s' % (project, sha))
+                check_call_d(
+                    ['git', 'cherry-pick', sha],
+                    cwd=path,
+                    stdout=FNULL,
+                    stderr=FNULL,
+                    dry_run=dry_run
+                )
             else:
                 print 'Skipping ' + sha
 
