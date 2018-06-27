@@ -92,7 +92,7 @@ def ndk_base():
 def android_api(arch, platform=False):
     if platform:
         return '26'
-    elif arch in ['arm', 'i386']:
+    elif arch in ['arm', 'i386', 'x86']:
         return '14'
     else:
         return '21'
@@ -192,6 +192,61 @@ def check_create_path(path):
         os.makedirs(path)
 
 
+def get_sysroot(arch, platform=False):
+    sysroots = utils.out_path('sysroots')
+    platform_or_ndk = 'platform' if platform else 'ndk'
+    return os.path.join(sysroots, platform_or_ndk, arch)
+
+
+def create_sysroots():
+    # Construct the sysroots from scratch, since symlinks can't nest within
+    # the right places (without altering source prebuilts).
+    configs = [
+        ('arm', 'arm-linux-androideabi'),
+        ('arm64', 'aarch64-linux-android'),
+        ('x86_64', 'x86_64-linux-android'),
+        ('x86', 'i686-linux-android'),
+    ]
+
+    # TODO(srhines): We destroy and recreate the sysroots each time, but this
+    # could check for differences and only replace files if needed.
+    sysroots_out = utils.out_path('sysroots')
+    if os.path.exists(sysroots_out):
+        shutil.rmtree(sysroots_out)
+    check_create_path(sysroots_out)
+
+    base_header_path = os.path.join(ndk_base(), 'sysroot', 'usr', 'include')
+    for (arch, target) in configs:
+        # Also create sysroots for each of platform and the NDK.
+        for platform_or_ndk in ['platform', 'ndk']:
+            platform = platform_or_ndk == 'platform'
+            base_lib_path = utils.android_path(ndk_base(), 'platforms',
+                    'android-' + android_api(arch, platform))
+            dest_usr = os.path.join(get_sysroot(arch, platform), 'usr')
+
+            # Copy over usr/include.
+            dest_usr_include = os.path.join(dest_usr, 'include')
+            shutil.copytree(base_header_path, dest_usr_include, symlinks=True)
+
+            # Copy over usr/include/asm.
+            asm_headers = os.path.join(base_header_path, target, 'asm')
+            dest_usr_include_asm = os.path.join(dest_usr_include, 'asm')
+            shutil.copytree(asm_headers, dest_usr_include_asm, symlinks=True)
+
+            # Copy over usr/lib.
+            arch_lib_path = os.path.join(base_lib_path, 'arch-' + arch,
+                    'usr', 'lib')
+            dest_usr_lib = os.path.join(dest_usr, 'lib')
+            shutil.copytree(arch_lib_path, dest_usr_lib, symlinks=True)
+
+            # For only x86_64, we also need to copy over usr/lib64
+            if arch == 'x86_64':
+                arch_lib64_path = os.path.join(base_lib_path, 'arch-' + arch,
+                        'usr', 'lib64')
+                dest_usr_lib64 = os.path.join(dest_usr, 'lib64')
+                shutil.copytree(arch_lib64_path, dest_usr_lib64, symlinks=True)
+
+
 def rm_cmake_cache(dir):
     for dirpath, dirs, files in os.walk(dir):
         if 'CMakeCache.txt' in files:
@@ -266,14 +321,7 @@ def cross_compile_configs(stage2_install, platform=False):
         toolchain_root = utils.android_path('prebuilts/gcc',
                                             utils.build_os_type())
         toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
-        sysroot_libs = os.path.join(ndk_path(arch, platform), 'arch-' + ndk_arch)
-        sysroot = os.path.join(ndk_base(), 'sysroot')
-        if arch == 'arm':
-            sysroot_headers = os.path.join(sysroot, 'usr', 'include',
-                                           'arm-linux-androideabi')
-        else:
-            sysroot_headers = os.path.join(sysroot, 'usr', 'include',
-                                           llvm_triple)
+        sysroot = get_sysroot(ndk_arch, platform)
 
         defines = {}
         defines['CMAKE_C_COMPILER'] = cc
@@ -308,18 +356,20 @@ def cross_compile_configs(stage2_install, platform=False):
         ldflags = [
             '-L' + toolchain_builtins, '-Wl,-z,defs', '-L' + libcxx_libs,
             '-L' + toolchain_lib,
-            '--sysroot=%s' % sysroot_libs
         ]
         defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_SYSROOT'] = sysroot
-        defines['CMAKE_SYSROOT_COMPILE'] = sysroot
+        defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
+        defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
+        defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
+        defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
+
 
         cflags = [
             '--target=%s' % llvm_triple,
             '-B%s' % toolchain_bin,
-            '-isystem %s' % sysroot_headers,
             '-D__ANDROID_API__=%s' % android_api(arch, platform=platform),
             extra_flags,
         ]
@@ -540,6 +590,8 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
 
 
 def build_crts_host_i686(stage2_install, clang_version):
+    logger().info('Building compiler-rt for host-i686')
+
     llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
 
     crt_install = os.path.join(stage2_install, 'lib64', 'clang',
@@ -561,6 +613,8 @@ def build_crts_host_i686(stage2_install, clang_version):
     # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
     # relying on auto-detection from the Compiler-rt CMake files.
     crt_defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
+
+    crt_defines['CMAKE_SYSROOT'] = host_sysroot()
 
     cflags.append('--target=i386-linux-gnu')
     cflags.append('-march=i686')
@@ -659,6 +713,13 @@ def build_llvm_for_windows(targets,
     windows_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
     windows_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
 
+    windows_sysroot = os.path.join(mingw_path, 'x86_64-w64-mingw32')
+    windows_extra_defines['CMAKE_SYSROOT'] = windows_sysroot
+    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
+    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
+    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
+    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
+
     # Set CMake path, toolchain file for native compilation (to build tablegen
     # etc).  Also disable libfuzzer build during native compilation.
     windows_extra_defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = \
@@ -699,6 +760,14 @@ def build_llvm_for_windows(targets,
         extra_defines=windows_extra_defines)
 
 
+def host_sysroot():
+    if utils.host_is_darwin():
+        return ""
+    else:
+        return utils.android_path('prebuilts/gcc', utils.build_os_type(),
+                                  'host/x86_64-linux-glibc2.15-4.8/sysroot')
+
+
 def host_gcc_toolchain_flags(is_32_bit=False):
     def formatFlags(flags, **values):
         flagsStr = ' '.join(flags)
@@ -732,7 +801,6 @@ def host_gcc_toolchain_flags(is_32_bit=False):
         gccVersion = '4.8'
 
         cflags = ['--gcc-toolchain={gccRoot}',
-                  '--sysroot={gccRoot}/sysroot',
                   '-B{gccRoot}/{gccTriple}/bin',
                   ]
 
@@ -771,6 +839,12 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
         clang_prebuilt_bin_dir(), 'clang++')
     stage1_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'OFF'
     stage1_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
+    stage1_extra_defines['CMAKE_SYSROOT'] = host_sysroot()
+
+    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
+    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
+    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
+    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
 
     if not utils.host_is_darwin():
         stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
@@ -845,6 +919,12 @@ def build_stage2(stage1_install,
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+    stage2_extra_defines['CMAKE_SYSROOT'] = host_sysroot()
+
+    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
+    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
+    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
+    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
 
     if not utils.host_is_darwin():
         stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
@@ -932,6 +1012,7 @@ def build_stage2(stage1_install,
 
 
 def build_runtimes(stage2_install):
+    create_sysroots()
     version = extract_clang_version(stage2_install)
     build_crts(stage2_install, version)
     build_crts_host_i686(stage2_install, version)
