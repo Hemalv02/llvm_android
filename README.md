@@ -18,6 +18,9 @@ $ repo sync -c
 $ python toolchain/llvm_android/build.py
 ```
 
+If building on Linux, pass the `--no-build-windows` to `build.py` to skip
+building Clang for Windows.
+
 More Information
 ----------------
 
