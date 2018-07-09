@@ -712,6 +712,8 @@ def build_llvm_for_windows(targets,
     # Build clang-tidy/clang-format for Windows.
     windows_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
     windows_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
+    # Don't build tests for Windows.
+    windows_extra_defines['LLVM_INCLUDE_TESTS'] = 'OFF'
 
     windows_sysroot = os.path.join(mingw_path, 'x86_64-w64-mingw32')
     windows_extra_defines['CMAKE_SYSROOT'] = windows_sysroot
