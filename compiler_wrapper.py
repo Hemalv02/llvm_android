@@ -133,6 +133,11 @@ class CompilerWrapper():
             write_log(redirect_path, self.execargs, err)
             fallback_arg0 = os.path.join(os.environ[PREBUILT_COMPILER_PATH_KEY],
                                          os.path.basename(__file__))
+
+            # Delete PREBUILT_COMPILER_PATH_KEY so the fallback doesn't keep
+            # calling itself in case of an error.
+            del os.environ[PREBUILT_COMPILER_PATH_KEY]
+
             os.execv(fallback_arg0, [fallback_arg0] + self.execargs[1:])
 
     def invoke_compiler(self):
