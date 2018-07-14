@@ -116,7 +116,7 @@ def merge_projects(revision, create_new_branch, dry_run):
 
         # Tag the merge point
         check_call_d(
-            ['git', 'tag', 'llvm-svn.' + str(revision)],
+            ['git', 'tag', '-f', 'llvm-svn.' + str(revision)],
             cwd=path,
             dry_run=dry_run
         )
