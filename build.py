@@ -357,6 +357,7 @@ def cross_compile_configs(stage2_install, platform=False):
             '-L' + toolchain_builtins, '-Wl,-z,defs', '-L' + libcxx_libs,
             '-L' + toolchain_lib,
             '-fuse-ld=lld',
+            '-Wl,--gc-sections',
         ]
 
         defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
@@ -373,6 +374,8 @@ def cross_compile_configs(stage2_install, platform=False):
             '--target=%s' % llvm_triple,
             '-B%s' % toolchain_bin,
             '-D__ANDROID_API__=%s' % android_api(arch, platform=platform),
+            '-ffunction-sections',
+            '-fdata-sections',
             extra_flags,
         ]
         yield (arch, llvm_triple, defines, cflags)
