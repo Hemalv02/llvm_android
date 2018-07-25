@@ -157,6 +157,16 @@ def link_clang(android_base, clang_path):
     os.symlink(os.path.abspath(clang_path), android_clang_path)
 
 
+def replace_llvm_strip(android_base):
+    dst_path = os.path.join(android_base, 'prebuilts', 'clang', 'host',
+                            utils.build_os_type(), 'clang-dev', 'bin',
+                            'llvm-strip')
+    src_path = os.path.join(android_base, 'prebuilts', 'clang', 'host',
+                            utils.build_os_type(), 'clang-r328903', 'bin',
+                            'llvm-strip')
+    shutil.copyfile(src_path, dst_path)
+
+
 def get_connected_device_list():
     try:
         # Get current connected device list.
@@ -298,6 +308,7 @@ def main():
         clang_version = build.extract_clang_version(clang_path)
     build.install_wrappers(clang_path)
     link_clang(args.android_path, clang_path)
+    replace_llvm_strip(args.android_path)
 
     if args.build_only:
         profiler = ClangProfileHandler() if args.profile else None
