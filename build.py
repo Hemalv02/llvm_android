@@ -269,6 +269,9 @@ def base_cmake_defines():
     defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
     defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/clang'
     defines['LLVM_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm'
+
+    # http://b/111885871 - Disable building xray because of MacOS issues.
+    defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
     return defines
 
 
