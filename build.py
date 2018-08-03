@@ -746,7 +746,7 @@ def build_llvm_for_windows(targets,
     # on 64-bit Windows builds. This mostly happens on builds without
     # assertions, because of llvm_unreachable() on functions that should
     # return a value (and control flow fallthrough - undefined behavior).
-    ldflags = ['-Wl,--allow-multiple-definition']
+    ldflags = ['-Wl,--allow-multiple-definition', '-static-libgcc']
 
     if is_32_bit:
         cflags.append('-m32')
