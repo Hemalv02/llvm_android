@@ -394,13 +394,23 @@ def build_asan_test(stage2_install):
         asan_test_bin_path = os.path.join(asan_test_path, 'asan_test')
         open(asan_test_bin_path, 'w+').close()
 
-def build_asan_map_files(stage2_install, clang_version):
+def build_sanitizer_map_file(san, arch, lib_dir):
+    lib_file = os.path.join(lib_dir, 'libclang_rt.{}-{}-android.so'.format(san, arch))
+    map_file = os.path.join(lib_dir, 'libclang_rt.{}-{}-android.map.txt'.format(san, arch))
+    mapfile.create_map_file(lib_file, map_file)
+
+def build_sanitizer_map_files(stage2_install, clang_version):
     lib_dir = os.path.join(stage2_install,
                            clang_resource_dir(clang_version.long_version(), ''))
     for arch in ('aarch64', 'arm', 'i686', 'x86_64'):
-        lib_file = os.path.join(lib_dir, 'libclang_rt.asan-{}-android.so'.format(arch))
-        map_file = os.path.join(lib_dir, 'libclang_rt.asan-{}-android.map.txt'.format(arch))
-        mapfile.create_map_file(lib_file, map_file)
+        build_sanitizer_map_file('asan', arch, lib_dir)
+    build_sanitizer_map_file('hwasan', 'aarch64', lib_dir)
+
+def create_hwasan_symlink(stage2_install, clang_version):
+    lib_dir = os.path.join(stage2_install,
+                           clang_resource_dir(clang_version.long_version(), ''))
+    os.symlink('libclang_rt.hwasan-aarch64-android.a',
+               lib_dir + 'libclang_rt.hwasan_static-aarch64-android.a')
 
 def build_libcxx(stage2_install, clang_version):
     for (arch, llvm_triple, libcxx_defines,
@@ -1035,8 +1045,8 @@ def build_runtimes(stage2_install):
     # libcxx build.
     # build_libcxx(stage2_install, version)
     build_asan_test(stage2_install)
-    build_asan_map_files(stage2_install, version)
-
+    build_sanitizer_map_files(stage2_install, version)
+    create_hwasan_symlink(stage2_install, version)
 
 def install_wrappers(llvm_install_path):
     wrapper_path = utils.llvm_path('android', 'compiler_wrapper.py')
