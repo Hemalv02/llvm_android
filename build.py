@@ -1210,6 +1210,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'clang' + ext,
         'clang++' + ext,
         'clang-' + version.major_version() + ext,
+        'clang-check' + ext,
         'clang-format' + ext,
         'clang-tidy' + ext,
         'git-clang-format',  # No extension here
