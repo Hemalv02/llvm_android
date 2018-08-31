@@ -756,7 +756,12 @@ def build_llvm_for_windows(targets,
     # on 64-bit Windows builds. This mostly happens on builds without
     # assertions, because of llvm_unreachable() on functions that should
     # return a value (and control flow fallthrough - undefined behavior).
-    ldflags = ['-Wl,--allow-multiple-definition', '-static-libgcc']
+    ldflags = [
+        '-Wl,--allow-multiple-definition',
+        '-static-libgcc',
+        '-Wl,--dynamicbase',
+        '-Wl,--nxcompat',
+    ]
 
     if is_32_bit:
         cflags.append('-m32')
@@ -765,6 +770,8 @@ def build_llvm_for_windows(targets,
 
         # 32-bit libraries belong in lib/.
         windows_extra_defines['LLVM_LIBDIR_SUFFIX'] = ''
+    else:
+        ldflags.append('-Wl,--high-entropy-va')
 
     windows_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     windows_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cxxflags)
