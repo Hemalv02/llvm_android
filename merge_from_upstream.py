@@ -19,6 +19,7 @@ import argparse
 import os
 import re
 import subprocess
+import sys
 
 from utils import *
 
@@ -149,6 +150,9 @@ def merge_projects(revision, create_new_branch, dry_run):
             if ret_code != 0:
                 print 'Change cannot merge cleanly, please manual merge if needed'
                 print
+                keep_going = yes_or_no("Continue?", default=False)
+                if not keep_going:
+                    sys.exit(1)
                 continue
 
             # Change can apply cleanly...
