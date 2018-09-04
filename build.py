@@ -480,6 +480,7 @@ def build_crts(stage2_install, clang_version):
           crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-latomic -landroid_support'
         else:
           crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-landroid_support'
+        crt_defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
 
         crt_defines.update(base_cmake_defines())
 
