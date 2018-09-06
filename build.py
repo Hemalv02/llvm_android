@@ -129,7 +129,7 @@ def support_headers():
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 def clang_prebuilt_version():
-    return 'clang-4679922'
+    return 'clang-r328903'
 
 
 def clang_prebuilt_base_dir():
@@ -753,6 +753,9 @@ def build_llvm_for_windows(targets,
 
     cflags = ['-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64']
     cxxflags = list(cflags)
+    # Work around mingw-specific errors/warnings on Windows.
+    cxxflags.append('-fpermissive')
+
     # http://b/62787860 - mingw can't properly de-duplicate some functions
     # on 64-bit Windows builds. This mostly happens on builds without
     # assertions, because of llvm_unreachable() on functions that should
