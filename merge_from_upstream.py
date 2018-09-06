@@ -94,7 +94,10 @@ def merge_projects(revision, create_new_branch, dry_run):
         # Reset to previous branch point, if necessary
         if int(numChanges) > 0:
             check_output_d(
-                ['git', 'revert', '--no-commit', 'llvm-' + svnNum + '...HEAD'],
+                [
+                    'git', 'revert', '--no-commit', '--no-merges',
+                    'llvm-' + svnNum + '...HEAD'
+                ],
                 cwd=path,
                 dry_run=dry_run
             )
