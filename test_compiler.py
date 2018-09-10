@@ -23,6 +23,7 @@ import os
 import utils
 import shutil
 import subprocess
+import sys
 
 import android_version
 
@@ -64,11 +65,14 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('android_path', help='Android source directory.')
     parser.add_argument(
-        'clang_path',
+        '--clang-path',
         nargs='?',
-        help='Clang toolchain '
-        'directory. If not specified, a new toolchain will '
-        'be built from scratch.')
+        help='Directory with a previously built Clang.')
+    parser.add_argument(
+        '--clang-package-path',
+        nargs='?',
+        help='Directory of a pre-packaged (.tar.bz2) Clang. '
+        'Toolchain extracted from the package will be used.')
     parser.add_argument(
         '-k',
         '--keep-going',
@@ -145,6 +149,9 @@ def parse_args():
     if args.profile and not args.no_pgo:
         parser.error(
             '--no-pgo must be specified along with --generate-clang-profile')
+    if args.clang_path and args.clang_package_path:
+        parser.error('Only one of --clang-path and --clang-package-path must'
+                     'be specified')
 
     return args
 
@@ -298,14 +305,49 @@ def build_clang(instrumented=False, pgo=True):
     return stage2_install, version
 
 
+def extract_packaged_clang(package_path):
+    # Find package to extract
+    tarballs = [f for f in os.listdir(package_path) if \
+                    f.endswith('.tar.bz2')]
+    if len(tarballs) != 1:
+        raise RuntimeError(
+            'No clang packages (.tar.bz2) found in ' + package_path)
+
+    tarball = os.path.join(package_path, tarballs[0])
+
+    # Extract package to $OUT_DIR/extracted
+    extract_dir = utils.out_path('extracted')
+    if os.path.exists(extract_dir):
+        utils.rm_tree(extract_dir)
+    build.check_create_path(extract_dir)
+
+    args = ['tar', '-xjC', extract_dir, '-f', tarball]
+    subprocess.check_call(args)
+
+    # Find and return a singleton subdir
+    extracted = os.listdir(extract_dir)
+    if len(extracted) != 1:
+        raise RuntimeError(
+            'Expected one file from package.  Found: ' + ' '.join(extracted))
+
+    clang_path = os.path.join(extract_dir, extracted[0])
+    if not os.path.isdir(clang_path):
+        raise RuntimeError('Extracted path is not a dir: ' + clang_path)
+
+    return clang_path
+
+
 def main():
     args = parse_args()
-    if args.clang_path is None:
-        clang_path, clang_version = build_clang(
-            instrumented=args.profile, pgo=(not args.no_pgo))
-    else:
+    if args.clang_path is not None:
         clang_path = args.clang_path
         clang_version = build.extract_clang_version(clang_path)
+    elif args.clang_package_path is not None:
+        clang_path = extract_packaged_clang(args.clang_package_path)
+        clang_version = build.extract_clang_version(clang_path)
+    else:
+        clang_path, clang_version = build_clang(
+            instrumented=args.profile, pgo=(not args.no_pgo))
     build.install_wrappers(clang_path)
     link_clang(args.android_path, clang_path)
     replace_llvm_strip(args.android_path)
