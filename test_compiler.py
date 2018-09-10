@@ -14,18 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=not-callable, relative-import
 
 import argparse
-import build
-import compiler_wrapper
 import multiprocessing
 import os
-import utils
 import shutil
 import subprocess
-import sys
 
-import android_version
+import build
+import compiler_wrapper
+import utils
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
 DEFAULT_TIDY_CHECKS = ('*', '-readability-*', '-google-readability-*',
@@ -193,7 +192,6 @@ def rm_current_product_out():
 def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
                  with_tidy, profiler):
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
-    result = True
     env_out = subprocess.Popen(
         [
             'bash', '-c', '. ./build/envsetup.sh;'
@@ -239,10 +237,10 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
         key, val = profiler.getProfileFileEnvVar()
         env[key] = val
 
-    modules = ' '.join(modules)
-    print('Start building target %s and modules %s.' % (target, modules))
+    modulesList = ' '.join(modules)
+    print 'Start building target %s and modules %s.' % (target, modulesList)
     subprocess.check_call(
-        ['/bin/bash', '-c', 'make ' + jobs + ' ' + modules],
+        ['/bin/bash', '-c', 'make ' + jobs + ' ' + modulesList],
         cwd=android_base,
         env=env)
 
@@ -252,7 +250,7 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
     [label, target] = device[-1].split(':')
     # If current device is not connected correctly we will just skip it.
     if label != 'device':
-        print('Device %s is not connecting correctly.' % device[0])
+        print 'Device %s is not connecting correctly.' % device[0]
         return True
     else:
         target = 'aosp_' + target + '-eng'
@@ -272,7 +270,7 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
             subprocess.check_call(['./flashall'], cwd=flashall_path)
         result = True
     except subprocess.CalledProcessError:
-        print('Flashing/testing android for target %s failed!' % target)
+        print 'Flashing/testing android for target %s failed!' % target
         result = False
     if clean_output:
         rm_current_product_out()
@@ -366,7 +364,7 @@ def main():
     else:
         devices = get_connected_device_list()
         if len(devices) == 0:
-            print("You don't have any devices connected.")
+            print "You don't have any devices connected."
         for device in devices:
             result = test_device(args.android_path, clang_version, device,
                                  args.jobs, args.clean_built_target,
