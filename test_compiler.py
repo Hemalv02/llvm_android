@@ -190,7 +190,7 @@ def rm_current_product_out():
 
 
 def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
-                 with_tidy, profiler):
+                 with_tidy, profiler=None):
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
     env_out = subprocess.Popen(
         [
