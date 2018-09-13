@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=not-callable, relative-import, line-too-long
 
 import argparse
 import datetime
@@ -64,7 +65,6 @@ def check_output(cmd, *args, **kwargs):
 
 def install_file(src, dst):
     """Proxy for shutil.copy2 with logging and dry-run support."""
-    import shutil
     logger().info('copy %s %s', src, dst)
     shutil.copy2(src, dst)
 
@@ -228,8 +228,9 @@ def create_sysroots():
         # Also create sysroots for each of platform and the NDK.
         for platform_or_ndk in ['platform', 'ndk']:
             platform = platform_or_ndk == 'platform'
-            base_lib_path = utils.android_path(ndk_base(), 'platforms',
-                    'android-' + android_api(arch, platform))
+            base_lib_path = \
+                utils.android_path(ndk_base(), 'platforms',
+                                   'android-' + android_api(arch, platform))
             dest_usr = os.path.join(get_sysroot(arch, platform), 'usr')
 
             # Copy over usr/include.
@@ -243,20 +244,20 @@ def create_sysroots():
 
             # Copy over usr/lib.
             arch_lib_path = os.path.join(base_lib_path, 'arch-' + arch,
-                    'usr', 'lib')
+                                         'usr', 'lib')
             dest_usr_lib = os.path.join(dest_usr, 'lib')
             shutil.copytree(arch_lib_path, dest_usr_lib, symlinks=True)
 
             # For only x86_64, we also need to copy over usr/lib64
             if arch == 'x86_64':
                 arch_lib64_path = os.path.join(base_lib_path, 'arch-' + arch,
-                        'usr', 'lib64')
+                                               'usr', 'lib64')
                 dest_usr_lib64 = os.path.join(dest_usr, 'lib64')
                 shutil.copytree(arch_lib64_path, dest_usr_lib64, symlinks=True)
 
 
-def rm_cmake_cache(dir):
-    for dirpath, dirs, files in os.walk(dir):
+def rm_cmake_cache(cacheDir):
+    for dirpath, dirs, files in os.walk(cacheDir): # pylint: disable=not-an-iterable
         if 'CMakeCache.txt' in files:
             os.remove(os.path.join(dirpath, 'CMakeCache.txt'))
         if 'CMakeFiles' in dirs:
@@ -422,7 +423,7 @@ def create_hwasan_symlink(stage2_install, clang_version):
 
 def build_libcxx(stage2_install, clang_version):
     for (arch, llvm_triple, libcxx_defines,
-         cflags) in cross_compile_configs(stage2_install):
+         cflags) in cross_compile_configs(stage2_install): # pylint: disable=not-an-iterable
         logger().info('Building libcxx for %s', arch)
         libcxx_path = utils.out_path('lib', 'libcxx-' + arch)
 
@@ -457,7 +458,7 @@ def build_crts(stage2_install, clang_version):
     llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
     # Now build compiler-rt for each arch
     for (arch, llvm_triple, crt_defines,
-         cflags) in cross_compile_configs(stage2_install):
+         cflags) in cross_compile_configs(stage2_install): # pylint: disable=not-an-iterable
         logger().info('Building compiler-rt for %s', arch)
         crt_path = utils.out_path('lib', 'clangrt-' + arch)
         crt_install = os.path.join(stage2_install, 'lib64', 'clang',
@@ -485,9 +486,9 @@ def build_crts(stage2_install, clang_version):
 
         crt_defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
         if arch == 'arm':
-          crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-latomic -landroid_support'
+            crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-latomic -landroid_support'
         else:
-          crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-landroid_support'
+            crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-landroid_support'
         crt_defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
 
         crt_defines.update(base_cmake_defines())
@@ -506,7 +507,7 @@ def build_crts(stage2_install, clang_version):
 def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
     llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
 
-    for (arch, llvm_triple, libfuzzer_defines, cflags) in cross_compile_configs(
+    for (arch, llvm_triple, libfuzzer_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
             stage2_install, platform=(not ndk_cxx)):
         logger().info('Building libfuzzer for %s (ndk_cxx? %s)', arch, ndk_cxx)
 
@@ -570,7 +571,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
 
 def build_libomp(stage2_install, clang_version, ndk_cxx=False):
 
-    for (arch, llvm_triple, libomp_defines, cflags) in cross_compile_configs(
+    for (arch, llvm_triple, libomp_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
             stage2_install, platform=(not ndk_cxx)):
 
         logger().info('Building libomp for %s (ndk_cxx? %s)', arch, ndk_cxx)
@@ -827,11 +828,11 @@ def host_gcc_toolchain_flags(is_32_bit=False):
         cflags = ['-isysroot {macSdkRoot}',
                   '-mmacosx-version-min={macMinVersion}',
                   '-DMACOSX_DEPLOYMENT_TARGET={macMinVersion}',
-                  ]
+                 ]
         ldflags = ['-isysroot {macSdkRoot}',
                    '-Wl,-syslibroot,{macSdkRoot}',
                    '-mmacosx-version-min={macMinVersion}',
-                   ]
+                  ]
 
         cflags = formatFlags(cflags, macSdkRoot=macSdkRoot,
                              macMinVersion=macMinVersion)
@@ -846,7 +847,7 @@ def host_gcc_toolchain_flags(is_32_bit=False):
 
         cflags = ['--gcc-toolchain={gccRoot}',
                   '-B{gccRoot}/{gccTriple}/bin',
-                  ]
+                 ]
 
         gccLibDir = '{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
         gccBuiltinDir = '{gccRoot}/{gccTriple}/lib64'
@@ -858,7 +859,7 @@ def host_gcc_toolchain_flags(is_32_bit=False):
                    '-L' + gccLibDir,
                    '-L' + gccBuiltinDir,
                    '-fuse-ld=lld',
-                   ]
+                  ]
 
         cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
                              gccVersion=gccVersion)
@@ -1147,9 +1148,9 @@ def normalize_llvm_host_libs(install_dir, host, version):
         # support) to succeed.
         libcxx_name = 'libc++.so' if host == 'linux-x86' else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
-                        lib != libcxx_name and
-                        (lib.startswith(libname + '.') or # so libc++abi is ignored
-                         lib.startswith(libname + '-'))]
+                    lib != libcxx_name and
+                    (lib.startswith(libname + '.') or # so libc++abi is ignored
+                     lib.startswith(libname + '-'))]
 
         for lib in all_libs:
             lib = os.path.join(libdir, lib)
