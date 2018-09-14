@@ -30,6 +30,14 @@ from version import Version
 import mapfile
 
 ORIG_ENV = dict(os.environ)
+
+# Remove GOMA from our environment for building anything from stage2 onwards,
+# since it is using a non-GOMA compiler (from stage1) to do the compilation.
+USE_GOMA_FOR_STAGE1 = False
+if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] is 'true'):
+    USE_GOMA_FOR_STAGE1 = True
+    del ORIG_ENV['USE_GOMA']
+
 STAGE2_TARGETS = 'AArch64;ARM;BPF;X86'
 
 
@@ -783,12 +791,17 @@ def build_llvm_for_windows(targets,
     windows_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
     windows_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
 
+    windows_extra_env = dict()
+    if USE_GOMA_FOR_STAGE1:
+        windows_extra_env['USE_GOMA'] = 'true'
+
     build_llvm(
         targets=targets,
         build_dir=build_dir,
         install_dir=install_dir,
         build_name=build_name,
-        extra_defines=windows_extra_defines)
+        extra_defines=windows_extra_defines,
+        extra_env=windows_extra_env)
 
 
 def host_sysroot():
@@ -921,12 +934,17 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     stage1_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
     stage1_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
 
+    stage1_extra_env = dict()
+    if USE_GOMA_FOR_STAGE1:
+        stage1_extra_env['USE_GOMA'] = 'true'
+
     build_llvm(
         targets=stage1_targets,
         build_dir=stage1_path,
         install_dir=stage1_install,
         build_name=build_name,
-        extra_defines=stage1_extra_defines)
+        extra_defines=stage1_extra_defines,
+        extra_env=stage1_extra_env)
 
 
 def build_stage2(stage1_install,
