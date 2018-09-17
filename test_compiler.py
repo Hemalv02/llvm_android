@@ -306,7 +306,7 @@ def build_clang(instrumented=False, pgo=True):
 def extract_packaged_clang(package_path):
     # Find package to extract
     tarballs = [f for f in os.listdir(package_path) if \
-                    f.endswith('.tar.bz2')]
+                    f.endswith('.tar.bz2') and 'linux' in f]
     if len(tarballs) != 1:
         raise RuntimeError(
             'No clang packages (.tar.bz2) found in ' + package_path)
