@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=relative-import
 
 """Update the prebuilt lldb from the build server."""
 
@@ -23,8 +24,8 @@ import logging
 import os
 import shutil
 import subprocess
-import utils
 import sys
+import utils
 
 def logger():
     """Returns the module level logger."""
@@ -100,7 +101,8 @@ def extract_package(package, install_dir):
 
 
 def update_lldb(target, build_number, use_current_branch, download_dir, bug):
-    prebuilt_dir = utils.android_path('prebuilts/clang/host', target[1] + '-x86')
+    prebuilt_dir = utils.android_path('prebuilts/clang/host',
+                                      target[1] + '-x86')
     os.chdir(prebuilt_dir)
     install_subdir = os.path.join(prebuilt_dir, 'lldb')
 
@@ -118,7 +120,7 @@ def update_lldb(target, build_number, use_current_branch, download_dir, bug):
     extract_package(package, install_subdir)
 
     android_package = os.path.join(download_dir,
-            get_android_package(build_number))
+                                   get_android_package(build_number))
     android_dir = os.path.join(install_subdir, "android")
     os.makedirs(android_dir)
     extract_package(android_package, android_dir)
@@ -148,12 +150,12 @@ def update_lldb(target, build_number, use_current_branch, download_dir, bug):
 def fetch(targets, build_number):
     branch = 'git_lldb-master-dev'
     fetch_artifact(branch, targets[0][0], build_number,
-            get_android_package(build_number))
+                   get_android_package(build_number))
     for target in targets:
         fetch_artifact(branch, target[0], build_number,
-                get_manifest(build_number))
-        fetch_artifact(branch, target[0], build_number, get_lldb_package(target,
-            build_number))
+                       get_manifest(build_number))
+        fetch_artifact(branch, target[0], build_number,
+                       get_lldb_package(target, build_number))
 
 
 def main():
@@ -178,7 +180,7 @@ def main():
 
         for target in targets:
             update_lldb(target, args.build, args.use_current_branch,
-                         download_dir, args.bug)
+                        download_dir, args.bug)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)

@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=not-callable
 
 import os
 import shutil
@@ -33,15 +34,15 @@ def remove(path):
         rm_tree(path)
 
 
-def rm_tree(dir):
+def rm_tree(treeDir):
 
     def chmod_and_retry(func, path, _):
         if not os.access(path, os.W_OK):
             os.chmod(path, stat.S_IWUSR)
             return func(path)
-        raise
+        raise IOError("rmtree on %s failed" % path)
 
-    shutil.rmtree(dir, onerror=chmod_and_retry)
+    shutil.rmtree(treeDir, onerror=chmod_and_retry)
 
 
 def android_path(*args):
@@ -88,7 +89,8 @@ def yes_or_no(prompt, default=True):
 
 def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
-        return subprocess.check_call(args, stdout=stdout, stderr=stderr, cwd=cwd)
+        return subprocess.check_call(args, stdout=stdout, stderr=stderr,
+                                     cwd=cwd)
     else:
         print "Project " + os.path.basename(cwd) + ": " + ' '.join(args)
 

@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=not-callable, relative-import
 
 import errno
 import fcntl
@@ -61,7 +62,7 @@ def write_log(path, command, log):
         f.write('==============================================\n\n')
 
 
-class CompilerWrapper():
+class CompilerWrapper(object):
 
     def __init__(self, argv):
         self.argv0_current = argv[0]

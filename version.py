@@ -14,11 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=not-callable
 
 import re
 
 
-class Version:
+class Version(object):
     """Parse and save clang version from version file."""
 
     def __init__(self, version_file):

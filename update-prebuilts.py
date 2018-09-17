@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+# pylint: disable=not-callable, relative-import
 
 """Update the prebuilt clang from the build server."""
 
@@ -121,7 +122,7 @@ def update_clang(host, build_number, revision_suffix, use_current_branch,
 
     host_filename = 'windows-i386' if host == 'windows-x86_32' else host
     package = '{}/clang-{}-{}.tar.bz2'.format(
-            download_dir, build_number, host_filename)
+        download_dir, build_number, host_filename)
     manifest_file = '{}/{}'.format(download_dir, manifest)
 
     extract_package(package, prebuilt_dir)
