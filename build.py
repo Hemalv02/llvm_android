@@ -1111,7 +1111,8 @@ def install_wrappers(llvm_install_path):
 def normalize_llvm_host_libs(install_dir, host, version):
     if host == 'linux-x86':
         libs = {'libLLVM': 'libLLVM-{version}svn.so',
-                'libclang': 'libclang.so.{version}',
+                'libclang': 'libclang.so.{version}svn',
+                'libclang_cxx': 'libclang_cxx.so.{version}svn',
                 'libc++': 'libc++.so.{version}',
                 'libc++abi': 'libc++abi.so.{version}'
                }
@@ -1130,10 +1131,13 @@ def normalize_llvm_host_libs(install_dir, host, version):
     for libname, libformat in libs.iteritems():
         short_version, major = getVersions(libname)
 
-        real_lib = os.path.join(libdir, libformat.format(version=short_version))
         soname_lib = os.path.join(libdir, libformat.format(version=major))
+        if libname.startswith('libclang'):
+            real_lib = soname_lib[:-3]
+        else:
+            real_lib = os.path.join(libdir, libformat.format(version=short_version))
 
-        if libname not in ('libLLVM', 'libclang'):
+        if libname not in ('libLLVM',):
             # Rename the library to match its SONAME
             if not os.path.isfile(real_lib):
                 raise RuntimeError(real_lib + ' must be a regular file')
