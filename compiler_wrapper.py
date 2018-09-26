@@ -16,13 +16,11 @@
 #
 # pylint: disable=not-callable, relative-import
 
-import errno
-import fcntl
+# Note that adding top-level imports is discouraged unless they're guaranteed to
+# be used. Unnecessary imports eat a measurable number of cycles of this
+# wrapper.
 import os
-import shlex
-import subprocess
 import sys
-import time
 
 BISECT_STAGE = os.environ.get('BISECT_STAGE')
 # We do not need bisect functionality with Goma and clang.
@@ -40,6 +38,8 @@ DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
 
 
 def ProcessArgFile(arg_file):
+    import shlex
+
     args = []
     # Read in entire file at once and parse as if in shell
     with open(arg_file, 'rb') as f:
@@ -48,6 +48,10 @@ def ProcessArgFile(arg_file):
 
 
 def write_log(path, command, log):
+    import errno
+    import fcntl
+    import time
+
     with open(path, 'a+') as f:
         while True:
             try:
@@ -118,6 +122,8 @@ class CompilerWrapper(object):
         self.execargs += [self.real_compiler] + self.args
 
     def exec_clang_with_fallback(self):
+        import subprocess
+
         # We only want to pass extra flags to clang and clang++.
         if os.path.basename(__file__) in ['clang', 'clang++']:
             # We may introduce some new warnings after rebasing and we need to
