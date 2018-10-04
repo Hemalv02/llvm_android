@@ -954,6 +954,7 @@ def build_stage2(stage1_install,
                  build_name,
                  enable_assertions=False,
                  debug_build=False,
+                 no_lto=False,
                  build_instrumented=False,
                  profdata_file=None):
     cflags, ldflags = host_gcc_toolchain_flags()
@@ -982,7 +983,7 @@ def build_stage2(stage1_install,
 
         # lld, lto and pgo instrumentation doesn't work together
         # http://b/79419131
-        if not build_instrumented:
+        if not build_instrumented and not no_lto:
             stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
     # Don't build libfuzzer, since it's broken on Darwin and we don't need it
@@ -1349,6 +1350,12 @@ def parse_args():
         help='Enable assertions (only affects stage2)')
 
     parser.add_argument(
+        '--no-lto',
+        action='store_true',
+        default=False,
+        help='Disable LTO to speed up build (only affects stage2)')
+
+    parser.add_argument(
         '--debug',
         action='store_true',
         default=False,
@@ -1436,7 +1443,7 @@ def main():
 
         build_stage2(stage1_install, stage2_install, STAGE2_TARGETS,
                      args.build_name, args.enable_assertions,
-                     args.debug, instrumented, profdata)
+                     args.debug, args.no_lto, instrumented, profdata)
 
     if do_build and utils.host_is_linux():
         build_runtimes(stage2_install)
