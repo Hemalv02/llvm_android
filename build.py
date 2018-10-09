@@ -708,7 +708,6 @@ def build_llvm_for_windows(targets,
                            build_dir,
                            install_dir,
                            build_name,
-                           native_clang_install,
                            is_32_bit=False):
 
     mingw_path = utils.android_path('prebuilts', 'gcc', 'linux-x86', 'host',
@@ -719,8 +718,8 @@ def build_llvm_for_windows(targets,
     # Write a NATIVE.cmake in windows_path that contains the compilers used
     # to build native tools such as llvm-tblgen and llvm-config.  This is
     # used below via the CMake variable CROSS_TOOLCHAIN_FLAGS_NATIVE.
-    native_clang_cc = os.path.join(native_clang_install, 'bin', 'clang')
-    native_clang_cxx = os.path.join(native_clang_install, 'bin', 'clang++')
+    native_clang_cc = os.path.join(clang_prebuilt_bin_dir(), 'clang')
+    native_clang_cxx = os.path.join(clang_prebuilt_bin_dir(), 'clang++')
     check_create_path(build_dir)
     native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
     native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
@@ -1220,8 +1219,8 @@ def remove_static_libraries(static_lib_dir):
 
 
 def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
-    is_windows32 = host == 'windows-i386'
-    is_windows64 = host == 'windows-x86'
+    is_windows32 = host == 'windows-x86'
+    is_windows64 = host == 'windows-x86-64'
     is_windows = is_windows32 or is_windows64
     is_linux = host == 'linux-x86'
     package_name = 'clang-' + build_name
@@ -1331,6 +1330,21 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
 
 
 def parse_args():
+    known_platforms = ('linux', 'windows', 'windows-x86', 'windows-x86-64')
+    known_platforms_str = ', '.join(known_platforms)
+
+    # Simple argparse.Action to allow comma-separated values (e.g.
+    # --option=val1,val2)
+    class CommaSeparatedListAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string):
+            for value in values.split(','):
+                if value not in known_platforms:
+                    error = '\'{}\' invalid.  Choose from {}'.format(
+                                value, known_platforms)
+                    raise argparse.ArgumentError(self, error)
+            setattr(namespace, self.dest, values.split(','))
+
+
     """Parses and returns command line arguments."""
     parser = argparse.ArgumentParser()
 
@@ -1390,10 +1404,17 @@ def parse_args():
         help='Don\'t strip binaries/libraries')
 
     parser.add_argument(
+        '--no-build',
+        action=CommaSeparatedListAction,
+        default=list(),
+        help='Don\'t build toolchain for specified platforms.  Choices: ' + \
+            known_platforms_str)
+
+    parser.add_argument(
         '--no-build-windows',
         action='store_true',
         default=False,
-        help='Don\'t build toolchain for Windows')
+        help='Don\'t build toolchain Windows')
 
     parser.add_argument(
         '--check-pgo-profile',
@@ -1410,7 +1431,16 @@ def main():
     do_package = not args.skip_package
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
-    need_windows = utils.host_is_linux() and not args.no_build_windows
+
+    need_host = utils.host_is_darwin() or ('linux' not in args.no_build)
+    need_windows_32 = utils.host_is_linux() and \
+        ('windows' not in args.no_build) and \
+        ('windows-x86' not in args.no_build) and \
+        not args.no_build_windows
+    need_windows_64 = utils.host_is_linux() and \
+        ('windows' not in args.no_build) and \
+        ('windows-x86-64' not in args.no_build) and \
+        not args.no_build_windows
 
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
@@ -1419,14 +1449,12 @@ def main():
 
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
-    windows32_install = utils.out_path('windows-i386-install')
-    windows64_install = utils.out_path('windows-x86-install')
+    windows32_install = utils.out_path('windows-x86-install')
+    windows64_install = utils.out_path('windows-x86-64-install')
 
-    if do_build:
-        for install_dir in (stage2_install, windows32_install,
-                            windows64_install):
-            if os.path.exists(install_dir):
-                utils.rm_tree(install_dir)
+    if do_build and need_host:
+        if os.path.exists(stage2_install):
+            utils.rm_tree(stage2_install)
 
         instrumented = utils.host_is_linux() and args.build_instrumented
 
@@ -1445,36 +1473,38 @@ def main():
                      args.build_name, args.enable_assertions,
                      args.debug, args.no_lto, instrumented, profdata)
 
-    if do_build and utils.host_is_linux():
-        build_runtimes(stage2_install)
+        if utils.host_is_linux():
+            build_runtimes(stage2_install)
 
-    if do_build and need_windows:
-        # Build single-stage clang for Windows
-        windows_targets = STAGE2_TARGETS
+    if do_build and need_windows_32:
+        # Build single-stage clang for 32-bit Windows
+        if os.path.exists(windows32_install):
+            utils.rm_tree(windows32_install)
 
-        # Build 64-bit clang for Windows
-        windows64_path = utils.out_path('windows-x86')
+        windows32_path = utils.out_path('windows-x86')
         build_llvm_for_windows(
-            targets=windows_targets,
-            enable_assertions=args.enable_assertions,
-            build_dir=windows64_path,
-            install_dir=windows64_install,
-            build_name=args.build_name,
-            native_clang_install=stage2_install)
-
-        # Build 32-bit clang for Windows
-        windows32_path = utils.out_path('windows-i386')
-        build_llvm_for_windows(
-            targets=windows_targets,
+            targets=STAGE2_TARGETS,
             enable_assertions=args.enable_assertions,
             build_dir=windows32_path,
             install_dir=windows32_install,
             build_name=args.build_name,
-            native_clang_install=stage2_install,
             is_32_bit=True)
 
-    if do_package:
-        dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
+    if do_build and need_windows_64:
+        # Build single-stage clang for 64-bit Windows
+        if os.path.exists(windows64_install):
+            utils.rm_tree(windows64_install)
+
+        windows64_path = utils.out_path('windows-x86-64')
+        build_llvm_for_windows(
+            targets=STAGE2_TARGETS,
+            enable_assertions=args.enable_assertions,
+            build_dir=windows64_path,
+            install_dir=windows64_install,
+            build_name=args.build_name)
+
+    dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
+    if do_package and need_host:
         package_toolchain(
             stage2_install,
             args.build_name,
@@ -1482,19 +1512,21 @@ def main():
             dist_dir,
             strip=do_strip_host_package)
 
-        if need_windows:
-            package_toolchain(
-                windows32_install,
-                args.build_name,
-                'windows-i386',
-                dist_dir,
-                strip=do_strip)
-            package_toolchain(
-                windows64_install,
-                args.build_name,
-                'windows-x86',
-                dist_dir,
-                strip=do_strip)
+    if do_package and need_windows_32:
+        package_toolchain(
+            windows32_install,
+            args.build_name,
+            'windows-x86',
+            dist_dir,
+            strip=do_strip)
+
+    if do_package and need_windows_64:
+        package_toolchain(
+            windows64_install,
+            args.build_name,
+            'windows-x86-64',
+            dist_dir,
+            strip=do_strip)
 
     return 0
 
