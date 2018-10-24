@@ -1411,12 +1411,6 @@ def parse_args():
             known_platforms_str)
 
     parser.add_argument(
-        '--no-build-windows',
-        action='store_true',
-        default=False,
-        help='Don\'t build toolchain Windows')
-
-    parser.add_argument(
         '--check-pgo-profile',
         action='store_true',
         default=False,
@@ -1435,12 +1429,10 @@ def main():
     need_host = utils.host_is_darwin() or ('linux' not in args.no_build)
     need_windows_32 = utils.host_is_linux() and \
         ('windows' not in args.no_build) and \
-        ('windows-x86' not in args.no_build) and \
-        not args.no_build_windows
+        ('windows-x86' not in args.no_build)
     need_windows_64 = utils.host_is_linux() and \
         ('windows' not in args.no_build) and \
-        ('windows-x86-64' not in args.no_build) and \
-        not args.no_build_windows
+        ('windows-x86-64' not in args.no_build)
 
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
