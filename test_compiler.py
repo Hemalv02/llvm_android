@@ -34,7 +34,7 @@ DEFAULT_TIDY_CHECKS = ('*', '-readability-*', '-google-readability-*',
 # We may introduce some new warnings after rebasing and we need to disable them
 # before we fix those warnings.
 DISABLED_WARNINGS = [
-    '-Wno-error=return-std-move-in-c++11',
+    '-Wno-error=defaulted-function-deleted',
 ]
 
 
