@@ -137,7 +137,7 @@ def support_headers():
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 def clang_prebuilt_version():
-    return 'clang-r328903'
+    return 'clang-r344140b'
 
 
 def clang_prebuilt_base_dir():
@@ -427,6 +427,7 @@ def build_libcxx(stage2_install, clang_version):
         logger().info('Building libcxx for %s', arch)
         libcxx_path = utils.out_path('lib', 'libcxx-' + arch)
 
+        libcxx_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libcxx_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         libcxx_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
         libcxx_defines['CMAKE_BUILD_TYPE'] = 'Release'
@@ -520,8 +521,11 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
 
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
 
+        libfuzzer_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libfuzzer_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         libfuzzer_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+        if ndk_cxx:
+          libfuzzer_defines['CMAKE_CXX_FLAGS'] += ' -stdlib=libstdc++'
 
         # lib/Fuzzer/CMakeLists.txt does not call cmake_minimum_required() to
         # set a minimum version.  Explicitly request a policy that'll pass
@@ -584,8 +588,9 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
 
         libomp_defines['ANDROID'] = '1'
         libomp_defines['CMAKE_BUILD_TYPE'] = 'Release'
+        libomp_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libomp_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-        libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+        libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags) + ' -stdlib=libstdc++'
         libomp_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
         libomp_defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
 
@@ -656,6 +661,7 @@ def build_crts_host_i686(stage2_install, clang_version):
     crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
     # Set the compiler and linker flags
+    crt_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
     crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     crt_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
 
@@ -785,6 +791,7 @@ def build_llvm_for_windows(targets,
     else:
         ldflags.append('-Wl,--high-entropy-va')
 
+    windows_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
     windows_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     windows_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cxxflags)
     windows_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
@@ -927,6 +934,7 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
     # Set the compiler and linker flags
+    stage1_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
     stage1_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     stage1_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
 
@@ -1046,6 +1054,7 @@ def build_stage2(stage1_install,
     stage2_extra_env['LD_LIBRARY_PATH'] = os.path.join(stage1_install, 'lib64')
 
     # Set the compiler and linker flags
+    stage2_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
     stage2_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     stage2_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
 
