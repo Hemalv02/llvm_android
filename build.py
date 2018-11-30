@@ -23,6 +23,7 @@ import logging
 import os
 import shutil
 import subprocess
+import textwrap
 import utils
 
 import android_version
@@ -255,6 +256,30 @@ def create_sysroots():
                 dest_usr_lib64 = os.path.join(dest_usr, 'lib64')
                 shutil.copytree(arch_lib64_path, dest_usr_lib64, symlinks=True)
 
+            if platform:
+                # Create a stub library for the platform's libc++.
+                platform_stubs = utils.out_path('platform_stubs', arch)
+                check_create_path(platform_stubs)
+                libdir = dest_usr_lib64 if arch == 'x86_64' else dest_usr_lib
+                with open(os.path.join(platform_stubs, 'libc++.c'), 'w') as f:
+                    f.write(textwrap.dedent("""\
+                        void __cxa_atexit() {}
+                        void __cxa_demangle() {}
+                        void __cxa_finalize() {}
+                        void __dynamic_cast() {}
+                        void _ZTIN10__cxxabiv117__class_type_infoE() {}
+                        void _ZTIN10__cxxabiv120__si_class_type_infoE() {}
+                        void _ZTIN10__cxxabiv121__vmi_class_type_infoE() {}
+                        void _ZTISt9type_info() {}
+                    """))
+                check_call([utils.out_path('stage2-install', 'bin', 'clang'),
+                            '--target=' + target,
+                            '-fuse-ld=lld', '-nostdlib', '-shared',
+                            '-Wl,-soname,libc++.so',
+                            '-o', os.path.join(libdir, 'libc++.so'),
+                            os.path.join(platform_stubs, 'libc++.c')])
+                with open(os.path.join(libdir, 'libc++abi.so'), 'w') as f:
+                    f.write('INPUT(-lc++)')
 
 def rm_cmake_cache(cacheDir):
     for dirpath, dirs, files in os.walk(cacheDir): # pylint: disable=not-an-iterable
@@ -347,14 +372,6 @@ def cross_compile_configs(stage2_install, platform=False):
         # The 32-bit libgcc.a is sometimes in a separate subdir
         if arch == 'i386':
             toolchain_builtins = os.path.join(toolchain_builtins, '32')
-        libcxx_libs = os.path.join(ndk_base(), 'sources', 'cxx-stl',
-                                   'llvm-libc++', 'libs')
-        if ndk_arch == 'arm':
-            libcxx_libs = os.path.join(libcxx_libs, 'armeabi')
-        elif ndk_arch == 'arm64':
-            libcxx_libs = os.path.join(libcxx_libs, 'arm64-v8a')
-        else:
-            libcxx_libs = os.path.join(libcxx_libs, ndk_arch)
 
         if ndk_arch == 'arm':
             toolchain_lib = ndk_toolchain_lib(arch, 'arm-linux-androideabi-4.9',
@@ -367,11 +384,21 @@ def cross_compile_configs(stage2_install, platform=False):
                                               llvm_triple)
 
         ldflags = [
-            '-L' + toolchain_builtins, '-Wl,-z,defs', '-L' + libcxx_libs,
+            '-L' + toolchain_builtins, '-Wl,-z,defs',
             '-L' + toolchain_lib,
             '-fuse-ld=lld',
             '-Wl,--gc-sections',
         ]
+        if not platform:
+            libcxx_libs = os.path.join(ndk_base(), 'sources', 'cxx-stl',
+                                       'llvm-libc++', 'libs')
+            if ndk_arch == 'arm':
+                libcxx_libs = os.path.join(libcxx_libs, 'armeabi')
+            elif ndk_arch == 'arm64':
+                libcxx_libs = os.path.join(libcxx_libs, 'arm64-v8a')
+            else:
+                libcxx_libs = os.path.join(libcxx_libs, ndk_arch)
+            ldflags += ['-L', libcxx_libs]
 
         defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
@@ -456,15 +483,18 @@ def build_libcxx(stage2_install, clang_version):
                 shutil.copy2(os.path.join(libcxx_libs, f), libcxx_install)
 
 
-def build_crts(stage2_install, clang_version):
+def build_crts(stage2_install, clang_version, ndk_cxx=False):
     llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
     # Now build compiler-rt for each arch
     for (arch, llvm_triple, crt_defines,
-         cflags) in cross_compile_configs(stage2_install): # pylint: disable=not-an-iterable
+         cflags) in cross_compile_configs(stage2_install, platform=(not ndk_cxx)): # pylint: disable=not-an-iterable
         logger().info('Building compiler-rt for %s', arch)
         crt_path = utils.out_path('lib', 'clangrt-' + arch)
         crt_install = os.path.join(stage2_install, 'lib64', 'clang',
                                    clang_version.long_version())
+        if ndk_cxx:
+            crt_path += '-ndk-cxx'
+            crt_install = crt_path + '-install'
 
         crt_defines['ANDROID'] = '1'
         crt_defines['LLVM_CONFIG_PATH'] = llvm_config
@@ -487,10 +517,12 @@ def build_crts(stage2_install, clang_version):
         crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
         crt_defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
+        libs = []
         if arch == 'arm':
-            crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-latomic -landroid_support'
-        else:
-            crt_defines['SANITIZER_COMMON_LINK_LIBS'] = '-landroid_support'
+            libs += ['-latomic']
+        if ndk_cxx:
+            libs += ['-landroid_support']
+        crt_defines['SANITIZER_COMMON_LINK_LIBS'] = ' '.join(libs)
         crt_defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
 
         crt_defines.update(base_cmake_defines())
@@ -504,6 +536,13 @@ def build_crts(stage2_install, clang_version):
             defines=crt_defines,
             env=crt_env,
             cmake_path=crt_cmake_path)
+
+        if ndk_cxx:
+            src_dir = os.path.join(crt_install, 'lib', 'linux')
+            dst_dir = os.path.join(stage2_install, 'runtimes_ndk_cxx')
+            check_create_path(dst_dir)
+            for f in os.listdir(src_dir):
+                shutil.copy2(os.path.join(src_dir, f), os.path.join(dst_dir, f))
 
 
 def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
@@ -1076,6 +1115,7 @@ def build_runtimes(stage2_install):
     create_sysroots()
     version = extract_clang_version(stage2_install)
     build_crts(stage2_install, version)
+    build_crts(stage2_install, version, ndk_cxx=True)
     build_crts_host_i686(stage2_install, version)
     build_libfuzzers(stage2_install, version)
     build_libfuzzers(stage2_install, version, ndk_cxx=True)
