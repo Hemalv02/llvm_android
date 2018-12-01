@@ -165,6 +165,12 @@ def merge_projects(revision, create_new_branch, dry_run):
                     stderr=FNULL,
                     dry_run=dry_run
                 )
+                # Now change the commit Change-Id.
+                check_call_d(
+                    ['git', 'commit', '--amend'],
+                    cwd=path,
+                    dry_run=dry_run
+                )
             else:
                 print 'Skipping ' + sha
 
