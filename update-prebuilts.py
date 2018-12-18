@@ -102,6 +102,25 @@ def extract_clang_info(clang_dir):
         return version, revision
 
 
+def symlink_to_linux_resource_dir(install_dir):
+    # Assume we're in a Darwin (non-linux) prebuilt dir.  Find the Clang version
+    # string.  Pick the longest string, if there's more than one.
+    version_dirs = os.listdir(os.path.join(install_dir, 'lib64', 'clang'))
+    if len(version_dirs) != 0:
+        version_dirs.sort(key=len)
+    version_dir = version_dirs[-1]
+
+    symlink_dir = os.path.join(install_dir, 'lib64', 'clang', version_dir, 'lib')
+    link_src = os.path.join('/'.join(['..'] * 6), 'linux-x86', symlink_dir, 'linux')
+    link_dst = 'linux'
+
+    # 'cd' to symlink_dir and create a symlink from link_dst to link_src
+    prebuilt_dir = os.getcwd()
+    os.chdir(symlink_dir)
+    os.symlink(link_src, link_dst)
+    os.chdir(prebuilt_dir)
+
+
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
                  manifest):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
@@ -135,6 +154,14 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     # are included in the svn_revision.
     install_subdir = 'clang-' + svn_revision
     os.rename(extract_subdir, install_subdir)
+
+    # Some platform tests (e.g. system/bt/profile/sdp) build directly with
+    # coverage instrumentation and rely on the driver to pick the correct
+    # profile runtime.  Symlink the Linux resource dir from the Linux toolchain
+    # into the Darwin toolchain so the runtime is found by the Darwin Clang
+    # driver.
+    if host == 'darwin-x86':
+        symlink_to_linux_resource_dir(install_subdir)
 
     shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
 
