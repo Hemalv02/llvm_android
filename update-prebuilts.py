@@ -79,12 +79,6 @@ class ArgParser(argparse.ArgumentParser):
             default=False,
             help='Skip the cleanup, and leave intermediate files')
 
-        self.add_argument(
-            '--revision-suffix',
-            '-rs',
-            default='',
-            help='Suffix to append to the prebuilt path')
-
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
@@ -108,8 +102,8 @@ def extract_clang_info(clang_dir):
         return version, revision
 
 
-def update_clang(host, build_number, revision_suffix, use_current_branch,
-                 download_dir, bug, manifest):
+def update_clang(host, build_number, use_current_branch, download_dir, bug,
+                 manifest):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
     os.chdir(prebuilt_dir)
 
@@ -137,9 +131,9 @@ def update_clang(host, build_number, revision_suffix, use_current_branch,
     extract_subdir = 'clang-' + build_number
     clang_version, svn_revision = extract_clang_info(extract_subdir)
 
-    # Install into clang-<revision><revision_suffix>
-    install_version = svn_revision + revision_suffix
-    install_subdir = 'clang-' + install_version
+    # Install into clang-<svn_revision>.  Suffixes ('a', 'b', 'c' etc.), if any,
+    # are included in the svn_revision.
+    install_subdir = 'clang-' + svn_revision
     os.rename(extract_subdir, install_subdir)
 
     shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
@@ -153,7 +147,7 @@ def update_clang(host, build_number, revision_suffix, use_current_branch,
         return
 
     message_lines = [
-        'Update prebuilt Clang to {}.'.format(install_version),
+        'Update prebuilt Clang to {}.'.format(svn_revision),
         '', 'clang {} (based on {}) from build {}.'.format(
             clang_version, svn_revision, build_number)
     ]
@@ -171,11 +165,6 @@ def main():
 
     do_fetch = not args.skip_fetch
     do_cleanup = not args.skip_cleanup
-    revision_suffix = args.revision_suffix
-    if revision_suffix and (len(revision_suffix) > 1 or
-                            not revision_suffix.islower()):
-        msgFormat = 'Version suffix \'{}\' is not a single lowercase character'
-        raise argparse.ArgumentTypeError(msgFormat.format(revision_suffix))
 
     download_dir = os.path.realpath('.download')
     if do_fetch:
@@ -198,9 +187,8 @@ def main():
                 fetch_artifact(branch, target, args.build, clang_pattern)
 
         for host in hosts:
-            update_clang(host, args.build, args.revision_suffix,
-                         args.use_current_branch, download_dir, args.bug,
-                         manifest)
+            update_clang(host, args.build, args.use_current_branch,
+                         download_dir, args.bug, manifest)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
