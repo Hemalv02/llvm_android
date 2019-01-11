@@ -51,8 +51,7 @@ class ClangProfileHandler(object):
         stage1_install = utils.out_path('stage1-install')
         profdata = os.path.join(stage1_install, 'bin', 'llvm-profdata')
 
-        long_version = build.extract_clang_long_version(stage1_install)
-        profdata_file = '%s.profdata' % long_version
+        profdata_file = build.pgo_profdata_filename()
 
         dist_dir = os.environ.get('DIST_DIR', utils.out_path())
         out_file = os.path.join(dist_dir, profdata_file)

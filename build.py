@@ -22,6 +22,7 @@ import glob
 import logging
 import os
 import shutil
+import string
 import subprocess
 import textwrap
 import utils
@@ -86,8 +87,11 @@ def extract_clang_long_version(clang_install):
     return extract_clang_version(clang_install).long_version()
 
 
-def pgo_profdata_file(version_str):
-    profdata_file = '%s.profdata' % version_str
+def pgo_profdata_filename():
+    base_revision = android_version.svn_revision.rstrip(string.ascii_lowercase)
+    return '%s.profdata' % base_revision
+
+def pgo_profdata_file(profdata_file):
     profile = utils.android_path('prebuilts', 'clang', 'host', 'linux-x86',
                                  'profiles', profdata_file)
     return profile if os.path.exists(profile) else None
@@ -1503,13 +1507,13 @@ def main():
         build_stage1(stage1_install, args.build_name,
                      build_llvm_tools=instrumented)
 
-        long_version = extract_clang_long_version(stage1_install)
-        profdata = pgo_profdata_file(long_version)
+        profdata_filename = pgo_profdata_filename()
+        profdata = pgo_profdata_file(profdata_filename)
         # Do not use PGO profiles if profdata file doesn't exist unless failure
         # is explicitly requested via --check-pgo-profile.
         if profdata is None and args.check_pgo_profile:
             raise RuntimeError('Profdata file does not exist for ' +
-                               long_version)
+                               profdata_filename)
 
         build_stage2(stage1_install, stage2_install, STAGE2_TARGETS,
                      args.build_name, args.enable_assertions,
