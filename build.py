@@ -1308,6 +1308,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'lld-link' + ext,
         'llvm-ar' + ext,
         'llvm-as' + ext,
+        'llvm-cfi-verify' + ext,
         'llvm-config' + ext,
         'llvm-cov' + ext,
         'llvm-dis' + ext,
