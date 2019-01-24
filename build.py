@@ -576,10 +576,6 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         # CMAKE_*_LINKER_FLAGS to the trycompile() step.
         libfuzzer_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
-        # Do not link libcxx into fuzzer.  Currently this does not work with
-        # cross-compiles.
-        libfuzzer_defines['COMPILER_RT_FUZZER_LINK_LIBCXX'] = 'OFF'
-
         libfuzzer_cmake_path = utils.llvm_path('projects', 'compiler-rt')
         libfuzzer_env = dict(ORIG_ENV)
         rm_cmake_cache(libfuzzer_path)
