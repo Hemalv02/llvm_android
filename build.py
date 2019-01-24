@@ -835,6 +835,18 @@ def build_llvm_for_windows(targets,
     else:
         ldflags.append('-Wl,--high-entropy-va')
 
+    # Include zlib's header and library path
+    zlib_path = utils.android_path('prebuilts', 'clang', 'host', 'windows-x86',
+                                   'toolchain-prebuilts', 'zlib')
+    if is_32_bit:
+        zlib_path = zlib_path.replace('windows-x86', 'windows-x86_32')
+    zlib_inc = os.path.join(zlib_path, 'include')
+    zlib_lib = os.path.join(zlib_path, 'lib')
+
+    cflags.extend(['-I', zlib_inc])
+    cxxflags.extend(['-I', zlib_inc])
+    ldflags.extend(['-L', zlib_lib])
+
     windows_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
     windows_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
     windows_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cxxflags)
