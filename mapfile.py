@@ -27,7 +27,7 @@ def create_map_file(lib_file, map_file):
     output.write('  global:\n')
     for line in symbols.splitlines():
         _, symbol_type, symbol_name = line.split(' ', 2)
-        if symbol_type in ['T', 'W', 'B']:
+        if symbol_type in ['T', 'W', 'B', 'i']:
             output.write('    {};\n'.format(symbol_name))
 
     output.write('  local:\n')
