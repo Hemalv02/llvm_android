@@ -163,14 +163,6 @@ def link_clang(android_base, clang_path):
     os.symlink(os.path.abspath(clang_path), android_clang_path)
 
 
-def replace_llvm_strip(android_base):
-    dst_path = os.path.join(android_base, 'prebuilts', 'clang', 'host',
-                            utils.build_os_type(), 'clang-dev', 'bin',
-                            'llvm-strip')
-    src_path = os.path.join(build.clang_prebuilt_bin_dir(), 'llvm-strip')
-    shutil.copyfile(src_path, dst_path)
-
-
 def get_connected_device_list():
     try:
         # Get current connected device list.
@@ -346,10 +338,6 @@ def main():
             instrumented=args.profile, pgo=(not args.no_pgo))
     build.install_wrappers(clang_path)
     link_clang(args.android_path, clang_path)
-
-    # TODO: b/122481018 Stop replacing llvm-strip once we switch to the new
-    # Clang prebuilts (r349610).
-    replace_llvm_strip(args.android_path)
 
     if args.build_only:
         profiler = ClangProfileHandler() if args.profile else None
