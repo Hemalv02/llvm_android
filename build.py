@@ -868,7 +868,7 @@ def host_sysroot():
         return ""
     else:
         return utils.android_path('prebuilts/gcc', utils.build_os_type(),
-                                  'host/x86_64-linux-glibc2.15-4.8/sysroot')
+                                  'host/x86_64-linux-glibc2.17-4.8/sysroot')
 
 
 def host_gcc_toolchain_flags(is_32_bit=False):
@@ -899,9 +899,9 @@ def host_gcc_toolchain_flags(is_32_bit=False):
         return cflags, ldflags
     else:
         gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
-                                     'host/x86_64-linux-glibc2.15-4.8')
+                                     'host/x86_64-linux-glibc2.17-4.8')
         gccTriple = 'x86_64-linux'
-        gccVersion = '4.8'
+        gccVersion = '4.8.3'
 
         cflags = ['--gcc-toolchain={gccRoot}',
                   '-B{gccRoot}/{gccTriple}/bin',
