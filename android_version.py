@@ -15,5 +15,5 @@
 # limitations under the License.
 #
 
-patch_level = '8'
-svn_revision = 'r349610'
+patch_level = '9'
+svn_revision = 'r349610b'
