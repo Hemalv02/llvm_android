@@ -508,6 +508,7 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
         # crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
 
         cflags.append('-isystem ' + support_headers())
+        cflags.append('-funwind-tables')
 
         crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         crt_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
