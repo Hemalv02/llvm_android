@@ -285,6 +285,15 @@ def create_sysroots():
                 with open(os.path.join(libdir, 'libc++abi.so'), 'w') as f:
                     f.write('INPUT(-lc++)')
 
+
+def update_cmake_sysroot_flags(defines, sysroot):
+    defines['CMAKE_SYSROOT'] = sysroot
+    defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
+    defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
+    defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
+    defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
+
+
 def rm_cmake_cache(cacheDir):
     for dirpath, dirs, files in os.walk(cacheDir): # pylint: disable=not-an-iterable
         if 'CMakeCache.txt' in files:
@@ -407,12 +416,7 @@ def cross_compile_configs(stage2_install, platform=False):
         defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
         defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-        defines['CMAKE_SYSROOT'] = sysroot
-        defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
-        defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
-        defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
-        defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
-
+        update_cmake_sysroot_flags(defines, sysroot)
 
         cflags = [
             '--target=%s' % llvm_triple,
@@ -672,7 +676,7 @@ def build_crts_host_i686(stage2_install, clang_version):
                                clang_version.long_version())
     crt_cmake_path = utils.llvm_path('projects', 'compiler-rt')
 
-    cflags, ldflags = host_gcc_toolchain_flags(is_32_bit=True)
+    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type(), is_32_bit=True)
 
     crt_defines = base_cmake_defines()
     crt_defines['CMAKE_C_COMPILER'] = os.path.join(stage2_install, 'bin',
@@ -750,6 +754,92 @@ def build_llvm(targets,
         cmake_path=utils.llvm_path())
 
 
+def windows_cflags(is_32_bit):
+    triple = 'i686-windows-gnu' if is_32_bit else 'x86_64-pc-windows-gnu'
+
+    cflags = ['--target='+triple, '-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64',
+              '-D_WIN32_WINNT=0x0600', '-DWINVER=0x0600',
+              '-D__MSVCRT_VERSION__=0x1400']
+
+    # Use sjlj exceptions, the model implemented in 32-bit libgcc_eh
+    if is_32_bit:
+        cflags.append('-fsjlj-exceptions')
+
+    return cflags
+
+
+def build_libs_for_windows(libname,
+                           enable_assertions,
+                           install_dir,
+                           is_32_bit=False):
+
+    cflags, ldflags = host_gcc_toolchain_flags('windows-x86', is_32_bit)
+
+    cflags.extend(windows_cflags(is_32_bit))
+
+    cmake_defines = dict()
+    cmake_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
+    cmake_defines['CMAKE_C_COMPILER'] = os.path.join(
+        clang_prebuilt_bin_dir(), 'clang')
+    cmake_defines['CMAKE_CXX_COMPILER'] = os.path.join(
+        clang_prebuilt_bin_dir(), 'clang++')
+
+    windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86', 'host',
+                                         'x86_64-w64-mingw32-4.8',
+                                         'x86_64-w64-mingw32')
+    update_cmake_sysroot_flags(cmake_defines, windows_sysroot)
+
+    # Build only the static library.
+    cmake_defines[libname.upper() + '_ENABLE_SHARED'] = 'OFF'
+
+    if enable_assertions:
+        cmake_defines[libname.upper() + '_ENABLE_ASSERTIONS'] = 'ON'
+
+    if libname == 'libcxx':
+        cmake_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        cmake_defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
+        cmake_defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
+
+        # Use cxxabi header from the source directory since it gets installed
+        # into install_dir only during libcxx's install step.  But use the
+        # library from install_dir.
+        cmake_defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = utils.android_path('toolchain', 'libcxxabi', 'include')
+        cmake_defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = os.path.join(install_dir, 'lib')
+
+        # Disable libcxxabi visibility annotations since we're only building it
+        # statically.
+        cflags.append('-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS')
+
+    elif libname == 'libcxxabi':
+        cmake_defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
+        cmake_defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.android_path('toolchain', 'libcxx', 'include')
+
+        # Disable libcxx visibility annotations and enable WIN32 threads.  These
+        # are needed because the libcxxabi build happens before libcxx and uses
+        # headers directly from the sources.
+        cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
+        cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
+
+    cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
+    cmake_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
+    cmake_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+    cmake_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
+    cmake_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
+    cmake_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
+
+    out_path = utils.out_path('lib', 'windows-' + libname)
+    if is_32_bit:
+        out_path += '-32'
+    if os.path.exists(out_path):
+        utils.rm_tree(out_path)
+
+    invoke_cmake(out_path=out_path,
+                 defines=cmake_defines,
+                 env=dict(ORIG_ENV),
+                 cmake_path=utils.android_path('toolchain', libname),
+                 install=True)
+
+
 def build_llvm_for_windows(targets,
                            enable_assertions,
                            build_dir,
@@ -757,10 +847,16 @@ def build_llvm_for_windows(targets,
                            build_name,
                            is_32_bit=False):
 
-    mingw_path = utils.android_path('prebuilts', 'gcc', 'linux-x86', 'host',
-                                    'x86_64-w64-mingw32-4.8')
-    mingw_cc = os.path.join(mingw_path, 'bin', 'x86_64-w64-mingw32-gcc')
-    mingw_cxx = os.path.join(mingw_path, 'bin', 'x86_64-w64-mingw32-g++')
+    # Build and install libcxxabi and libcxx and use them to build Clang.
+    build_libs_for_windows('libcxxabi',
+                           enable_assertions,
+                           install_dir,
+                           is_32_bit)
+
+    build_libs_for_windows('libcxx',
+                           enable_assertions,
+                           install_dir,
+                           is_32_bit)
 
     # Write a NATIVE.cmake in windows_path that contains the compilers used
     # to build native tools such as llvm-tblgen and llvm-config.  This is
@@ -778,8 +874,8 @@ def build_llvm_for_windows(targets,
 
     # Extra cmake defines to use while building for Windows
     windows_extra_defines = dict()
-    windows_extra_defines['CMAKE_C_COMPILER'] = mingw_cc
-    windows_extra_defines['CMAKE_CXX_COMPILER'] = mingw_cxx
+    windows_extra_defines['CMAKE_C_COMPILER'] = native_clang_cc
+    windows_extra_defines['CMAKE_CXX_COMPILER'] = native_clang_cxx
     windows_extra_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
     # Don't build compiler-rt, libcxx etc. for Windows
     windows_extra_defines['LLVM_BUILD_RUNTIME'] = 'OFF'
@@ -788,13 +884,18 @@ def build_llvm_for_windows(targets,
     windows_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
     # Don't build tests for Windows.
     windows_extra_defines['LLVM_INCLUDE_TESTS'] = 'OFF'
+    # Use libc++ for Windows.
+    windows_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
-    windows_sysroot = os.path.join(mingw_path, 'x86_64-w64-mingw32')
-    windows_extra_defines['CMAKE_SYSROOT'] = windows_sysroot
-    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
-    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
-    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
-    windows_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
+    # Do not build LLVM.dll, which cannot build with lld because lld doesn't
+    # silently ignore --version-script for Windows.  It's not necessary for the
+    # Android toolchain anyway.
+    windows_extra_defines['LLVM_BUILD_LLVM_DYLIB'] = 'OFF'
+
+    windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
+                                         'host', 'x86_64-w64-mingw32-4.8',
+                                         'x86_64-w64-mingw32')
+    update_cmake_sysroot_flags(windows_extra_defines, windows_sysroot)
 
     # Set CMake path, toolchain file for native compilation (to build tablegen
     # etc).  Also disable libfuzzer build during native compilation.
@@ -806,27 +907,33 @@ def build_llvm_for_windows(targets,
     if enable_assertions:
         windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
-    cflags = ['-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64']
+    cflags, ldflags = host_gcc_toolchain_flags('windows-x86', is_32_bit)
+    cflags.extend(windows_cflags(is_32_bit))
     cxxflags = list(cflags)
-    # Work around mingw-specific errors/warnings on Windows.
-    cxxflags.append('-fpermissive')
 
-    # http://b/62787860 - mingw can't properly de-duplicate some functions
-    # on 64-bit Windows builds. This mostly happens on builds without
-    # assertions, because of llvm_unreachable() on functions that should
-    # return a value (and control flow fallthrough - undefined behavior).
-    ldflags = [
-        '-Wl,--allow-multiple-definition',
-        '-static-libgcc',
+    # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
+    # clang-tools-extra/clangd/Context.cpp
+    cxxflags.append('-fuse-cxa-atexit')
+
+    # Explicitly add the path to libc++ headers.  We don't need to configure
+    # options like visibility annotations, win32 threads etc. because the
+    # __generated_config header in the patch captures all the options used when
+    # building libc++.
+    cxxflags.extend(('-I', os.path.join(install_dir, 'include', 'c++', 'v1')))
+
+    ldflags.extend((
         '-Wl,--dynamicbase',
         '-Wl,--nxcompat',
-    ]
+        # Use ucrt to find locale functions needed by libc++.
+        '-lucrt', '-lucrtbase',
+        # Use static-libgcc to avoid runtime dependence on libgcc_eh.
+        '-static-libgcc',
+        # pthread is needed by libgcc_eh
+        '-lpthread',
+        # Add path to libc++, libc++abi.
+        '-L', os.path.join(install_dir, 'lib')))
 
     if is_32_bit:
-        cflags.append('-m32')
-        cxxflags.append('-m32')
-        ldflags.append('-m32')
-
         # 32-bit libraries belong in lib/.
         windows_extra_defines['LLVM_LIBDIR_SUFFIX'] = ''
     else:
@@ -872,13 +979,13 @@ def host_sysroot():
                                   'host/x86_64-linux-glibc2.17-4.8/sysroot')
 
 
-def host_gcc_toolchain_flags(is_32_bit=False):
+def host_gcc_toolchain_flags(host_os, is_32_bit=False):
     def formatFlags(flags, **values):
         flagsStr = ' '.join(flags)
         flagsStr = flagsStr.format(**values)
         return flagsStr.split(' ')
 
-    if utils.host_is_darwin():
+    if host_os == 'darwin-x86':
         xcrun_command = ['xcrun', '--show-sdk-path']
         macSdkRoot = (check_output(xcrun_command)).strip()
         # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
@@ -898,38 +1005,48 @@ def host_gcc_toolchain_flags(is_32_bit=False):
         ldflags = formatFlags(ldflags, macSdkRoot=macSdkRoot,
                               macMinVersion=macMinVersion)
         return cflags, ldflags
-    else:
+
+    # GCC toolchain flags for Linux and Windows
+    cflags = []
+    if host_os == 'linux-x86':
         gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
                                      'host/x86_64-linux-glibc2.17-4.8')
         gccTriple = 'x86_64-linux'
         gccVersion = '4.8.3'
 
-        cflags = ['--gcc-toolchain={gccRoot}',
-                  '-B{gccRoot}/{gccTriple}/bin',
-                 ]
+        # gcc-toolchain is only needed for Linux
+        cflags.append('--gcc-toolchain={gccRoot}')
+    elif host_os == 'windows-x86':
+        gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
+                                     'host/x86_64-w64-mingw32-4.8')
+        gccTriple = 'x86_64-w64-mingw32'
+        gccVersion = '4.8.3'
 
-        gccLibDir = '{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
-        gccBuiltinDir = '{gccRoot}/{gccTriple}/lib64'
-        if is_32_bit:
-            gccLibDir += '/32'
-            gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
+    cflags.append('-B{gccRoot}/{gccTriple}/bin')
 
-        ldflags = ['-B' + gccLibDir,
-                   '-L' + gccLibDir,
-                   '-L' + gccBuiltinDir,
-                   '-fuse-ld=lld',
-                  ]
+    gccLibDir = '{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
+    gccBuiltinDir = '{gccRoot}/{gccTriple}/lib64'
+    if is_32_bit:
+        gccLibDir += '/32'
+        gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
 
-        cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
-                             gccVersion=gccVersion)
-        ldflags = formatFlags(ldflags, gccRoot=gccRoot, gccTriple=gccTriple,
-                              gccVersion=gccVersion)
-        return cflags, ldflags
+    ldflags = ['-B' + gccLibDir,
+               '-L' + gccLibDir,
+               '-B' + gccBuiltinDir,
+               '-L' + gccBuiltinDir,
+               '-fuse-ld=lld',
+              ]
+
+    cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
+                         gccVersion=gccVersion)
+    ldflags = formatFlags(ldflags, gccRoot=gccRoot, gccTriple=gccTriple,
+                          gccVersion=gccVersion)
+    return cflags, ldflags
 
 
 def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     # Build/install the stage 1 toolchain
-    cflags, ldflags = host_gcc_toolchain_flags()
+    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
 
     stage1_path = utils.out_path('stage1')
     stage1_targets = 'X86'
@@ -944,12 +1061,8 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
         clang_prebuilt_bin_dir(), 'clang++')
     stage1_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'OFF'
     stage1_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
-    stage1_extra_defines['CMAKE_SYSROOT'] = host_sysroot()
 
-    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
-    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
-    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
-    stage1_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
+    update_cmake_sysroot_flags(stage1_extra_defines, host_sysroot())
 
     if not utils.host_is_darwin():
         stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
@@ -1017,7 +1130,7 @@ def build_stage2(stage1_install,
                  no_lto=False,
                  build_instrumented=False,
                  profdata_file=None):
-    cflags, ldflags = host_gcc_toolchain_flags()
+    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
 
     # Build/install the stage2 toolchain
     stage2_cc = os.path.join(stage1_install, 'bin', 'clang')
@@ -1031,12 +1144,8 @@ def build_stage2(stage1_install,
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
-    stage2_extra_defines['CMAKE_SYSROOT'] = host_sysroot()
 
-    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
-    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
-    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
-    stage2_extra_defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
+    update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
     if not utils.host_is_darwin():
         stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
