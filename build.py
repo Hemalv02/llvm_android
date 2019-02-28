@@ -840,7 +840,8 @@ def build_libs_for_windows(libname,
                  install=True)
 
 
-def build_llvm_for_windows(targets,
+def build_llvm_for_windows(stage1_install,
+                           targets,
                            enable_assertions,
                            build_dir,
                            install_dir,
@@ -861,21 +862,21 @@ def build_llvm_for_windows(targets,
     # Write a NATIVE.cmake in windows_path that contains the compilers used
     # to build native tools such as llvm-tblgen and llvm-config.  This is
     # used below via the CMake variable CROSS_TOOLCHAIN_FLAGS_NATIVE.
-    native_clang_cc = os.path.join(clang_prebuilt_bin_dir(), 'clang')
-    native_clang_cxx = os.path.join(clang_prebuilt_bin_dir(), 'clang++')
+    cc = os.path.join(stage1_install, 'bin', 'clang')
+    cxx = os.path.join(stage1_install, 'bin', 'clang++')
     check_create_path(build_dir)
     native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
     native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
                          'set(CMAKE_CXX_COMPILER {cxx})\n').format(
-                             cc=native_clang_cc, cxx=native_clang_cxx)
+                             cc=cc, cxx=cxx)
 
     with open(native_cmake_file_path, 'w') as native_cmake_file:
         native_cmake_file.write(native_cmake_text)
 
     # Extra cmake defines to use while building for Windows
     windows_extra_defines = dict()
-    windows_extra_defines['CMAKE_C_COMPILER'] = native_clang_cc
-    windows_extra_defines['CMAKE_CXX_COMPILER'] = native_clang_cxx
+    windows_extra_defines['CMAKE_C_COMPILER'] = cc
+    windows_extra_defines['CMAKE_CXX_COMPILER'] = cxx
     windows_extra_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
     # Don't build compiler-rt, libcxx etc. for Windows
     windows_extra_defines['LLVM_BUILD_RUNTIME'] = 'OFF'
@@ -1618,14 +1619,14 @@ def main():
     windows32_install = utils.out_path('windows-x86-install')
     windows64_install = utils.out_path('windows-x86-64-install')
 
+    # Build the stage1 Clang for the build host
+    instrumented = utils.host_is_linux() and args.build_instrumented
+    build_stage1(stage1_install, args.build_name,
+                 build_llvm_tools=instrumented)
+
     if do_build and need_host:
         if os.path.exists(stage2_install):
             utils.rm_tree(stage2_install)
-
-        instrumented = utils.host_is_linux() and args.build_instrumented
-
-        build_stage1(stage1_install, args.build_name,
-                     build_llvm_tools=instrumented)
 
         profdata_filename = pgo_profdata_filename()
         profdata = pgo_profdata_file(profdata_filename)
@@ -1643,12 +1644,12 @@ def main():
             build_runtimes(stage2_install)
 
     if do_build and need_windows_32:
-        # Build single-stage clang for 32-bit Windows
         if os.path.exists(windows32_install):
             utils.rm_tree(windows32_install)
 
         windows32_path = utils.out_path('windows-x86')
         build_llvm_for_windows(
+            stage1_install=stage1_install,
             targets=STAGE2_TARGETS,
             enable_assertions=args.enable_assertions,
             build_dir=windows32_path,
@@ -1657,12 +1658,12 @@ def main():
             is_32_bit=True)
 
     if do_build and need_windows_64:
-        # Build single-stage clang for 64-bit Windows
         if os.path.exists(windows64_install):
             utils.rm_tree(windows64_install)
 
         windows64_path = utils.out_path('windows-x86-64')
         build_llvm_for_windows(
+            stage1_install=stage1_install,
             targets=STAGE2_TARGETS,
             enable_assertions=args.enable_assertions,
             build_dir=windows64_path,
