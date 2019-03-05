@@ -211,6 +211,10 @@ def get_sysroot(arch, platform=False):
     return os.path.join(sysroots, platform_or_ndk, arch)
 
 
+def debug_prefix_flag():
+    return '-fdebug-prefix-map={}='.format(utils.android_path())
+
+
 def create_sysroots():
     # Construct the sysroots from scratch, since symlinks can't nest within
     # the right places (without altering source prebuilts).
@@ -419,6 +423,7 @@ def cross_compile_configs(stage2_install, platform=False):
         update_cmake_sysroot_flags(defines, sysroot)
 
         cflags = [
+            debug_prefix_flag(),
             '--target=%s' % llvm_triple,
             '-B%s' % toolchain_bin,
             '-D__ANDROID_API__=%s' % android_api(arch, platform=platform),
@@ -986,20 +991,23 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
         flagsStr = flagsStr.format(**values)
         return flagsStr.split(' ')
 
+    cflags = [debug_prefix_flag()]
+    ldflags = []
+
     if host_os == 'darwin-x86':
         xcrun_command = ['xcrun', '--show-sdk-path']
         macSdkRoot = (check_output(xcrun_command)).strip()
         # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
         macMinVersion = '10.9'
 
-        cflags = ['-isysroot {macSdkRoot}',
-                  '-mmacosx-version-min={macMinVersion}',
-                  '-DMACOSX_DEPLOYMENT_TARGET={macMinVersion}',
-                 ]
-        ldflags = ['-isysroot {macSdkRoot}',
-                   '-Wl,-syslibroot,{macSdkRoot}',
-                   '-mmacosx-version-min={macMinVersion}',
-                  ]
+        cflags.extend(('-isysroot {macSdkRoot}',
+                       '-mmacosx-version-min={macMinVersion}',
+                       '-DMACOSX_DEPLOYMENT_TARGET={macMinVersion}',
+                       ))
+        ldflags.extend(('-isysroot {macSdkRoot}',
+                        '-Wl,-syslibroot,{macSdkRoot}',
+                        '-mmacosx-version-min={macMinVersion}',
+                        ))
 
         cflags = formatFlags(cflags, macSdkRoot=macSdkRoot,
                              macMinVersion=macMinVersion)
@@ -1008,7 +1016,6 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
         return cflags, ldflags
 
     # GCC toolchain flags for Linux and Windows
-    cflags = []
     if host_os == 'linux-x86':
         gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
                                      'host/x86_64-linux-glibc2.17-4.8')
@@ -1031,12 +1038,12 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
         gccLibDir += '/32'
         gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
 
-    ldflags = ['-B' + gccLibDir,
-               '-L' + gccLibDir,
-               '-B' + gccBuiltinDir,
-               '-L' + gccBuiltinDir,
-               '-fuse-ld=lld',
-              ]
+    ldflags.extend(('-B' + gccLibDir,
+                    '-L' + gccLibDir,
+                    '-B' + gccBuiltinDir,
+                    '-L' + gccBuiltinDir,
+                    '-fuse-ld=lld',
+                    ))
 
     cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
                          gccVersion=gccVersion)
