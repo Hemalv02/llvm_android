@@ -1427,6 +1427,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'clang-check' + ext,
         'clang-format' + ext,
         'clang-tidy' + ext,
+        'dsymutil' + ext,
         'git-clang-format',  # No extension here
         'ld.lld' + ext,
         'ld64.lld' + ext,
