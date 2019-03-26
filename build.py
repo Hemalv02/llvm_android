@@ -405,6 +405,7 @@ def cross_compile_configs(stage2_install, platform=False):
             '-L' + toolchain_lib,
             '-fuse-ld=lld',
             '-Wl,--gc-sections',
+            '-Wl,--build-id=sha1',
         ]
         if not platform:
             libcxx_libs = os.path.join(ndk_base(), 'sources', 'cxx-stl',
