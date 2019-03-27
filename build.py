@@ -286,8 +286,21 @@ def create_sysroots():
                             '-Wl,-soname,libc++.so',
                             '-o', os.path.join(libdir, 'libc++.so'),
                             os.path.join(platform_stubs, 'libc++.c')])
-                with open(os.path.join(libdir, 'libc++abi.so'), 'w') as f:
-                    f.write('INPUT(-lc++)')
+
+                # For arm64 and x86_64, build static cxxabi library from
+                # toolchain/libcxxabi and use it when building runtimes.  This
+                # should affect all compiler-rt runtimes that use libcxxabi
+                # (e.g. asan, hwasan, scudo, tsan, ubsan, xray).
+                if arch not in ('arm64', 'x86_64'):
+                    with open(os.path.join(libdir, 'libc++abi.so'), 'w') as f:
+                        f.write('INPUT(-lc++)')
+                else:
+                    # We can build libcxxabi only after the sysroots are
+                    # created.  Build it for the current arch and copy it to
+                    # <libdir>.
+                    out_dir = build_libcxxabi(utils.out_path('stage2-install'), arch)
+                    out_path = utils.out_path(out_dir, 'lib', 'libc++abi.a')
+                    shutil.copy2(out_path, os.path.join(libdir))
 
 
 def update_cmake_sysroot_flags(defines, sysroot):
@@ -622,6 +635,38 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
     for f in os.listdir(header_src):
         if f.endswith('.h') or f.endswith('.def'):
             shutil.copy2(os.path.join(header_src, f), header_dst)
+
+
+def build_libcxxabi(stage2_install, build_arch):
+    # Normalize arm64/aarch64
+    if build_arch == 'arm64':
+        build_arch = 'aarch64'
+
+    # TODO: Refactor cross_compile_configs to support per-arch queries in
+    # addition to being a generator.
+    for (arch, llvm_triple, defines, cflags) in \
+         cross_compile_configs(stage2_install, platform=True): # pylint: disable=not-an-iterable
+
+        # Build only the requested arch.
+        if arch != build_arch:
+            continue
+
+        logger().info('Building libcxxabi for %s', arch)
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.android_path('toolchain', 'libcxx', 'include')
+        defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
+        defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
+        defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+
+        out_path = utils.out_path('lib', 'libcxxabi-' + arch)
+        if os.path.exists(out_path):
+            utils.rm_tree(out_path)
+
+        invoke_cmake(out_path=out_path,
+                     defines=defines,
+                     env=dict(ORIG_ENV),
+                     cmake_path=utils.android_path('toolchain', 'libcxxabi'),
+                     install=False)
+        return out_path
 
 
 def build_libomp(stage2_install, clang_version, ndk_cxx=False):
