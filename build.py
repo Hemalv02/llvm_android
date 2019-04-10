@@ -551,7 +551,8 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
         if ndk_cxx:
             libs += ['-landroid_support']
         crt_defines['SANITIZER_COMMON_LINK_LIBS'] = ' '.join(libs)
-        crt_defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
+        if not ndk_cxx:
+            crt_defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
 
         crt_defines.update(base_cmake_defines())
 
