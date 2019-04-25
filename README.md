@@ -21,6 +21,11 @@ $ python toolchain/llvm_android/build.py
 If building on Linux, pass `--no-build windows` to `build.py` to skip
 building Clang for Windows.
 
+If you have an additional llvm tree built and present in your `$PATH`, then
+`build.py` might fail during the Windows build of libcxxabi with the error
+`'libstdc++ version must be at least 4.8.'`. The solution is to remove that
+path from your `$PATH` before invoking `build.py`.
+
 More Information
 ----------------
 
