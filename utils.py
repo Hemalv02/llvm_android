@@ -50,7 +50,7 @@ def android_path(*args):
 
 
 def llvm_path(*args):
-    return os.path.realpath(os.path.join(THIS_DIR, '../llvm', *args))
+    return os.path.realpath(os.path.join(THIS_DIR, '../llvm-project', *args))
 
 
 def out_path(*args):

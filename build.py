@@ -489,7 +489,7 @@ def build_libcxx(stage2_install, clang_version):
 
         libcxx_env = dict(ORIG_ENV)
 
-        libcxx_cmake_path = utils.llvm_path('projects', 'libcxx')
+        libcxx_cmake_path = utils.llvm_path('libcxx')
         rm_cmake_cache(libcxx_path)
 
         invoke_cmake(
@@ -558,7 +558,7 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
 
         crt_env = dict(ORIG_ENV)
 
-        crt_cmake_path = utils.llvm_path('projects', 'compiler-rt')
+        crt_cmake_path = utils.llvm_path('compiler-rt')
         rm_cmake_cache(crt_path)
         invoke_cmake(
             out_path=crt_path,
@@ -601,7 +601,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         # CMAKE_*_LINKER_FLAGS to the trycompile() step.
         libfuzzer_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
-        libfuzzer_cmake_path = utils.llvm_path('projects', 'compiler-rt')
+        libfuzzer_cmake_path = utils.llvm_path('compiler-rt')
         libfuzzer_env = dict(ORIG_ENV)
         rm_cmake_cache(libfuzzer_path)
         invoke_cmake(
@@ -646,7 +646,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
             shutil.copy2(static_lib, os.path.join(libfuzzer_install, static_lib_filename))
 
     # Install libfuzzer headers.
-    header_src = utils.llvm_path('projects', 'compiler-rt', 'lib', 'fuzzer')
+    header_src = utils.llvm_path('compiler-rt', 'lib', 'fuzzer')
     header_dst = os.path.join(stage2_install, 'prebuilt_include', 'llvm', 'lib',
                               'Fuzzer')
     check_create_path(header_dst)
@@ -670,7 +670,7 @@ def build_libcxxabi(stage2_install, build_arch):
             continue
 
         logger().info('Building libcxxabi for %s', arch)
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.android_path('toolchain', 'libcxx', 'include')
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.llvm_path('libcxx', 'include')
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
@@ -682,7 +682,7 @@ def build_libcxxabi(stage2_install, build_arch):
         invoke_cmake(out_path=out_path,
                      defines=defines,
                      env=dict(ORIG_ENV),
-                     cmake_path=utils.android_path('toolchain', 'libcxxabi'),
+                     cmake_path=utils.llvm_path('libcxxabi'),
                      install=False)
         return out_path
 
@@ -712,7 +712,7 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
         # to be ON by default.
         libomp_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
-        libomp_cmake_path = utils.llvm_path('projects', 'openmp')
+        libomp_cmake_path = utils.llvm_path('openmp')
         libomp_env = dict(ORIG_ENV)
         rm_cmake_cache(libomp_path)
         invoke_cmake(
@@ -743,7 +743,7 @@ def build_crts_host_i686(stage2_install, clang_version):
 
     crt_install = os.path.join(stage2_install, 'lib64', 'clang',
                                clang_version.long_version())
-    crt_cmake_path = utils.llvm_path('projects', 'compiler-rt')
+    crt_cmake_path = utils.llvm_path('compiler-rt')
 
     cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type(), is_32_bit=True)
 
@@ -820,7 +820,7 @@ def build_llvm(targets,
         out_path=build_dir,
         defines=cmake_defines,
         env=env,
-        cmake_path=utils.llvm_path())
+        cmake_path=utils.llvm_path('llvm'))
 
 
 def windows_cflags(is_32_bit):
@@ -872,7 +872,7 @@ def build_libs_for_windows(libname,
         # Use cxxabi header from the source directory since it gets installed
         # into install_dir only during libcxx's install step.  But use the
         # library from install_dir.
-        cmake_defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = utils.android_path('toolchain', 'libcxxabi', 'include')
+        cmake_defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = utils.llvm_path('libcxxabi', 'include')
         cmake_defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = os.path.join(install_dir, 'lib')
 
         # Disable libcxxabi visibility annotations since we're only building it
@@ -881,7 +881,7 @@ def build_libs_for_windows(libname,
 
     elif libname == 'libcxxabi':
         cmake_defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
-        cmake_defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.android_path('toolchain', 'libcxx', 'include')
+        cmake_defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.llvm_path('libcxx', 'include')
 
         # Disable libcxx visibility annotations and enable WIN32 threads.  These
         # are needed because the libcxxabi build happens before libcxx and uses
@@ -905,7 +905,7 @@ def build_libs_for_windows(libname,
     invoke_cmake(out_path=out_path,
                  defines=cmake_defines,
                  env=dict(ORIG_ENV),
-                 cmake_path=utils.android_path('toolchain', libname),
+                 cmake_path=utils.llvm_path(libname),
                  install=True)
 
 
@@ -936,7 +936,8 @@ def build_llvm_for_windows(stage1_install,
     check_create_path(build_dir)
     native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
     native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
-                         'set(CMAKE_CXX_COMPILER {cxx})\n').format(
+                         'set(CMAKE_CXX_COMPILER {cxx})\n'
+                         'set(LLVM_ENABLE_PROJECTS "clang")\n').format(
                              cc=cc, cxx=cxx)
 
     with open(native_cmake_file_path, 'w') as native_cmake_file:
@@ -961,6 +962,7 @@ def build_llvm_for_windows(stage1_install,
     # silently ignore --version-script for Windows.  It's not necessary for the
     # Android toolchain anyway.
     windows_extra_defines['LLVM_BUILD_LLVM_DYLIB'] = 'OFF'
+    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld'
 
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
                                          'host', 'x86_64-w64-mingw32-4.8',
@@ -1116,6 +1118,13 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
     return cflags, ldflags
 
 
+def get_shared_extra_defines():
+    extra_defines = dict()
+    extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
+    extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld;libcxxabi;libcxx'
+    return extra_defines
+
+
 def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     # Build/install the stage 1 toolchain
     cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
@@ -1123,16 +1132,13 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     stage1_path = utils.out_path('stage1')
     stage1_targets = 'X86'
 
-    stage1_extra_defines = dict()
-    stage1_extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
+    stage1_extra_defines = get_shared_extra_defines()
     stage1_extra_defines['CLANG_ENABLE_ARCMT'] = 'OFF'
     stage1_extra_defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
     stage1_extra_defines['CMAKE_C_COMPILER'] = os.path.join(
         clang_prebuilt_bin_dir(), 'clang')
     stage1_extra_defines['CMAKE_CXX_COMPILER'] = os.path.join(
         clang_prebuilt_bin_dir(), 'clang++')
-    stage1_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'OFF'
-    stage1_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
 
     update_cmake_sysroot_flags(stage1_extra_defines, host_sysroot())
 
@@ -1208,10 +1214,9 @@ def build_stage2(stage1_install,
     stage2_cxx = os.path.join(stage1_install, 'bin', 'clang++')
     stage2_path = utils.out_path('stage2')
 
-    stage2_extra_defines = dict()
+    stage2_extra_defines = get_shared_extra_defines()
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
-    stage2_extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
@@ -1297,6 +1302,7 @@ def build_stage2(stage1_install,
     stage2_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
     stage2_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
     stage2_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
+    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';compiler-rt'
 
     build_llvm(
         targets=stage2_targets,
@@ -1325,8 +1331,10 @@ def build_runtimes(stage2_install):
     create_hwasan_symlink(stage2_install, version)
 
 def install_wrappers(llvm_install_path):
-    wrapper_path = utils.llvm_path('android', 'compiler_wrapper.py')
-    bisect_path = utils.llvm_path('android', 'bisect_driver.py')
+    wrapper_path = utils.android_path('toolchain', 'llvm_android',
+                                      'compiler_wrapper.py')
+    bisect_path = utils.android_path('toolchain', 'llvm_android',
+                                     'bisect_driver.py')
     bin_path = os.path.join(llvm_install_path, 'bin')
     clang_path = os.path.join(bin_path, 'clang')
     clangxx_path = os.path.join(bin_path, 'clang++')
@@ -1411,18 +1419,17 @@ def normalize_llvm_host_libs(install_dir, host, version):
 def install_license_files(install_dir):
     projects = (
         'llvm',
-        'llvm/projects/compiler-rt',
-        'llvm/projects/libcxx',
-        'llvm/projects/libcxxabi',
-        'llvm/projects/openmp',
-        'llvm/tools/clang',
-        'llvm/tools/clang/tools/extra',
-        'llvm/tools/lld',
+        'compiler-rt',
+        'libcxx',
+        'libcxxabi',
+        'openmp',
+        'clang',
+        'clang-tools-extra',
+        'lld',
     )
 
     # Get generic MODULE_LICENSE_* files from our android subdirectory.
-    toolchain_path = utils.android_path('toolchain')
-    llvm_android_path = os.path.join(toolchain_path, 'llvm', 'android')
+    llvm_android_path = utils.android_path('toolchain', 'llvm_android')
     license_pattern = os.path.join(llvm_android_path, 'MODULE_LICENSE_*')
     for license_file in glob.glob(license_pattern):
         install_file(license_file, install_dir)
@@ -1431,8 +1438,7 @@ def install_license_files(install_dir):
     # single NOTICE file for the resulting prebuilts.
     notices = []
     for project in projects:
-        project_path = os.path.join(toolchain_path, project)
-        license_pattern = os.path.join(project_path, 'LICENSE.*')
+        license_pattern = utils.llvm_path(project, 'LICENSE.*')
         for license_file in glob.glob(license_pattern):
             with open(license_file) as notice_file:
                 notices.append(notice_file.read())
@@ -1499,7 +1505,9 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'ld64.lld' + ext,
         'lld' + ext,
         'lld-link' + ext,
-        'llvm-addr2line' + ext,
+        # TODO: r358749 adds a symbolic link for this. Add this check back in
+        # once we move past r358749.
+        # 'llvm-addr2line' + ext,
         'llvm-ar' + ext,
         'llvm-as' + ext,
         'llvm-cfi-verify' + ext,
@@ -1523,7 +1531,11 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'sanstats' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
-        'LLVMgold' + shlib_ext,
+    ]
+    windows_bin_blacklist = [
+        'clang-' + version.major_version() + ext,
+        'scan-build' + ext,
+        'scan-view' + ext,
     ]
 
     # scripts that should not be stripped
@@ -1543,6 +1555,13 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
             elif strip:
                 if bin_filename not in script_bins:
                     check_call(['strip', binary])
+
+    # FIXME: check that all libs under lib64/clang/<version>/ are created.
+    for necessary_bin_file in necessary_bin_files:
+        if is_windows and necessary_bin_file in windows_bin_blacklist:
+            continue
+        if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
+            raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
     # Next, we remove unnecessary static libraries.
     if is_windows32:
