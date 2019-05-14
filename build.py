@@ -1492,6 +1492,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'llvm-objcopy' + ext,
         'llvm-objdump' + ext,
         'llvm-profdata' + ext,
+        'llvm-readelf' + ext,
         'llvm-readobj' + ext,
         'llvm-strip' + ext,
         'llvm-symbolizer' + ext,
