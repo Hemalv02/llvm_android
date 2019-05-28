@@ -618,6 +618,9 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         static_lib_filename = 'libclang_rt.fuzzer-' + sarch + '-android.a'
         static_lib = os.path.join(libfuzzer_path, 'lib', 'linux', static_lib_filename)
         triple_arch = arch_from_triple(llvm_triple)
+
+        # Install the fuzzer library to the old {arch}/libFuzzer.a path for
+        # backwards compatibility.
         if ndk_cxx:
             lib_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
         else:
@@ -627,6 +630,20 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
 
         check_create_path(lib_dir)
         shutil.copy2(static_lib, os.path.join(lib_dir, 'libFuzzer.a'))
+
+        # Now install under the libclang_rt.fuzzer[...] name as well.
+        if ndk_cxx:
+            #  1. Under runtimes_ndk_cxx
+            dst_dir = os.path.join(stage2_install, 'runtimes_ndk_cxx')
+            check_create_path(dst_dir)
+            shutil.copy2(static_lib, os.path.join(dst_dir, static_lib_filename))
+        else:
+            #  2. Under lib64.
+            libfuzzer_install = os.path.join(stage2_install, 'lib64', 'clang',
+                                       clang_version.long_version())
+            libfuzzer_install = os.path.join(libfuzzer_install, "lib", "linux")
+            check_create_path(libfuzzer_install)
+            shutil.copy2(static_lib, os.path.join(libfuzzer_install, static_lib_filename))
 
     # Install libfuzzer headers.
     header_src = utils.llvm_path('projects', 'compiler-rt', 'lib', 'fuzzer')
@@ -1150,8 +1167,7 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
     if utils.host_is_darwin():
         stage1_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
-    # Don't build libfuzzer, since it's broken on Darwin and we don't need it
-    # anyway.
+    # Don't build libfuzzer as part of the first stage build.
     stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
     # Set the compiler and linker flags
@@ -1210,9 +1226,12 @@ def build_stage2(stage1_install,
         if not build_instrumented and not no_lto:
             stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
-    # Don't build libfuzzer, since it's broken on Darwin and we don't need it
-    # anyway.
-    stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+    # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
+    # is not currently supported on Darwin.
+    if utils.host_is_darwin():
+        stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+    else:
+        stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
 
     if enable_assertions:
         stage2_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
