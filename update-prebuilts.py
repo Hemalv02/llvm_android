@@ -134,12 +134,10 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             ['repo', 'start', branch_name, '.'])
 
     host_filename = host
-    # Get the correct host file for Windows.  The git project names are
+    # Get the correct host file for Windows.  The git project name is
     # different than the package created by build.py.
     if host == 'windows-x86':
         host_filename = 'windows-x86-64'
-    elif host == 'windows-x86_32':
-        host_filename = 'windows-x86'
 
     package = '{}/clang-{}-{}.tar.bz2'.format(
         download_dir, build_number, host_filename)
@@ -201,8 +199,8 @@ def main():
 
     os.chdir(download_dir)
 
-    targets = ['linux', 'darwin_mac', 'windows_x86_64', 'windows_x86']
-    hosts = ['darwin-x86', 'linux-x86', 'windows-x86', 'windows-x86_32']
+    targets = ['darwin_mac', 'linux', 'windows_x86_64']
+    hosts = ['darwin-x86', 'linux-x86', 'windows-x86']
     clang_pattern = 'clang-*.tar.bz2'
     manifest = 'manifest_{}.xml'.format(args.build)
     branch = 'aosp-llvm-toolchain'
