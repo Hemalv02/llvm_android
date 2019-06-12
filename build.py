@@ -331,8 +331,7 @@ def base_cmake_defines():
     defines['LLVM_LIBDIR_SUFFIX'] = '64'
     defines['LLVM_VERSION_PATCH'] = android_version.patch_level
     defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
-    defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/clang'
-    defines['LLVM_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm'
+    defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm-project'
     defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
