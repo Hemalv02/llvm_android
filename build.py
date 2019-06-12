@@ -1121,7 +1121,7 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
 def get_shared_extra_defines():
     extra_defines = dict()
     extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
-    extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld;libcxxabi;libcxx'
+    extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld;libcxxabi;libcxx;compiler-rt'
     return extra_defines
 
 
@@ -1302,7 +1302,6 @@ def build_stage2(stage1_install,
     stage2_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
     stage2_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
     stage2_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';compiler-rt'
 
     build_llvm(
         targets=stage2_targets,
