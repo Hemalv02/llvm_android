@@ -1316,7 +1316,9 @@ def build_runtimes(stage2_install):
     version = extract_clang_version(stage2_install)
     build_crts(stage2_install, version)
     build_crts(stage2_install, version, ndk_cxx=True)
-    build_crts_host_i686(stage2_install, version)
+    # 32-bit host crts are not needed for Darwin
+    if utils.host_is_linux():
+        build_crts_host_i686(stage2_install, version)
     build_libfuzzers(stage2_install, version)
     build_libfuzzers(stage2_install, version, ndk_cxx=True)
     build_libomp(stage2_install, version)
