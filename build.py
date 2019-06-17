@@ -822,28 +822,21 @@ def build_llvm(targets,
         cmake_path=utils.llvm_path('llvm'))
 
 
-def windows_cflags(is_32_bit):
-    triple = 'i686-windows-gnu' if is_32_bit else 'x86_64-pc-windows-gnu'
-
-    cflags = ['--target='+triple, '-D_LARGEFILE_SOURCE', '-D_FILE_OFFSET_BITS=64',
-              '-D_WIN32_WINNT=0x0600', '-DWINVER=0x0600',
+def windows_cflags():
+    cflags = ['--target=x86_64-pc-windows-gnu', '-D_LARGEFILE_SOURCE',
+              '-D_FILE_OFFSET_BITS=64', '-D_WIN32_WINNT=0x0600', '-DWINVER=0x0600',
               '-D__MSVCRT_VERSION__=0x1400']
-
-    # Use sjlj exceptions, the model implemented in 32-bit libgcc_eh
-    if is_32_bit:
-        cflags.append('-fsjlj-exceptions')
 
     return cflags
 
 
 def build_libs_for_windows(libname,
                            enable_assertions,
-                           install_dir,
-                           is_32_bit=False):
+                           install_dir):
 
-    cflags, ldflags = host_gcc_toolchain_flags('windows-x86', is_32_bit)
+    cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
 
-    cflags.extend(windows_cflags(is_32_bit))
+    cflags.extend(windows_cflags())
 
     cmake_defines = dict()
     cmake_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
@@ -896,8 +889,6 @@ def build_libs_for_windows(libname,
     cmake_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
 
     out_path = utils.out_path('lib', 'windows-' + libname)
-    if is_32_bit:
-        out_path += '-32'
     if os.path.exists(out_path):
         utils.rm_tree(out_path)
 
@@ -913,19 +904,16 @@ def build_llvm_for_windows(stage1_install,
                            enable_assertions,
                            build_dir,
                            install_dir,
-                           build_name,
-                           is_32_bit=False):
+                           build_name):
 
     # Build and install libcxxabi and libcxx and use them to build Clang.
     build_libs_for_windows('libcxxabi',
                            enable_assertions,
-                           install_dir,
-                           is_32_bit)
+                           install_dir)
 
     build_libs_for_windows('libcxx',
                            enable_assertions,
-                           install_dir,
-                           is_32_bit)
+                           install_dir)
 
     # Write a NATIVE.cmake in windows_path that contains the compilers used
     # to build native tools such as llvm-tblgen and llvm-config.  This is
@@ -978,8 +966,8 @@ def build_llvm_for_windows(stage1_install,
     if enable_assertions:
         windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
-    cflags, ldflags = host_gcc_toolchain_flags('windows-x86', is_32_bit)
-    cflags.extend(windows_cflags(is_32_bit))
+    cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
+    cflags.extend(windows_cflags())
     cxxflags = list(cflags)
 
     # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
@@ -1004,17 +992,11 @@ def build_llvm_for_windows(stage1_install,
         # Add path to libc++, libc++abi.
         '-L', os.path.join(install_dir, 'lib')))
 
-    if is_32_bit:
-        # 32-bit libraries belong in lib/.
-        windows_extra_defines['LLVM_LIBDIR_SUFFIX'] = ''
-    else:
-        ldflags.append('-Wl,--high-entropy-va')
+    ldflags.append('-Wl,--high-entropy-va')
 
     # Include zlib's header and library path
     zlib_path = utils.android_path('prebuilts', 'clang', 'host', 'windows-x86',
                                    'toolchain-prebuilts', 'zlib')
-    if is_32_bit:
-        zlib_path = zlib_path.replace('windows-x86', 'windows-x86_32')
     zlib_inc = os.path.join(zlib_path, 'include')
     zlib_lib = os.path.join(zlib_path, 'lib')
 
@@ -1603,7 +1585,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
 
 
 def parse_args():
-    known_platforms = ('linux', 'windows', 'windows-x86', 'windows-x86-64')
+    known_platforms = ('linux', 'windows')
     known_platforms_str = ', '.join(known_platforms)
 
     # Simple argparse.Action to allow comma-separated values (e.g.
@@ -1700,12 +1682,8 @@ def main():
     do_strip_host_package = do_strip and not args.debug
 
     need_host = utils.host_is_darwin() or ('linux' not in args.no_build)
-    need_windows_32 = utils.host_is_linux() and \
-        ('windows' not in args.no_build) and \
-        ('windows-x86' not in args.no_build)
-    need_windows_64 = utils.host_is_linux() and \
-        ('windows' not in args.no_build) and \
-        ('windows-x86-64' not in args.no_build)
+    need_windows = utils.host_is_linux() and \
+        ('windows' not in args.no_build)
 
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
@@ -1741,21 +1719,7 @@ def main():
         if utils.host_is_linux():
             build_runtimes(stage2_install)
 
-    if do_build and need_windows_32:
-        if os.path.exists(windows32_install):
-            utils.rm_tree(windows32_install)
-
-        windows32_path = utils.out_path('windows-x86')
-        build_llvm_for_windows(
-            stage1_install=stage1_install,
-            targets=STAGE2_TARGETS,
-            enable_assertions=args.enable_assertions,
-            build_dir=windows32_path,
-            install_dir=windows32_install,
-            build_name=args.build_name,
-            is_32_bit=True)
-
-    if do_build and need_windows_64:
+    if do_build and need_windows:
         if os.path.exists(windows64_install):
             utils.rm_tree(windows64_install)
 
@@ -1777,15 +1741,7 @@ def main():
             dist_dir,
             strip=do_strip_host_package)
 
-    if do_package and need_windows_32:
-        package_toolchain(
-            windows32_install,
-            args.build_name,
-            'windows-x86',
-            dist_dir,
-            strip=do_strip)
-
-    if do_package and need_windows_64:
+    if do_package and need_windows:
         package_toolchain(
             windows64_install,
             args.build_name,
