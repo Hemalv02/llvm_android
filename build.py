@@ -953,10 +953,6 @@ def build_llvm_for_windows(stage1_install,
     # Use libc++ for Windows.
     windows_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
-    # Do not build LLVM.dll, which cannot build with lld because lld doesn't
-    # silently ignore --version-script for Windows.  It's not necessary for the
-    # Android toolchain anyway.
-    windows_extra_defines['LLVM_BUILD_LLVM_DYLIB'] = 'OFF'
     windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld'
 
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
@@ -1522,11 +1518,15 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'sanstats' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
+        'LLVMgold' + shlib_ext,
     ]
     windows_bin_blacklist = [
         'clang-' + version.major_version() + ext,
         'scan-build' + ext,
         'scan-view' + ext,
+    ]
+    non_windows_bin_blacklist = [
+        'LLVMgold' + shlib_ext,
     ]
 
     # scripts that should not be stripped
@@ -1550,6 +1550,8 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
         if is_windows and necessary_bin_file in windows_bin_blacklist:
+            continue
+        if not is_windows and necessary_bin_file in non_windows_bin_blacklist:
             continue
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
