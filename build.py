@@ -1201,6 +1201,7 @@ def build_stage2(stage1_install,
     stage2_path = utils.out_path('stage2')
 
     stage2_extra_defines = get_shared_extra_defines()
+    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';openmp'
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
