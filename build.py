@@ -594,13 +594,13 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         libfuzzer_defines['ANDROID'] = '1'
         libfuzzer_defines['LLVM_CONFIG_PATH'] = llvm_config
 
+        # Skip implicit C++ headers and explicitly include C++ header paths.
+        cflags.append('-nostdinc++')
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
 
         libfuzzer_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libfuzzer_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         libfuzzer_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-        if ndk_cxx:
-          libfuzzer_defines['CMAKE_CXX_FLAGS'] += ' -stdlib=libstdc++'
 
         # lib/Fuzzer/CMakeLists.txt does not call cmake_minimum_required() to
         # set a minimum version.  Explicitly request a policy that'll pass
@@ -699,7 +699,10 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
             stage2_install, platform=(not ndk_cxx)):
 
         logger().info('Building libomp for %s (ndk_cxx? %s)', arch, ndk_cxx)
+        # Skip implicit C++ headers and explicitly include C++ header paths.
+        cflags.append('-nostdinc++')
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
+
         cflags.append('-fPIC')
 
         libomp_path = utils.out_path('lib', 'libomp-' + arch)
@@ -710,7 +713,7 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
         libomp_defines['CMAKE_BUILD_TYPE'] = 'Release'
         libomp_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libomp_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-        libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags) + ' -stdlib=libstdc++'
+        libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
         libomp_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
         libomp_defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
 
