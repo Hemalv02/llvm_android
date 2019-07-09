@@ -693,7 +693,7 @@ def build_libcxxabi(stage2_install, build_arch):
         return out_path
 
 
-def build_libomp(stage2_install, clang_version, ndk_cxx=False):
+def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
 
     for (arch, llvm_triple, libomp_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
             stage2_install, platform=(not ndk_cxx)):
@@ -708,14 +708,15 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
         libomp_path = utils.out_path('lib', 'libomp-' + arch)
         if ndk_cxx:
             libomp_path += '-ndk-cxx'
+        libomp_path += '-' + ('shared' if is_shared else 'static')
 
         libomp_defines['ANDROID'] = '1'
         libomp_defines['CMAKE_BUILD_TYPE'] = 'Release'
         libomp_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libomp_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-        libomp_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
         libomp_defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
+        libomp_defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if is_shared else 'FALSE'
 
         # Minimum version for OpenMP's CMake is too low for the CMP0056 policy
         # to be ON by default.
@@ -732,17 +733,18 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False):
             install=False)
 
         # We need to install libomp manually.
-        static_lib = os.path.join(libomp_path, 'runtime', 'src', 'libomp.a')
+        libname = 'libomp.' + ('so' if is_shared else 'a')
+        src_lib = os.path.join(libomp_path, 'runtime', 'src', libname)
         triple_arch = arch_from_triple(llvm_triple)
         if ndk_cxx:
-            lib_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
+            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
         else:
-            lib_subdir = clang_resource_dir(clang_version.long_version(),
+            dst_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
-        lib_dir = os.path.join(stage2_install, lib_subdir)
+        dst_dir = os.path.join(stage2_install, dst_subdir)
 
-        check_create_path(lib_dir)
-        shutil.copy2(static_lib, os.path.join(lib_dir, 'libomp.a'))
+        check_create_path(dst_dir)
+        shutil.copy2(src_lib, os.path.join(dst_dir, libname))
 
 
 def build_crts_host_i686(stage2_install, clang_version):
@@ -1314,6 +1316,7 @@ def build_runtimes(stage2_install):
     build_libfuzzers(stage2_install, version, ndk_cxx=True)
     build_libomp(stage2_install, version)
     build_libomp(stage2_install, version, ndk_cxx=True)
+    build_libomp(stage2_install, version, ndk_cxx=True, is_shared=True)
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(stage2_install, version)
