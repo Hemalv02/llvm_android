@@ -540,12 +540,6 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
         crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
         crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
 
-        # We have to build ARM compiler-rt with libgcc, since unwinding info on
-        # ARM requires unwinding symbols like '__aeabi_unwind_cpp_pr0' that are
-        # not available in libclang_rt.builtins.
-        if arch != 'arm':
-            crt_defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
-
         # Build libfuzzer separately.
         crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
@@ -774,7 +768,6 @@ def build_crts_host_i686(stage2_install, clang_version):
     crt_defines['LLVM_CONFIG_PATH'] = llvm_config
     crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
     crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
-    crt_defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
     crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
     crt_defines['SANITIZER_CXX_ABI'] = 'libstdc++'
 
@@ -1110,7 +1103,6 @@ def get_shared_extra_defines():
     extra_defines = dict()
     extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
     extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld;libcxxabi;libcxx;compiler-rt'
-    extra_defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
     return extra_defines
 
 
