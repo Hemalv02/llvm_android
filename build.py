@@ -530,7 +530,10 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
         # personality routine warnings caused by r309226.
         # crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
 
-        cflags.append('-isystem ' + support_headers())
+        # Skip implicit C++ headers and explicitly include C++ header paths.
+        cflags.append('-nostdinc++')
+        cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
+
         cflags.append('-funwind-tables')
 
         crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
@@ -957,7 +960,7 @@ def build_llvm_for_windows(stage1_install,
     # Use libc++ for Windows.
     windows_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
-    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld'
+    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld'
 
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
                                          'host', 'x86_64-w64-mingw32-4.8',
@@ -1205,7 +1208,7 @@ def build_stage2(stage1_install,
     stage2_path = utils.out_path('stage2')
 
     stage2_extra_defines = get_shared_extra_defines()
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';openmp'
+    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp'
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
@@ -1439,19 +1442,19 @@ def install_license_files(install_dir):
         notice_file.write('\n'.join(notices))
 
 
-def install_winpthreads(is_windows32, install_dir):
-    """Installs the winpthreads runtime to the Windows bin directory."""
+def install_winpthreads(bin_dir, lib_dir):
+    """Installs the winpthreads runtime to the Windows bin and lib directory."""
     lib_name = 'libwinpthread-1.dll'
     mingw_dir = utils.android_path(
         'prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8',
         'x86_64-w64-mingw32')
-    # Yes, this indeed may be found in bin/ because the executables are the
-    # 64-bit version by default.
-    pthread_dir = 'lib32' if is_windows32 else 'bin'
-    lib_path = os.path.join(mingw_dir, pthread_dir, lib_name)
+    lib_path = os.path.join(mingw_dir, 'bin', lib_name)
 
-    lib_install = os.path.join(install_dir, 'bin', lib_name)
+    lib_install = os.path.join(lib_dir, lib_name)
     install_file(lib_path, lib_install)
+
+    bin_install = os.path.join(bin_dir, lib_name)
+    install_file(lib_path, bin_install)
 
 
 def remove_static_libraries(static_lib_dir):
@@ -1464,9 +1467,7 @@ def remove_static_libraries(static_lib_dir):
 
 
 def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
-    is_windows32 = host == 'windows-x86'
-    is_windows64 = host == 'windows-x86-64'
-    is_windows = is_windows32 or is_windows64
+    is_windows = host == 'windows-x86-64'
     is_linux = host == 'linux-x86'
     package_name = 'clang-' + build_name
     install_host_dir = utils.out_path('install', host)
@@ -1498,9 +1499,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'ld64.lld' + ext,
         'lld' + ext,
         'lld-link' + ext,
-        # TODO: r358749 adds a symbolic link for this. Add this check back in
-        # once we move past r358749.
-        # 'llvm-addr2line' + ext,
+        'llvm-addr2line' + ext,
         'llvm-ar' + ext,
         'llvm-as' + ext,
         'llvm-cfi-verify' + ext,
@@ -1524,15 +1523,12 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'sanstats' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
-        'LLVMgold' + shlib_ext,
     ]
+
     windows_bin_blacklist = [
         'clang-' + version.major_version() + ext,
         'scan-build' + ext,
         'scan-view' + ext,
-    ]
-    non_windows_bin_blacklist = [
-        'LLVMgold' + shlib_ext,
     ]
 
     # scripts that should not be stripped
@@ -1543,6 +1539,8 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     ]
 
     bin_dir = os.path.join(install_dir, 'bin')
+    lib_dir = os.path.join(install_dir, 'lib64')
+
     bin_files = os.listdir(bin_dir)
     for bin_filename in bin_files:
         binary = os.path.join(bin_dir, bin_filename)
@@ -1557,30 +1555,34 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     for necessary_bin_file in necessary_bin_files:
         if is_windows and necessary_bin_file in windows_bin_blacklist:
             continue
-        if not is_windows and necessary_bin_file in non_windows_bin_blacklist:
-            continue
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
     # Next, we remove unnecessary static libraries.
-    if is_windows32:
-        lib_dir = 'lib'
-    else:
-        lib_dir = 'lib64'
-    remove_static_libraries(os.path.join(install_dir, lib_dir))
+    remove_static_libraries(lib_dir)
 
     # For Windows, add other relevant libraries.
     if is_windows:
-        install_winpthreads(is_windows32, install_dir)
+        install_winpthreads(bin_dir, lib_dir)
 
     if not is_windows:
         install_wrappers(install_dir)
         normalize_llvm_host_libs(install_dir, host, version)
 
+    # Check necessary Windows lib files exist.
+    windows_necessary_lib_files = [
+        'LLVMgold' + shlib_ext,
+        'libwinpthread-1' + shlib_ext,
+    ]
+
+    for necessary_lib_file in windows_necessary_lib_files:
+        if is_windows and not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
+            raise RuntimeError('Did not find %s under lib64' % necessary_lib_file)
+
     # Next, we copy over stdatomic.h from bionic.
     stdatomic_path = utils.android_path('bionic', 'libc', 'include',
                                         'stdatomic.h')
-    resdir_top = os.path.join(install_dir, lib_dir, 'clang')
+    resdir_top = os.path.join(lib_dir, 'clang')
     header_path = os.path.join(resdir_top, version.long_version(), 'include')
     install_file(stdatomic_path, header_path)
 
