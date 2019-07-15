@@ -37,7 +37,7 @@ ORIG_ENV = dict(os.environ)
 # Remove GOMA from our environment for building anything from stage2 onwards,
 # since it is using a non-GOMA compiler (from stage1) to do the compilation.
 USE_GOMA_FOR_STAGE1 = False
-if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] is 'true'):
+if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
     USE_GOMA_FOR_STAGE1 = True
     del ORIG_ENV['USE_GOMA']
 
@@ -473,8 +473,9 @@ def build_sanitizer_map_files(stage2_install, clang_version):
 def create_hwasan_symlink(stage2_install, clang_version):
     lib_dir = os.path.join(stage2_install,
                            clang_resource_dir(clang_version.long_version(), ''))
-    os.symlink('libclang_rt.hwasan-aarch64-android.a',
-               lib_dir + 'libclang_rt.hwasan_static-aarch64-android.a')
+    symlink_path = lib_dir + 'libclang_rt.hwasan_static-aarch64-android.a'
+    utils.remove(symlink_path)
+    os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
 
 def build_libcxx(stage2_install, clang_version):
     for (arch, llvm_triple, libcxx_defines,
@@ -640,7 +641,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         else:
             #  2. Under lib64.
             libfuzzer_install = os.path.join(stage2_install, 'lib64', 'clang',
-                                       clang_version.long_version())
+                                             clang_version.long_version())
             libfuzzer_install = os.path.join(libfuzzer_install, "lib", "linux")
             check_create_path(libfuzzer_install)
             shutil.copy2(static_lib, os.path.join(libfuzzer_install, static_lib_filename))
@@ -1052,11 +1053,11 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
         cflags.extend(('-isysroot {macSdkRoot}',
                        '-mmacosx-version-min={macMinVersion}',
                        '-DMACOSX_DEPLOYMENT_TARGET={macMinVersion}',
-                       ))
+                      ))
         ldflags.extend(('-isysroot {macSdkRoot}',
                         '-Wl,-syslibroot,{macSdkRoot}',
                         '-mmacosx-version-min={macMinVersion}',
-                        ))
+                       ))
 
         cflags = formatFlags(cflags, macSdkRoot=macSdkRoot,
                              macMinVersion=macMinVersion)
@@ -1092,7 +1093,7 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
                     '-B' + gccBuiltinDir,
                     '-L' + gccBuiltinDir,
                     '-fuse-ld=lld',
-                    ))
+                   ))
 
     cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
                          gccVersion=gccVersion)
@@ -1605,12 +1606,12 @@ def parse_args():
             for value in values.split(','):
                 if value not in known_platforms:
                     error = '\'{}\' invalid.  Choose from {}'.format(
-                                value, known_platforms)
+                        value, known_platforms)
                     raise argparse.ArgumentError(self, error)
             setattr(namespace, self.dest, values.split(','))
 
 
-    """Parses and returns command line arguments."""
+    # Parses and returns command line arguments.
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
@@ -1702,7 +1703,6 @@ def main():
 
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
-    windows32_install = utils.out_path('windows-x86-install')
     windows64_install = utils.out_path('windows-x86-64-install')
 
     # Build the stage1 Clang for the build host
