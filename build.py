@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# pylint: disable=not-callable, relative-import, line-too-long
+# pylint: disable=not-callable, relative-import, line-too-long, no-else-return
 
 import argparse
 import datetime
@@ -104,15 +104,15 @@ def ndk_base():
 
 def android_api(arch, platform=False):
     if platform:
-        return '26'
+        return 26
     elif arch in ['arm', 'i386', 'x86']:
-        return '14'
+        return 14
     else:
-        return '21'
+        return 21
 
 
 def ndk_path(arch, platform=False):
-    platform_level = 'android-' + android_api(arch, platform)
+    platform_level = 'android-' + str(android_api(arch, platform))
     return os.path.join(ndk_base(), 'platforms', platform_level)
 
 
@@ -239,7 +239,7 @@ def create_sysroots():
             platform = platform_or_ndk == 'platform'
             base_lib_path = \
                 utils.android_path(ndk_base(), 'platforms',
-                                   'android-' + android_api(arch, platform))
+                                   'android-' + str(android_api(arch, platform)))
             dest_usr = os.path.join(get_sysroot(arch, platform), 'usr')
 
             # Copy over usr/include.
@@ -440,7 +440,7 @@ def cross_compile_configs(stage2_install, platform=False):
             debug_prefix_flag(),
             '--target=%s' % llvm_triple,
             '-B%s' % toolchain_bin,
-            '-D__ANDROID_API__=%s' % android_api(arch, platform=platform),
+            '-D__ANDROID_API__=' + str(android_api(arch, platform=platform)),
             '-ffunction-sections',
             '-fdata-sections',
             extra_flags,
