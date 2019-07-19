@@ -85,17 +85,17 @@ def yes_or_no(prompt, default=True):
         elif reply[0] == 'n':
             return False
         else:
-            print "Unrecognized reply, try again"
+            print("Unrecognized reply, try again")
 
 def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
         return subprocess.check_call(args, stdout=stdout, stderr=stderr,
                                      cwd=cwd)
     else:
-        print "Project " + os.path.basename(cwd) + ": " + ' '.join(args)
+        print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
 
 def check_output_d(args, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
         return subprocess.check_output(args, stderr=stderr, cwd=cwd)
     else:
-        print "Project " + os.path.basename(cwd) + ": " + ' '.join(args)
+        print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))

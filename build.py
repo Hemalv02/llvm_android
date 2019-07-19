@@ -1369,7 +1369,7 @@ def normalize_llvm_host_libs(install_dir, host, version):
             return '1.0', '1'
 
     libdir = os.path.join(install_dir, 'lib64')
-    for libname, libformat in libs.iteritems():
+    for libname, libformat in libs.items():
         short_version, major = getVersions(libname)
 
         soname_lib = os.path.join(libdir, libformat.format(version=major))
