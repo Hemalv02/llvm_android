@@ -299,7 +299,7 @@ def create_sysroots():
                     # created.  Build it for the current arch and copy it to
                     # <libdir>.
                     out_dir = build_libcxxabi(utils.out_path('stage2-install'), arch)
-                    out_path = utils.out_path(out_dir, 'lib', 'libc++abi.a')
+                    out_path = utils.out_path(out_dir, 'lib64', 'libc++abi.a')
                     shutil.copy2(out_path, os.path.join(libdir))
 
 
@@ -384,6 +384,7 @@ def cross_compile_configs(stage2_install, platform=False):
 
     cc = os.path.join(stage2_install, 'bin', 'clang')
     cxx = os.path.join(stage2_install, 'bin', 'clang++')
+    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
 
     for (arch, ndk_arch, toolchain_path, llvm_triple, extra_flags) in configs:
         toolchain_root = utils.android_path('prebuilts/gcc',
@@ -394,6 +395,7 @@ def cross_compile_configs(stage2_install, platform=False):
         defines = {}
         defines['CMAKE_C_COMPILER'] = cc
         defines['CMAKE_CXX_COMPILER'] = cxx
+        defines['LLVM_CONFIG_PATH'] = llvm_config
 
         # Include the directory with libgcc.a to the linker search path.
         toolchain_builtins = os.path.join(
@@ -838,9 +840,9 @@ def windows_cflags():
 
 
 def build_libs_for_windows(libname,
+                           toolchain_dir,
                            enable_assertions,
                            install_dir):
-
     cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
 
     cflags.extend(windows_cflags())
@@ -848,9 +850,13 @@ def build_libs_for_windows(libname,
     cmake_defines = dict()
     cmake_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
     cmake_defines['CMAKE_C_COMPILER'] = os.path.join(
-        clang_prebuilt_bin_dir(), 'clang')
+        toolchain_dir, 'bin', 'clang')
     cmake_defines['CMAKE_CXX_COMPILER'] = os.path.join(
-        clang_prebuilt_bin_dir(), 'clang++')
+        toolchain_dir, 'bin', 'clang++')
+    cmake_defines['LLVM_CONFIG_PATH'] = os.path.join(
+        toolchain_dir, 'bin', 'llvm-config')
+    # To prevent cmake from checking libstdcxx version.
+    cmake_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86', 'host',
                                          'x86_64-w64-mingw32-4.8',
@@ -872,7 +878,7 @@ def build_libs_for_windows(libname,
         # into install_dir only during libcxx's install step.  But use the
         # library from install_dir.
         cmake_defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = utils.llvm_path('libcxxabi', 'include')
-        cmake_defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = os.path.join(install_dir, 'lib')
+        cmake_defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = os.path.join(install_dir, 'lib64')
 
         # Disable libcxxabi visibility annotations since we're only building it
         # statically.
@@ -915,10 +921,12 @@ def build_llvm_for_windows(stage1_install,
 
     # Build and install libcxxabi and libcxx and use them to build Clang.
     build_libs_for_windows('libcxxabi',
+                           stage1_install,
                            enable_assertions,
                            install_dir)
 
     build_libs_for_windows('libcxx',
+                           stage1_install,
                            enable_assertions,
                            install_dir)
 
@@ -993,7 +1001,7 @@ def build_llvm_for_windows(stage1_install,
         # pthread is needed by libgcc_eh
         '-lpthread',
         # Add path to libc++, libc++abi.
-        '-L', os.path.join(install_dir, 'lib')))
+        '-L', os.path.join(install_dir, 'lib64')))
 
     ldflags.append('-Wl,--high-entropy-va')
 
@@ -1015,8 +1023,6 @@ def build_llvm_for_windows(stage1_install,
     windows_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
 
     windows_extra_env = dict()
-    if USE_GOMA_FOR_STAGE1:
-        windows_extra_env['USE_GOMA'] = 'true'
 
     build_llvm(
         targets=targets,
@@ -1707,8 +1713,10 @@ def main():
 
     # Build the stage1 Clang for the build host
     instrumented = utils.host_is_linux() and args.build_instrumented
+    # Windows libs are built with stage1 toolchain. llvm-config is required.
+    stage1_build_llvm_tools = instrumented or (do_build and need_windows)
     build_stage1(stage1_install, args.build_name,
-                 build_llvm_tools=instrumented)
+                 build_llvm_tools=stage1_build_llvm_tools)
 
     if do_build and need_host:
         if os.path.exists(stage2_install):
