@@ -969,7 +969,10 @@ def build_llvm_for_windows(stage1_install,
     windows_extra_defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = \
         '-DCMAKE_PREFIX_PATH=' + cmake_prebuilt_bin_dir() + ';' + \
         '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF;'+ \
-        '-DCMAKE_TOOLCHAIN_FILE=' + native_cmake_file_path
+        '-DCMAKE_TOOLCHAIN_FILE=' + native_cmake_file_path + ';' + \
+        '-DLLVM_ENABLE_LIBCXX=ON;' + \
+        '-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE;' + \
+        '-DCMAKE_INSTALL_RPATH=' + os.path.join(stage1_install, 'lib64')
 
     if enable_assertions:
         windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
