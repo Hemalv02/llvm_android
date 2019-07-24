@@ -435,11 +435,13 @@ def cross_compile_configs(stage2_install, platform=False):
         defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
         update_cmake_sysroot_flags(defines, sysroot)
 
+        macro_api_level = 10000 if platform else android_api(arch, platform=False)
+
         cflags = [
             debug_prefix_flag(),
             '--target=%s' % llvm_triple,
             '-B%s' % toolchain_bin,
-            '-D__ANDROID_API__=' + str(android_api(arch, platform=platform)),
+            '-D__ANDROID_API__=' + str(macro_api_level),
             '-ffunction-sections',
             '-fdata-sections',
             extra_flags,
