@@ -525,7 +525,6 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
 
         crt_defines['ANDROID'] = '1'
         crt_defines['LLVM_CONFIG_PATH'] = llvm_config
-        crt_defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
         # FIXME: Disable WError build until upstream fixed the compiler-rt
         # personality routine warnings caused by r309226.
         # crt_defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
