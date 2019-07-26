@@ -762,9 +762,6 @@ def build_crts_host_i686(stage2_install, clang_version):
     crt_defines['CMAKE_CXX_COMPILER'] = os.path.join(stage2_install, 'bin',
                                                      'clang++')
 
-    # Skip building runtimes for i386
-    crt_defines['COMPILER_RT_DEFAULT_TARGET_ONLY'] = 'ON'
-
     # Due to CMake and Clang oddities, we need to explicitly set
     # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
     # relying on auto-detection from the Compiler-rt CMake files.
@@ -781,8 +778,6 @@ def build_crts_host_i686(stage2_install, clang_version):
     crt_defines['CMAKE_INSTALL_PREFIX'] = crt_install
     crt_defines['SANITIZER_CXX_ABI'] = 'libstdc++'
 
-    crt_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
-
     # Set the compiler and linker flags
     crt_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
     crt_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
@@ -796,6 +791,12 @@ def build_crts_host_i686(stage2_install, clang_version):
 
     crt_path = utils.out_path('lib', 'clangrt-i386-host')
     rm_cmake_cache(crt_path)
+
+    # Also remove the "stamps" created for the libcxx included in libfuzzer so
+    # CMake runs the configure again (after the cmake caches are deleted in the
+    # line above).
+    utils.remove(os.path.join(crt_path, 'lib', 'fuzzer', 'libcxx_fuzzer_i386-stamps'))
+
     invoke_cmake(
         out_path=crt_path,
         defines=crt_defines,
