@@ -923,6 +923,7 @@ def build_libs_for_windows(libname,
 
     cmake_defines = dict()
     cmake_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
+    cmake_defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
     cmake_defines['CMAKE_C_COMPILER'] = os.path.join(
         toolchain_dir, 'bin', 'clang')
     cmake_defines['CMAKE_CXX_COMPILER'] = os.path.join(
@@ -1013,8 +1014,8 @@ def build_llvm_for_windows(stage1_install,
     native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
     native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
                          'set(CMAKE_CXX_COMPILER {cxx})\n'
-                         'set(LLVM_ENABLE_PROJECTS "clang")\n').format(
-                             cc=cc, cxx=cxx)
+                         'set(LLVM_ENABLE_PROJECTS "clang" CACHE STRING "" FORCE)\n'
+                        ).format(cc=cc, cxx=cxx)
 
     with open(native_cmake_file_path, 'w') as native_cmake_file:
         native_cmake_file.write(native_cmake_text)
@@ -1024,6 +1025,7 @@ def build_llvm_for_windows(stage1_install,
     windows_extra_defines['CMAKE_C_COMPILER'] = cc
     windows_extra_defines['CMAKE_CXX_COMPILER'] = cxx
     windows_extra_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
+    windows_extra_defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
     # Don't build compiler-rt, libcxx etc. for Windows
     windows_extra_defines['LLVM_BUILD_RUNTIME'] = 'OFF'
     # Build clang-tidy/clang-format for Windows.
@@ -1034,7 +1036,13 @@ def build_llvm_for_windows(stage1_install,
     # Use libc++ for Windows.
     windows_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
-    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld'
+    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld;lldb'
+
+    # Disable LLDB dependencies.
+    windows_extra_defines['LLDB_DISABLE_LIBEDIT'] = 'ON'
+    windows_extra_defines['LLDB_DISABLE_PYTHON'] = 'ON'
+    windows_extra_defines['LLDB_DISABLE_CURSES'] = 'ON'
+    windows_extra_defines['LLDB_NO_DEBUGSERVER'] = 'ON'
 
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
                                          'host', 'x86_64-w64-mingw32-4.8',
@@ -1075,8 +1083,10 @@ def build_llvm_for_windows(stage1_install,
         '-lucrt', '-lucrtbase',
         # Use static-libgcc to avoid runtime dependence on libgcc_eh.
         '-static-libgcc',
-        # pthread is needed by libgcc_eh
+        # pthread is needed by libgcc_eh.
         '-lpthread',
+        # dbghelp is needed by lldb.
+        '-ldbghelp',
         # Add path to libc++, libc++abi.
         '-L', os.path.join(install_dir, 'lib64')))
 
@@ -1611,7 +1621,6 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
 
     windows_blacklist_bin_files = [
         'clang-' + version.major_version() + ext,
-        'lldb' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
     ]
