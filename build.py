@@ -720,6 +720,8 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
         # to be ON by default.
         libomp_defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
 
+        libomp_defines.update(base_cmake_defines())
+
         libomp_cmake_path = utils.llvm_path('openmp')
         libomp_env = dict(ORIG_ENV)
         rm_cmake_cache(libomp_path)
@@ -733,6 +735,76 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
         # We need to install libomp manually.
         libname = 'libomp.' + ('so' if is_shared else 'a')
         src_lib = os.path.join(libomp_path, 'runtime', 'src', libname)
+        triple_arch = arch_from_triple(llvm_triple)
+        if ndk_cxx:
+            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
+        else:
+            dst_subdir = clang_resource_dir(clang_version.long_version(),
+                                            triple_arch)
+        dst_dir = os.path.join(stage2_install, dst_subdir)
+
+        check_create_path(dst_dir)
+        shutil.copy2(src_lib, os.path.join(dst_dir, libname))
+
+
+def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
+    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
+    for (arch, llvm_triple, lldb_defines,
+         cflags) in cross_compile_configs(stage2_install, platform=(not ndk_cxx)): # pylint: disable=not-an-iterable
+
+        logger().info('Building lldb for %s (ndk_cxx? %s)', arch, ndk_cxx)
+        # Skip implicit C++ headers and explicitly include C++ header paths.
+        cflags.append('-nostdinc++')
+        cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
+        if android_api(arch, platform=not ndk_cxx) < 24:
+            # fseeko is introduced at api level 24.
+            cflags.append('-D_LIBCPP_HAS_NO_OFF_T_FUNCTIONS')
+
+        lldb_path = utils.out_path('lib', 'lldb-server-' + arch)
+        if ndk_cxx:
+            lldb_path += '-ndk-cxx'
+
+        lldb_defines['ANDROID'] = '1'
+        lldb_defines['LLVM_CONFIG_PATH'] = llvm_config
+
+        lldb_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
+        lldb_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
+        lldb_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
+
+        lldb_defines.update(base_cmake_defines())
+
+        lldb_defines['LLDB_DISABLE_LIBEDIT'] = 'ON'
+        lldb_defines['LLDB_DISABLE_PYTHON'] = 'ON'
+        lldb_defines['LLDB_DISABLE_CURSES'] = 'ON'
+
+        # lldb depends on support libraries.
+        lldb_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
+
+        lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
+        lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
+        lldb_defines['LLVM_TABLEGEN'] = os.path.join(stage2_install, 'bin', 'llvm-tblgen')
+        lldb_defines['CLANG_TABLEGEN'] = os.path.join(stage2_install, '..', 'stage2', 'bin', 'clang-tblgen')
+        lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
+        lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
+        lldb_defines['LLVM_TARGET_ARCH'] = arch
+
+        lldb_defines['CMAKE_EXE_LINKER_FLAGS'] += ' -static-libstdc++'
+        lldb_defines['CMAKE_EXE_LINKER_FLAGS'] += ' -pie'
+
+        lldb_env = dict(ORIG_ENV)
+
+        lldb_cmake_path = utils.llvm_path('llvm')
+        invoke_cmake(
+            out_path=lldb_path,
+            defines=lldb_defines,
+            env=lldb_env,
+            cmake_path=lldb_cmake_path,
+            target='lldb-server',
+            install=False)
+
+       # We need to install manually.
+        libname = 'lldb-server'
+        src_lib = os.path.join(lldb_path, 'bin', libname)
         triple_arch = arch_from_triple(llvm_triple)
         if ndk_cxx:
             dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
@@ -1210,12 +1282,18 @@ def build_stage2(stage1_install,
     stage2_path = utils.out_path('stage2')
 
     stage2_extra_defines = get_shared_extra_defines()
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp'
+    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp;lldb'
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+
+    # lldb flags
+    stage2_extra_defines['LLDB_DISABLE_LIBEDIT'] = 'ON'
+    stage2_extra_defines['LLDB_DISABLE_PYTHON'] = 'ON'
+    stage2_extra_defines['LLDB_DISABLE_CURSES'] = 'ON'
+    stage2_extra_defines['LLDB_NO_DEBUGSERVER'] = 'ON'
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
@@ -1321,6 +1399,7 @@ def build_runtimes(stage2_install):
     build_libomp(stage2_install, version)
     build_libomp(stage2_install, version, ndk_cxx=True)
     build_libomp(stage2_install, version, ndk_cxx=True, is_shared=True)
+    build_lldb_server(stage2_install, version, ndk_cxx=True)
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(stage2_install, version)
@@ -1502,6 +1581,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'ld64.lld' + ext,
         'lld' + ext,
         'lld-link' + ext,
+        'lldb' + ext,
         'llvm-addr2line' + ext,
         'llvm-ar' + ext,
         'llvm-as' + ext,
@@ -1531,6 +1611,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
 
     windows_blacklist_bin_files = [
         'clang-' + version.major_version() + ext,
+        'lldb' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
     ]
