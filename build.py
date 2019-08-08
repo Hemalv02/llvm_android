@@ -62,7 +62,9 @@ def check_output(cmd, *args, **kwargs):
     logger().info('check_output:%s %s',
                   datetime.datetime.now().strftime("%H:%M:%S"),
                   subprocess.list2cmdline(cmd))
-    return subprocess.check_output(cmd, *args, **kwargs)
+    return subprocess.check_output(cmd, *args,
+                                   universal_newlines=True,
+                                   **kwargs)
 
 
 def install_file(src, dst):

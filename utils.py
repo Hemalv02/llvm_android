@@ -96,6 +96,7 @@ def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
 
 def check_output_d(args, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
-        return subprocess.check_output(args, stderr=stderr, cwd=cwd)
+        return subprocess.check_output(args, stderr=stderr, cwd=cwd,
+                                       universal_newlines=True)
     else:
         print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
