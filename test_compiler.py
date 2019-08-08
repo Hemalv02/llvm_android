@@ -168,7 +168,7 @@ def link_clang(android_base, clang_path):
 def get_connected_device_list():
     try:
         # Get current connected device list.
-        out = subprocess.check_output(['adb', 'devices', '-l'])
+        out = subprocess.check_output(['adb', 'devices', '-l'], universal_newlines=True)
         devices = [x.split() for x in out.strip().split('\n')[1:]]
         return devices
     except subprocess.CalledProcessError:

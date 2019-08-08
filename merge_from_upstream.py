@@ -77,7 +77,7 @@ def merge_projects(revision, create_new_branch, dry_run):
         #   llvm-svn.[svn]-[number of changes since tag]-[sha of the current commit]
         desc = subprocess.check_output(
             ['git', 'describe', '--tags', '--long', '--match', 'llvm-svn.[0-9]*'],
-            cwd=path).strip()
+            cwd=path, universal_newlines=True).strip()
         _, svnNum, numChanges, _ = desc.split('-')
 
         # Check changes since the previous merge point
@@ -85,7 +85,7 @@ def merge_projects(revision, create_new_branch, dry_run):
         for i in range(int(numChanges) - 1, -1, -1):
             changeLog = subprocess.check_output(
                 ['git', 'show', 'HEAD~' + str(i), '--quiet', '--format=%h%x1f%B%x1e'],
-                cwd=path
+                cwd=path, universal_newlines=True
             )
             changeLog = changeLog.strip('\n\x1e')
             patchSha, patchRev = parse_log(changeLog)
