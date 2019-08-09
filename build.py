@@ -57,16 +57,6 @@ def check_call(cmd, *args, **kwargs):
     subprocess.check_call(cmd, *args, **kwargs)
 
 
-def check_output(cmd, *args, **kwargs):
-    """subprocess.check_output with logging."""
-    logger().info('check_output:%s %s',
-                  datetime.datetime.now().strftime("%H:%M:%S"),
-                  subprocess.list2cmdline(cmd))
-    return subprocess.check_output(cmd, *args,
-                                   universal_newlines=True,
-                                   **kwargs)
-
-
 def install_file(src, dst):
     """Proxy for shutil.copy2 with logging and dry-run support."""
     logger().info('copy %s %s', src, dst)
@@ -336,6 +326,13 @@ def base_cmake_defines():
     defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
     defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm-project'
     defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
+
+    if utils.host_is_darwin():
+        # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
+        macMinVersion = '10.9'
+        # This will be used to set -mmacosx-version-min. And helps to choose SDK.
+        # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
+        defines['MACOSX_DEPLOYMENT_TARGET'] = macMinVersion
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
     defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -1140,24 +1137,6 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
     ldflags = []
 
     if host_os == 'darwin-x86':
-        xcrun_command = ['xcrun', '--show-sdk-path']
-        macSdkRoot = (check_output(xcrun_command)).strip()
-        # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
-        macMinVersion = '10.9'
-
-        cflags.extend(('-isysroot {macSdkRoot}',
-                       '-mmacosx-version-min={macMinVersion}',
-                       '-DMACOSX_DEPLOYMENT_TARGET={macMinVersion}',
-                      ))
-        ldflags.extend(('-isysroot {macSdkRoot}',
-                        '-Wl,-syslibroot,{macSdkRoot}',
-                        '-mmacosx-version-min={macMinVersion}',
-                       ))
-
-        cflags = formatFlags(cflags, macSdkRoot=macSdkRoot,
-                             macMinVersion=macMinVersion)
-        ldflags = formatFlags(ldflags, macSdkRoot=macSdkRoot,
-                              macMinVersion=macMinVersion)
         return cflags, ldflags
 
     # GCC toolchain flags for Linux and Windows
