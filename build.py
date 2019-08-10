@@ -332,7 +332,7 @@ def base_cmake_defines():
         macMinVersion = '10.9'
         # This will be used to set -mmacosx-version-min. And helps to choose SDK.
         # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
-        defines['MACOSX_DEPLOYMENT_TARGET'] = macMinVersion
+        defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = macMinVersion
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
     defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
