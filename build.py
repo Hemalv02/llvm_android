@@ -1293,7 +1293,7 @@ def build_stage2(stage1_install,
 
         # lld, lto and pgo instrumentation doesn't work together
         # http://b/79419131
-        if not build_instrumented and not no_lto:
+        if not build_instrumented and not no_lto and not debug_build:
             stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
 
     # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
