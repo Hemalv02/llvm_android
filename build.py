@@ -1821,7 +1821,7 @@ def main():
                      args.build_name, args.enable_assertions,
                      args.debug, args.no_lto, instrumented, profdata)
 
-        if utils.host_is_linux():
+        if utils.host_is_linux() and not args.debug:
             build_runtimes(stage2_install)
 
     if do_build and need_windows:
