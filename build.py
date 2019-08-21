@@ -1529,11 +1529,13 @@ def install_winpthreads(bin_dir, lib_dir):
     install_file(lib_path, bin_install)
 
 
-def remove_static_libraries(static_lib_dir):
+def remove_static_libraries(static_lib_dir, necessary_libs=None):
+    if not necessary_libs:
+        necessary_libs = []
     if os.path.isdir(static_lib_dir):
         lib_files = os.listdir(static_lib_dir)
         for lib_file in lib_files:
-            if lib_file.endswith('.a'):
+            if lib_file.endswith('.a') and lib_file not in necessary_libs:
                 static_library = os.path.join(static_lib_dir, lib_file)
                 remove(static_library)
 
@@ -1635,26 +1637,29 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
-    # Next, we remove unnecessary static libraries.
-    remove_static_libraries(lib_dir)
 
-    # For Windows, add other relevant libraries.
     if is_windows:
+        windows_necessary_lib_files = [
+            'libc++.a',
+            'libc++abi.a',
+            'LLVMgold' + shlib_ext,
+            'libwinpthread-1' + shlib_ext,
+        ]
+        # For Windows, add other relevant libraries.
         install_winpthreads(bin_dir, lib_dir)
+        # Next, we remove unnecessary static libraries.
+        remove_static_libraries(lib_dir, windows_necessary_lib_files)
+        # Check necessary Windows lib files exist.
+        for necessary_lib_file in windows_necessary_lib_files:
+            if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
+                raise RuntimeError('Did not find %s under lib64' % necessary_lib_file)
 
     if not is_windows:
+        # Remove unnecessary static libraries.
+        remove_static_libraries(lib_dir)
         install_wrappers(install_dir)
         normalize_llvm_host_libs(install_dir, host, version)
 
-    # Check necessary Windows lib files exist.
-    windows_necessary_lib_files = [
-        'LLVMgold' + shlib_ext,
-        'libwinpthread-1' + shlib_ext,
-    ]
-
-    for necessary_lib_file in windows_necessary_lib_files:
-        if is_windows and not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
-            raise RuntimeError('Did not find %s under lib64' % necessary_lib_file)
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
     libc_include_path = utils.android_path('bionic', 'libc', 'include')
