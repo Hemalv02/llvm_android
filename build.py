@@ -1531,7 +1531,7 @@ def install_winpthreads(bin_dir, lib_dir):
 
 def remove_static_libraries(static_lib_dir, necessary_libs=None):
     if not necessary_libs:
-        necessary_libs = []
+        necessary_libs = {}
     if os.path.isdir(static_lib_dir):
         lib_files = os.listdir(static_lib_dir)
         for lib_file in lib_files:
@@ -1560,7 +1560,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
     shlib_ext = '.dll' if is_windows else '.so' if is_linux else '.dylib'
 
     # Next, we remove unnecessary binaries.
-    necessary_bin_files = [
+    necessary_bin_files = {
         'clang' + ext,
         'clang++' + ext,
         'clang-' + version.major_version() + ext,
@@ -1600,37 +1600,37 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         'sanstats' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
-    ]
+    }
 
-    windows_blacklist_bin_files = [
-        'clang-' + version.major_version() + ext,
-        'scan-build' + ext,
-        'scan-view' + ext,
-    ]
+    if is_windows:
+        windows_blacklist_bin_files = {
+            'clang-' + version.major_version() + ext,
+            'scan-build' + ext,
+            'scan-view' + ext,
+        }
+        windows_additional_bin_files = {
+            'liblldb' + shlib_ext,
+        }
+        necessary_bin_files -= windows_blacklist_bin_files
+        necessary_bin_files |= windows_additional_bin_files
 
     # scripts that should not be stripped
-    script_bins = [
+    script_bins = {
         'git-clang-format',
         'scan-build',
         'scan-view',
-    ]
+    }
 
     bin_dir = os.path.join(install_dir, 'bin')
     lib_dir = os.path.join(install_dir, 'lib64')
 
-    if is_windows:
-        for f in windows_blacklist_bin_files:
-            necessary_bin_files.remove(f)
-
-    bin_files = os.listdir(bin_dir)
-    for bin_filename in bin_files:
+    for bin_filename in os.listdir(bin_dir):
         binary = os.path.join(bin_dir, bin_filename)
         if os.path.isfile(binary):
             if bin_filename not in necessary_bin_files:
                 remove(binary)
-            elif strip:
-                if bin_filename not in script_bins:
-                    check_call(['strip', binary])
+            elif strip and bin_filename not in script_bins:
+                check_call(['strip', binary])
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
@@ -1639,12 +1639,12 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
 
 
     if is_windows:
-        windows_necessary_lib_files = [
+        windows_necessary_lib_files = {
             'libc++.a',
             'libc++abi.a',
             'LLVMgold' + shlib_ext,
             'libwinpthread-1' + shlib_ext,
-        ]
+        }
         # For Windows, add other relevant libraries.
         install_winpthreads(bin_dir, lib_dir)
         # Next, we remove unnecessary static libraries.
