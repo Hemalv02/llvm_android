@@ -1540,13 +1540,18 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
                 remove(static_library)
 
 
-def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
+def get_package_install_path(host, package_name):
+    return utils.out_path('install', host, package_name)
+
+
+def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_tar=True):
     is_windows = host == 'windows-x86-64'
     is_linux = host == 'linux-x86'
     package_name = 'clang-' + build_name
-    install_host_dir = utils.out_path('install', host)
-    install_dir = os.path.join(install_host_dir, package_name)
     version = extract_clang_version(build_dir)
+
+    install_dir = get_package_install_path(host, package_name)
+    install_host_dir = os.path.realpath(os.path.join(install_dir, '../'))
 
     # Remove any previously installed toolchain so it doesn't pollute the
     # build.
@@ -1686,11 +1691,12 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True):
         version_file.write('based on {}\n'.format(android_version.svn_revision))
 
     # Package up the resulting trimmed install/ directory.
-    tarball_name = package_name + '-' + host
-    package_path = os.path.join(dist_dir, tarball_name) + '.tar.bz2'
-    logger().info('Packaging %s', package_path)
-    args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
-    check_call(args)
+    if create_tar:
+        tarball_name = package_name + '-' + host
+        package_path = os.path.join(dist_dir, tarball_name) + '.tar.bz2'
+        logger().info('Packaging %s', package_path)
+        args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
+        check_call(args)
 
 
 def parse_args():
