@@ -20,6 +20,7 @@ import argparse
 import datetime
 import glob
 import logging
+import multiprocessing
 import os
 import shutil
 import string
@@ -43,6 +44,8 @@ if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
 
 STAGE2_TARGETS = 'AArch64;ARM;BPF;X86'
 
+# We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
+MAC_MIN_VERSION = '10.9'
 
 def logger():
     """Returns the module level logger."""
@@ -328,11 +331,9 @@ def base_cmake_defines():
     defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
 
     if utils.host_is_darwin():
-        # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
-        macMinVersion = '10.9'
         # This will be used to set -mmacosx-version-min. And helps to choose SDK.
         # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
-        defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = macMinVersion
+        defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = MAC_MIN_VERSION
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
     defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -772,10 +773,6 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
 
         lldb_defines.update(base_cmake_defines())
 
-        lldb_defines['LLDB_DISABLE_LIBEDIT'] = 'ON'
-        lldb_defines['LLDB_DISABLE_PYTHON'] = 'ON'
-        lldb_defines['LLDB_DISABLE_CURSES'] = 'ON'
-
         # lldb depends on support libraries.
         lldb_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
 
@@ -1038,9 +1035,7 @@ def build_llvm_for_windows(stage1_install,
     windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld;lldb'
 
     # Disable LLDB dependencies.
-    windows_extra_defines['LLDB_DISABLE_LIBEDIT'] = 'ON'
     windows_extra_defines['LLDB_DISABLE_PYTHON'] = 'ON'
-    windows_extra_defines['LLDB_DISABLE_CURSES'] = 'ON'
     windows_extra_defines['LLDB_NO_DEBUGSERVER'] = 'ON'
 
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
@@ -1256,6 +1251,48 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
         extra_env=stage1_extra_env)
 
 
+def build_autoconf(toolchain_install, src_path, build_directory):
+    """Builds autoconf based project."""
+    working_directory = os.path.join(build_directory, 'build')
+    install_directory = os.path.join(build_directory, 'install')
+    check_create_path(working_directory)
+    check_create_path(install_directory)
+
+    configure_args = [
+        os.path.join(src_path, 'configure'),
+        '--prefix=' + install_directory,
+    ]
+
+    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
+    cflags.append('-fPIC')
+    cflags.append('--sysroot=' + host_sysroot())
+    if utils.host_is_darwin():
+        cflags.append('-mmacosx-version-min=' + MAC_MIN_VERSION)
+
+    cc = os.path.join(toolchain_install, 'bin', 'clang')
+    cxx = os.path.join(toolchain_install, 'bin', 'clang++')
+
+    env = dict(ORIG_ENV)
+    env['CC'] = ' '.join([cc] + cflags + ldflags)
+    env['CXX'] =  ' '.join([cxx, '-stdlib=libc++'] + cflags + ldflags)
+    check_call(configure_args, cwd=working_directory, env=env)
+
+    make_args = ['make', '-j' + str(multiprocessing.cpu_count())]
+    check_call(make_args, cwd=working_directory)
+
+    install_args = ['make', 'install']
+    check_call(install_args, cwd=working_directory)
+
+    return install_directory
+
+
+def build_libedit(stage1_install):
+    libedit_src = utils.android_path('external', 'libedit')
+    build_directory = utils.out_path('lib', 'libedit')
+    return build_autoconf(stage1_install,
+                          libedit_src, build_directory)
+
+
 def build_stage2(stage1_install,
                  stage2_install,
                  stage2_targets,
@@ -1281,10 +1318,12 @@ def build_stage2(stage1_install,
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
 
     # lldb flags
-    stage2_extra_defines['LLDB_DISABLE_LIBEDIT'] = 'ON'
     stage2_extra_defines['LLDB_DISABLE_PYTHON'] = 'ON'
-    stage2_extra_defines['LLDB_DISABLE_CURSES'] = 'ON'
     stage2_extra_defines['LLDB_NO_DEBUGSERVER'] = 'ON'
+
+    libedit_path = build_libedit(stage1_install)
+    stage2_extra_defines['libedit_INCLUDE_DIRS'] = os.path.join(libedit_path, 'include')
+    stage2_extra_defines['libedit_LIBRARIES'] = os.path.join(libedit_path, 'lib', 'libedit.a')
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
