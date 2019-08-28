@@ -292,8 +292,18 @@ def build_clang(instrumented=False, pgo=True):
         build_instrumented=instrumented,
         profdata_file=profdata)
     build.build_runtimes(stage2_install)
-    version = build.extract_clang_version(stage2_install)
-    return stage2_install, version
+
+    build.package_toolchain(
+        stage2_install,
+        'dev',
+        utils.build_os_type(),
+        dist_dir=None,
+        strip=True,
+        create_tar=False)
+
+    clang_path = build.get_package_install_path(utils.build_os_type(), 'clang-dev')
+    version = build.extract_clang_version(clang_path)
+    return clang_path, version
 
 
 def extract_packaged_clang(package_path):
@@ -339,7 +349,6 @@ def main():
     else:
         clang_path, clang_version = build_clang(
             instrumented=args.profile, pgo=(not args.no_pgo))
-    build.install_wrappers(clang_path)
     link_clang(args.android_path, clang_path)
 
     if args.build_only:
