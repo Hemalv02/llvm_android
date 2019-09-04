@@ -368,7 +368,7 @@ def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
         check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
 
 
-def cross_compile_configs(stage2_install, platform=False):
+def cross_compile_configs(stage2_install, platform=False, static=False):
     configs = [
         ('arm', 'arm', 'arm/arm-linux-androideabi-4.9/arm-linux-androideabi',
          'arm-linux-android', '-march=armv7-a'),
@@ -387,6 +387,10 @@ def cross_compile_configs(stage2_install, platform=False):
     llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
 
     for (arch, ndk_arch, toolchain_path, llvm_triple, extra_flags) in configs:
+        if static:
+            api_level = android_api(arch, platform=True)
+        else:
+            api_level = android_api(arch, platform)
         toolchain_root = utils.android_path('prebuilts/gcc',
                                             utils.build_os_type())
         toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
@@ -421,13 +425,16 @@ def cross_compile_configs(stage2_install, platform=False):
             '-fuse-ld=lld',
             '-Wl,--gc-sections',
             '-Wl,--build-id=sha1',
+            '-pie',
         ]
+        if static:
+            ldflags.append('-static')
         if not platform:
             triple = 'arm-linux-androideabi' if ndk_arch == 'arm' else llvm_triple
             libcxx_libs = os.path.join(ndk_base(), 'toolchains', 'llvm',
                                        'prebuilt', 'linux-x86_64', 'sysroot',
                                        'usr', 'lib', triple)
-            ldflags += ['-L', os.path.join(libcxx_libs, str(android_api(arch)))]
+            ldflags += ['-L', os.path.join(libcxx_libs, str(api_level))]
             ldflags += ['-L', libcxx_libs]
 
         defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
@@ -435,7 +442,7 @@ def cross_compile_configs(stage2_install, platform=False):
         defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
         update_cmake_sysroot_flags(defines, sysroot)
 
-        macro_api_level = 10000 if platform else android_api(arch, platform=False)
+        macro_api_level = 10000 if platform else api_level
 
         cflags = [
             debug_prefix_flag(),
@@ -750,15 +757,13 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
 def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
     llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
     for (arch, llvm_triple, lldb_defines,
-         cflags) in cross_compile_configs(stage2_install, platform=(not ndk_cxx)): # pylint: disable=not-an-iterable
+         cflags) in cross_compile_configs(stage2_install, platform=(not ndk_cxx),
+                                          static=True): # pylint: disable=not-an-iterable
 
         logger().info('Building lldb for %s (ndk_cxx? %s)', arch, ndk_cxx)
         # Skip implicit C++ headers and explicitly include C++ header paths.
         cflags.append('-nostdinc++')
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
-        if android_api(arch, platform=not ndk_cxx) < 24:
-            # fseeko is introduced at api level 24.
-            cflags.append('-D_LIBCPP_HAS_NO_OFF_T_FUNCTIONS')
 
         lldb_path = utils.out_path('lib', 'lldb-server-' + arch)
         if ndk_cxx:
@@ -783,9 +788,6 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
         lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_TARGET_ARCH'] = arch
-
-        lldb_defines['CMAKE_EXE_LINKER_FLAGS'] += ' -static-libstdc++'
-        lldb_defines['CMAKE_EXE_LINKER_FLAGS'] += ' -pie'
 
         lldb_env = dict(ORIG_ENV)
 
