@@ -58,8 +58,7 @@ class ArgParser(argparse.ArgumentParser):
             help='Build number to pull from the build server.')
 
         self.add_argument(
-            '-b', '--bug', type=int,
-            help='Bug to reference in commit message.')
+            '-b', '--bug', help='Bug to reference in commit message.')
 
         self.add_argument(
             '--use-current-branch', action='store_true',
@@ -121,6 +120,19 @@ def symlink_to_linux_resource_dir(install_dir):
     os.chdir(prebuilt_dir)
 
 
+def format_bug(bug):
+    """Formats a bug for use in a commit message.
+
+    Bugs might be a number, in which case they're a buganizer reference to be
+    formatted. If not, assume the user knows what they're doing and just return
+    the string as-is.
+    """
+    try:
+        return 'http://b/{}'.format(int(bug))
+    except ValueError:
+        return bug
+
+
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
                  manifest):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
@@ -178,7 +190,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     ]
     if bug is not None:
         message_lines.append('')
-        message_lines.append('Bug: http://b/{}'.format(bug))
+        message_lines.append('Bug: {}'.format(format_bug(bug)))
     message_lines.append('Test: N/A')
     message = '\n'.join(message_lines)
     check_call(['git', 'commit', '-m', message])
