@@ -800,7 +800,7 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
             target='lldb-server',
             install=False)
 
-       # We need to install manually.
+        # We need to install manually.
         libname = 'lldb-server'
         src_lib = os.path.join(lldb_path, 'bin', libname)
         triple_arch = arch_from_triple(llvm_triple)
@@ -1036,10 +1036,6 @@ def build_llvm_for_windows(stage1_install,
 
     windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld;lldb'
 
-    # Disable LLDB dependencies.
-    windows_extra_defines['LLDB_DISABLE_PYTHON'] = 'ON'
-    windows_extra_defines['LLDB_NO_DEBUGSERVER'] = 'ON'
-
     windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
                                          'host', 'x86_64-w64-mingw32-4.8',
                                          'x86_64-w64-mingw32')
@@ -1060,6 +1056,12 @@ def build_llvm_for_windows(stage1_install,
 
     cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
     cflags.extend(windows_cflags())
+
+    windows_extra_env = dict()
+
+    set_lldb_flags(install_dir, 'windows-x86', windows_extra_defines, windows_extra_env)
+    cflags.append('-DMS_WIN64')
+
     cxxflags = list(cflags)
 
     # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
@@ -1104,8 +1106,6 @@ def build_llvm_for_windows(stage1_install,
     windows_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
     windows_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
     windows_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    windows_extra_env = dict()
 
     build_llvm(
         targets=targets,
@@ -1253,46 +1253,39 @@ def build_stage1(stage1_install, build_name, build_llvm_tools=False):
         extra_env=stage1_extra_env)
 
 
-def build_autoconf(toolchain_install, src_path, build_directory):
-    """Builds autoconf based project."""
-    working_directory = os.path.join(build_directory, 'build')
-    install_directory = os.path.join(build_directory, 'install')
-    check_create_path(working_directory)
-    check_create_path(install_directory)
+def set_lldb_flags(install_dir, host, defines, env):
+    if host == 'windows-x86':
+        build_os = 'linux-x86'
+    else:
+        build_os = host
 
-    configure_args = [
-        os.path.join(src_path, 'configure'),
-        '--prefix=' + install_directory,
-    ]
+    swig_root = utils.android_path('prebuilts', 'swig', build_os)
+    defines['SWIG_EXECUTABLE'] = os.path.join(swig_root, 'bin', 'swig')
+    env['SWIG_LIB'] = os.path.join(swig_root, 'share', 'swig', '3.0.12')
 
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
-    cflags.append('-fPIC')
-    cflags.append('--sysroot=' + host_sysroot())
-    if utils.host_is_darwin():
-        cflags.append('-mmacosx-version-min=' + MAC_MIN_VERSION)
+    if host != 'darwin-x86':
+        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python',
+                                        'linux-x86', 'bin', 'python2.7')
 
-    cc = os.path.join(toolchain_install, 'bin', 'clang')
-    cxx = os.path.join(toolchain_install, 'bin', 'clang++')
+    if host == 'linux-x86':
+        python_root = utils.android_path('prebuilts', 'python', host)
+        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython2.7.so')
+        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python2.7')
+    elif host == 'windows-x86':
+        defines['PYTHON_HOME'] = utils.android_path('prebuilts', 'python', host, 'x64')
 
-    env = dict(ORIG_ENV)
-    env['CC'] = ' '.join([cc] + cflags + ldflags)
-    env['CXX'] =  ' '.join([cxx, '-stdlib=libc++'] + cflags + ldflags)
-    check_call(configure_args, cwd=working_directory, env=env)
+    if host == 'darwin-x86':
+        defines['LLDB_NO_DEBUGSERVER'] = 'ON'
 
-    make_args = ['make', '-j' + str(multiprocessing.cpu_count())]
-    check_call(make_args, cwd=working_directory)
-
-    install_args = ['make', 'install']
-    check_call(install_args, cwd=working_directory)
-
-    return install_directory
-
-
-def build_libedit(stage1_install):
-    libedit_src = utils.android_path('external', 'libedit')
-    build_directory = utils.out_path('lib', 'libedit')
-    return build_autoconf(stage1_install,
-                          libedit_src, build_directory)
+    if host == 'linux-x86':
+        libedit_root = utils.android_path('prebuilts', 'libedit', host)
+        libedit_lib = os.path.join(libedit_root, 'lib', 'libedit.so.0')
+        libedit_include = os.path.join(libedit_root, 'include')
+        defines['libedit_INCLUDE_DIRS'] = libedit_include
+        defines['libedit_LIBRARIES'] = libedit_lib
+        lib_dir = os.path.join(install_dir, 'lib64')
+        check_create_path(lib_dir)
+        shutil.copy2(libedit_lib, lib_dir)
 
 
 def build_stage2(stage1_install,
@@ -1312,6 +1305,8 @@ def build_stage2(stage1_install,
     stage2_path = utils.out_path('stage2')
 
     stage2_extra_defines = get_shared_extra_defines()
+    stage2_extra_env = dict()
+
     stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp;lldb'
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
@@ -1319,13 +1314,8 @@ def build_stage2(stage1_install,
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
 
-    # lldb flags
-    stage2_extra_defines['LLDB_DISABLE_PYTHON'] = 'ON'
-    stage2_extra_defines['LLDB_NO_DEBUGSERVER'] = 'ON'
-
-    libedit_path = build_libedit(stage1_install)
-    stage2_extra_defines['libedit_INCLUDE_DIRS'] = os.path.join(libedit_path, 'include')
-    stage2_extra_defines['libedit_LIBRARIES'] = os.path.join(libedit_path, 'lib', 'libedit.a')
+    set_lldb_flags(stage2_install, utils.build_os_type(), stage2_extra_defines,
+                   stage2_extra_env)
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
@@ -1397,7 +1387,6 @@ def build_stage2(stage1_install,
     # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
     # the same sources.
     ldflags.append('-L' + os.path.join(stage1_install, 'lib64'))
-    stage2_extra_env = dict()
     stage2_extra_env['LD_LIBRARY_PATH'] = os.path.join(stage1_install, 'lib64')
 
     # Set the compiler and linker flags
