@@ -1083,8 +1083,6 @@ def build_llvm_for_windows(stage1_install,
         '-static-libgcc',
         # pthread is needed by libgcc_eh.
         '-lpthread',
-        # dbghelp is needed by lldb.
-        '-ldbghelp',
         # Add path to libc++, libc++abi.
         '-L', os.path.join(install_dir, 'lib64')))
 
