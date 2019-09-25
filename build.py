@@ -1572,6 +1572,26 @@ def get_package_install_path(host, package_name):
     return utils.out_path('install', host, package_name)
 
 
+def install_lldb_for_windows(install_dir):
+    # Python package path is not correctly set when cross compiling.
+    # Moves them to the right place before upstream fixes it.
+    site_packages_dir = os.path.join(install_dir, 'lib/site-packages')
+    shutil.move(os.path.join(install_dir, 'lib/python2.7/site-packages'),
+                site_packages_dir)
+    shutil.rmtree(os.path.join(install_dir, 'lib/python2.7'))
+    os.remove(os.path.join(site_packages_dir, 'lldb', '_lldb.so'))
+    os.symlink('../../../bin/liblldb.dll',
+               os.path.join(site_packages_dir, 'lldb', '_lldb.pyd'))
+    os.remove(os.path.join(site_packages_dir, 'lldb', 'lldb-argdumper'))
+    os.symlink('../../../bin/lldb-argdumper.exe',
+               os.path.join(site_packages_dir, 'lldb', 'lldb-argdumper.exe'))
+
+    # Installs python for lldb.
+    python_dll = utils.android_path('prebuilts', 'python',
+                                    'windows-x86', 'x64', 'python27.dll')
+    shutil.copy(python_dll, os.path.join(install_dir, 'bin'))
+
+
 def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_tar=True):
     is_windows = host == 'windows-x86-64'
     is_linux = host == 'linux-x86'
@@ -1637,6 +1657,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
     }
 
     if is_windows:
+        install_lldb_for_windows(install_dir)
         windows_blacklist_bin_files = {
             'clang-' + version.major_version() + ext,
             'scan-build' + ext,
@@ -1644,6 +1665,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         }
         windows_additional_bin_files = {
             'liblldb' + shlib_ext,
+            'python27' + shlib_ext
         }
         necessary_bin_files -= windows_blacklist_bin_files
         necessary_bin_files |= windows_additional_bin_files
