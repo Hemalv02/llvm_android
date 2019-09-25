@@ -1608,6 +1608,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         'lld' + ext,
         'lld-link' + ext,
         'lldb' + ext,
+        'lldb-argdumper' + ext,
         'llvm-addr2line' + ext,
         'llvm-ar' + ext,
         'llvm-as' + ext,
