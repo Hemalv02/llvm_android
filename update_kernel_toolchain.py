@@ -135,7 +135,7 @@ Bug: %s
 
     def resync_tree(self):
         green_print("Syncing kernel tree")
-        command = "repo sync -c --no-tags -q -j 71"
+        command = "repo sync -c --no-tags -q -n -j 71"
         if self.dry_run:
             print(command)
             return
