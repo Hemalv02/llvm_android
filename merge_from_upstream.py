@@ -47,9 +47,9 @@ def sync_upstream_branch(path):
 
 
 def merge_projects(revision, create_new_branch, dry_run):
+    path = llvm_path()
     if not dry_run:
         sync_upstream_branch(path)
-    path = llvm_path()
     sha = get_commit_hash(revision, path)
     if sha is None:
         raise LookupError('found no sha for %s.' % (revision))
