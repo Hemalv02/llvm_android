@@ -68,11 +68,14 @@ class KernelToolchainUpdater():
             help="The bug number to be included in the commit message.")
         parser.add_argument(
             "-d", action="store_true", help="Dry run and debug.")
+        parser.add_argument(
+            "-n", action="store_true", help="No push (but do local changes)")
         args = parser.parse_args()
         self.bug_number = args.bug_number
         self.clang_bin = args.clang_bin
         self.kernel_tree = args.kernel_tree
         self.dry_run = args.d
+        self.no_push = args.n
 
     def get_clang_versions(self):
         output = subprocess.check_output([self.clang_bin, "--version"])
@@ -128,7 +131,7 @@ Bug: %s
         repo_branch = output.split("\n")[0].split(" ")[2]
         command = "git push origin HEAD:refs/for/%s -o topic=%s" % (repo_branch,
                                                                     self.topic)
-        if self.dry_run:
+        if self.dry_run or self.no_push:
             print(command)
             return
         subprocess.check_output(command.split(" "), cwd=self.repo_dir)
@@ -143,13 +146,12 @@ Bug: %s
 
     def update_kernel_toolchain(self):
         green_print("Updating kernel toolchain")
-        # TODO: do all devices name this file `build.config.common`? (NO)
         config_path = path.join(self.kernel_dir, "build.config.common")
         if self.dry_run:
             print("Updating %s to use %s." % (config_path, self.clang_revision))
             return
         for line in fileinput.input(config_path, inplace=True):
-            line = re.sub("clang-r[0-9a-b]+", "clang-" + self.clang_revision,
+            line = re.sub("clang-r[0-9a-z]+", "clang-" + self.clang_revision,
                           line)
             print(line),
 
@@ -177,7 +179,7 @@ Bug: %s
             if (project.get("path") == "private/msm-google"):
                 command = "git push %s HEAD:refs/for/%s -o topic=%s" % (
                     remote, project.get("revision"), self.topic)
-                if self.dry_run:
+                if self.dry_run or self.no_push:
                     print(command)
                     return
                 subprocess.check_output(command.split(" "), cwd=self.kernel_dir)
