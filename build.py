@@ -781,6 +781,7 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
         # lldb depends on support libraries.
         lldb_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
 
+        lldb_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
         lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
         lldb_defines['LLVM_TABLEGEN'] = os.path.join(stage2_install, 'bin', 'llvm-tblgen')
