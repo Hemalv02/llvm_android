@@ -786,6 +786,7 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
         lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
         lldb_defines['LLVM_TABLEGEN'] = os.path.join(stage2_install, 'bin', 'llvm-tblgen')
         lldb_defines['CLANG_TABLEGEN'] = os.path.join(stage2_install, '..', 'stage2', 'bin', 'clang-tblgen')
+        lldb_defines['LLDB_TABLEGEN'] = os.path.join(stage2_install, '..', 'stage2', 'bin', 'lldb-tblgen')
         lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_TARGET_ARCH'] = arch
