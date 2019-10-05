@@ -1014,7 +1014,10 @@ def build_llvm_for_windows(stage1_install,
     native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
     native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
                          'set(CMAKE_CXX_COMPILER {cxx})\n'
-                         'set(LLVM_ENABLE_PROJECTS "clang" CACHE STRING "" FORCE)\n'
+                         'set(LLVM_ENABLE_PROJECTS "clang;lldb" CACHE STRING "" FORCE)\n'
+                         'set(LLDB_DISABLE_PYTHON "ON" CACHE STRING "" FORCE)\n'
+                         'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)\n'
+                         'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)\n'
                         ).format(cc=cc, cxx=cxx)
 
     with open(native_cmake_file_path, 'w') as native_cmake_file:
