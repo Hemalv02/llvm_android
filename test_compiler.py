@@ -37,6 +37,14 @@ DISABLED_WARNINGS = [
     '-Wno-error=defaulted-function-deleted',
     '-Wno-error=string-plus-int',
     '-fsplit-lto-unit',
+    '-Wno-error=alloca',
+    '-Wno-error=c99-designator',
+    '-Wno-error=dangling-gsl',
+    '-Wno-error=implicit-fallthrough',
+    '-Wno-error=implicit-int-float-conversion',
+    '-Wno-error=incomplete-setjmp-declaration',
+    '-Wno-error=pointer-compare',
+    '-Wno-error=reorder-init-list',
 ]
 
 
