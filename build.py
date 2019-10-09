@@ -1276,6 +1276,7 @@ def set_lldb_flags(install_dir, host, defines, env):
         defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python2.7')
     elif host == 'windows-x86':
         defines['PYTHON_HOME'] = utils.android_path('prebuilts', 'python', host, 'x64')
+    defines['LLDB_RELOCATABLE_PYTHON'] = 'ON'
 
     if host == 'darwin-x86':
         defines['LLDB_NO_DEBUGSERVER'] = 'ON'
