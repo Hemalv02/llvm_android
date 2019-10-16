@@ -480,6 +480,7 @@ def build_sanitizer_map_files(stage2_install, clang_version):
                            clang_resource_dir(clang_version.long_version(), ''))
     for arch in ('aarch64', 'arm', 'i686', 'x86_64'):
         build_sanitizer_map_file('asan', arch, lib_dir)
+        build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
     build_sanitizer_map_file('hwasan', 'aarch64', lib_dir)
 
 def create_hwasan_symlink(stage2_install, clang_version):
