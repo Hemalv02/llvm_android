@@ -210,6 +210,10 @@ def debug_prefix_flag():
     return '-fdebug-prefix-map={}='.format(utils.android_path())
 
 
+def go_bin_dir():
+    return utils.android_path('prebuilts/go', utils.build_os_type(), 'bin')
+
+
 def create_sysroots():
     # Construct the sysroots from scratch, since symlinks can't nest within
     # the right places (without altering source prebuilts).
@@ -1434,8 +1438,17 @@ def build_runtimes(stage2_install):
     create_hwasan_symlink(stage2_install, version)
 
 def install_wrappers(llvm_install_path):
-    wrapper_path = utils.android_path('toolchain', 'llvm_android',
-                                      'compiler_wrapper.py')
+    wrapper_path = utils.out_path('llvm_android_wrapper')
+    wrapper_build_script = utils.android_path('external', 'toolchain-utils',
+                                                'compiler_wrapper', 'build.py')
+    # Note: The build script automatically determines the architecture
+    # based on the host.
+    go_env = dict(os.environ)
+    go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
+    check_call([wrapper_build_script, '--config=android',
+                '--use_ccache=false', '--use_llvm_next=false',
+                '--output_file=' + wrapper_path], env=go_env)
+
     bisect_path = utils.android_path('toolchain', 'llvm_android',
                                      'bisect_driver.py')
     bin_path = os.path.join(llvm_install_path, 'bin')
