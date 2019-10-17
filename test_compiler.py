@@ -23,15 +23,13 @@ import shutil
 import subprocess
 
 import build
+import compiler_wrapper
 import utils
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
 DEFAULT_TIDY_CHECKS = ('*', '-readability-*', '-google-readability-*',
                        '-google-runtime-references', '-cppcoreguidelines-*',
                        '-modernize-*', '-clang-analyzer-alpha*')
-STDERR_REDIRECT_KEY = 'ANDROID_LLVM_STDERR_REDIRECT'
-PREBUILT_COMPILER_PATH_KEY = 'ANDROID_LLVM_PREBUILT_COMPILER_PATH'
-DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
 
 # We may introduce some new warnings after rebasing and we need to disable them
 # before we fix those warnings.
@@ -209,7 +207,7 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
     env_out.communicate()
 
     if redirect_stderr:
-        redirect_key = STDERR_REDIRECT_KEY
+        redirect_key = compiler_wrapper.STDERR_REDIRECT_KEY
         if 'DIST_DIR' in env:
             redirect_path = os.path.join(env['DIST_DIR'], 'logs',
                                          'clang-error.log')
@@ -219,8 +217,9 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
             utils.remove(redirect_path)
         env[redirect_key] = redirect_path
         fallback_path = build.clang_prebuilt_bin_dir()
-        env[PREBUILT_COMPILER_PATH_KEY] = fallback_path
-        env[DISABLED_WARNINGS_KEY] = ' '.join(DISABLED_WARNINGS)
+        env[compiler_wrapper.PREBUILT_COMPILER_PATH_KEY] = fallback_path
+        env[compiler_wrapper.DISABLED_WARNINGS_KEY] = ' '.join(
+            DISABLED_WARNINGS)
 
     env['LLVM_PREBUILTS_VERSION'] = 'clang-dev'
     env['LLVM_RELEASE_VERSION'] = clang_version.long_version()
