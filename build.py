@@ -1563,14 +1563,6 @@ def install_winpthreads(bin_dir, lib_dir):
     install_file(lib_path, bin_install)
 
 
-def remove_unnecessary_files(lib_dir):
-    # We don't want to include .cmake files that might accidentally be used
-    # by other developer tools, since we aren't producing a full development
-    # version of LLVM.
-    cmake_dir = os.path.join(lib_dir, 'cmake')
-    utils.remove(cmake_dir)
-
-
 def remove_static_libraries(static_lib_dir, necessary_libs=None):
     if not necessary_libs:
         necessary_libs = {}
@@ -1707,7 +1699,6 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
-    remove_unnecessary_files(lib_dir)
 
     if is_windows:
         windows_necessary_lib_files = {
