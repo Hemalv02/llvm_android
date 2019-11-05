@@ -194,19 +194,23 @@ def rm_current_product_out():
 def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
                  with_tidy, profiler=None):
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
-    env_out = subprocess.Popen(
-        [
-            'bash', '-c', '. ./build/envsetup.sh;'
-            'lunch ' + target + ' >/dev/null && env'
-        ],
-        cwd=android_base,
-        stdout=subprocess.PIPE)
+    try:
+        env_out = subprocess.check_output(
+            [
+                'bash', '-c', '. ./build/envsetup.sh;'
+                'lunch ' + target + ' >/dev/null && env'
+            ],
+            cwd=android_base)
+    except subprocess.CalledProcessError:
+        raise RuntimeError('Failed to lunch ' + target)
+
     env = {}
-    for line in env_out.stdout:
+    for line in env_out.splitlines():
+        if not line:
+            continue
         (key, _, value) = line.partition('=')
         value = value.strip()
         env[key] = value
-    env_out.communicate()
 
     if redirect_stderr:
         redirect_key = STDERR_REDIRECT_KEY
