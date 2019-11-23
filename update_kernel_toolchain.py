@@ -132,7 +132,7 @@ Bug: %s
         green_print("Pushing manifest change")
         output = subprocess.check_output(["repo", "--no-pager", "info"],
                                          cwd=self.repo_dir)
-        repo_branch = output.split("\n")[0].split(" ")[2]
+        repo_branch = output.split("\n")[1].split(" ")[3].split("/")[2]
         command = "git push origin HEAD:refs/for/%s -o topic=%s" % (repo_branch,
                                                                     self.topic)
         if self.dry_run or self.no_push:
