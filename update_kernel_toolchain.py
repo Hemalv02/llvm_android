@@ -39,9 +39,9 @@ class KernelToolchainUpdater():
         self.parse_args()
         self.get_clang_versions()
         self.get_clang_sha()
-        self.kernel_dir = path.join(self.kernel_tree, "private", "msm-google")
-        self.repo_dir = path.join(self.kernel_tree, ".repo", "manifests")
-        self.topic = path.basename(self.kernel_tree) + "_" + self.clang_revision
+        self.kernel_dir = path.join(self.repo_checkout, self.kernel_relpath)
+        self.repo_dir = path.join(self.repo_checkout, ".repo", "manifests")
+        self.topic = path.basename(self.repo_checkout) + "_" + self.clang_revision
 
         self.resync_tree()
 
@@ -59,8 +59,11 @@ class KernelToolchainUpdater():
         parser = argparse.ArgumentParser()
         # TODO: some validation of the command line args would be nice.
         parser.add_argument(
-            "kernel_tree",
+            "repo_checkout",
             help="Source directory of the repo checkout of the kernel.")
+        parser.add_argument(
+            "kernel_relpath",
+            help="Path relative to repo checkout containing kernel source tree.")
         parser.add_argument(
             "clang_bin", help="Path to the new clang binary in AOSP.")
         parser.add_argument(
@@ -73,7 +76,8 @@ class KernelToolchainUpdater():
         args = parser.parse_args()
         self.bug_number = args.bug_number
         self.clang_bin = args.clang_bin
-        self.kernel_tree = args.kernel_tree
+        self.repo_checkout = args.repo_checkout
+        self.kernel_relpath = args.kernel_relpath
         self.dry_run = args.d
         self.no_push = args.n
 
@@ -176,7 +180,7 @@ Bug: %s
         remote = subprocess.check_output(["git", "--no-pager", "remote"],
                                          cwd=self.kernel_dir).strip()
         for project in ET.parse(xml_path).iter("project"):
-            if (project.get("path") == "private/msm-google"):
+            if (project.get("path") == self.kernel_relpath):
                 command = "git push %s HEAD:refs/for/%s -o topic=%s" % (
                     remote, project.get("revision"), self.topic)
                 if self.dry_run or self.no_push:
