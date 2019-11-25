@@ -39,18 +39,17 @@ class KernelToolchainUpdater():
         self.parse_args()
         self.get_clang_versions()
         self.get_clang_sha()
-        self.kernel_dir = path.join(self.repo_checkout, self.kernel_relpath)
+        self.kernel_dir = path.normpath(path.join(self.repo_checkout, self.kernel_relpath))
         self.repo_dir = path.join(self.repo_checkout, ".repo", "manifests")
         self.topic = path.basename(self.repo_checkout) + "_" + self.clang_revision
 
+        if path.basename(self.kernel_dir) is not 'common':
+            self.resync_tree()
+            self.update_sha()
+            self.commit_sha()
+            self.push_manifest_change()
+
         self.resync_tree()
-
-        self.update_sha()
-        self.commit_sha()
-        self.push_manifest_change()
-
-        self.resync_tree()
-
         self.update_kernel_toolchain()
         self.commit_kernel_toolchain()
         self.push_kernel_change()
