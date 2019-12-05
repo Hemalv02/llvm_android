@@ -137,7 +137,7 @@ def support_headers():
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 def clang_prebuilt_version():
-    return 'clang-r365631b'
+    return 'clang-r370808'
 
 
 def clang_prebuilt_base_dir():
