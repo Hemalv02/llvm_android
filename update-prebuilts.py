@@ -78,6 +78,10 @@ class ArgParser(argparse.ArgumentParser):
             default=False,
             help='Skip the cleanup, and leave intermediate files')
 
+        self.add_argument(
+            '--overwrite', action='store_true',
+            help='Remove/overwrite any existing prebuilt directories.')
+
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
@@ -134,7 +138,7 @@ def format_bug(bug):
 
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
-                 manifest):
+                 manifest, overwrite):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
     os.chdir(prebuilt_dir)
 
@@ -163,6 +167,13 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     # Install into clang-<svn_revision>.  Suffixes ('a', 'b', 'c' etc.), if any,
     # are included in the svn_revision.
     install_subdir = 'clang-' + svn_revision
+    if os.path.exists(install_subdir):
+        if overwrite:
+            logger().info('Removing/overwriting existing path: ' + install_subdir)
+            shutil.rmtree(install_subdir)
+        else:
+            logger().info('Cannot remove/overwrite existing path: ' + install_subdir)
+            sys.exit(1)
     os.rename(extract_subdir, install_subdir)
 
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
@@ -225,7 +236,7 @@ def main():
 
         for host in hosts:
             update_clang(host, args.build, args.use_current_branch,
-                         download_dir, args.bug, manifest)
+                         download_dir, args.bug, manifest, args.overwrite)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
