@@ -226,7 +226,7 @@ def main():
     hosts = ['darwin-x86', 'linux-x86', 'windows-x86']
     clang_pattern = 'clang-*.tar.bz2'
     manifest = 'manifest_{}.xml'.format(args.build)
-    branch = 'aosp-llvm-toolchain'
+    branch = BRANCH
 
     try:
         if do_fetch:
