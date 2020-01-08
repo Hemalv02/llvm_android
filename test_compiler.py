@@ -238,8 +238,12 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
         # Build only a subset of targets and collect profiles
         modules = ['libc', 'libLLVM_android-host64']
 
+        # Set the environment variable specifying where the profile file gets
+        # written.  Also set ALLOW_NINJA_ENV so that soong propagates this
+        # variable to the toolchain.
         key, val = profiler.getProfileFileEnvVar()
         env[key] = val
+        env['ALLOW_NINJA_ENV'] = 'true'
 
     modulesList = ' '.join(modules)
     print 'Start building target %s and modules %s.' % (target, modulesList)
