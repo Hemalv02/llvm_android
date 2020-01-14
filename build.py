@@ -1651,6 +1651,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         'llvm-objdump' + ext,
         'llvm-profdata' + ext,
         'llvm-ranlib' + ext,
+        'llvm-rc' + ext,
         'llvm-readelf' + ext,
         'llvm-readobj' + ext,
         'llvm-size' + ext,
