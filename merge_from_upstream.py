@@ -24,10 +24,16 @@ import sys
 from utils import *
 
 
+# The last llvm-svn number and sha found in aosp/upstream-master
+LAST_REVISION = 375505
+LAST_SHA = '186155b89c2d2a2f62337081e3ca15f676c9434b'
+
+# Length of sha returned by git log --oneline.
+MIN_SHA_LENGTH = 11
+
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        'revision', help='Revision number of llvm source.', type=int)
+    parser.add_argument('sha', help='aosp/upstream-master SHA to be merged.')
     parser.add_argument(
         '--create-new-branch',
         action='store_true',
@@ -46,14 +52,18 @@ def sync_upstream_branch(path):
     subprocess.check_call(['repo', 'sync', '.'], cwd=path)
 
 
-def merge_projects(revision, create_new_branch, dry_run):
+def merge_projects(sha, create_new_branch, dry_run):
+    if len(sha) < MIN_SHA_LENGTH:
+        raise LookupError('sha %s must have at least %d characters.'
+                          % (sha, MIN_SHA_LENGTH))
     path = llvm_path()
     if not dry_run:
         sync_upstream_branch(path)
-    sha = get_commit_hash(revision, path)
-    if sha is None:
-        raise LookupError('found no sha for %s.' % (revision))
-    print('Project llvm-project git hash: %s' % sha)
+    commits = get_upstream_commits(path)
+    if sha[:MIN_SHA_LENGTH] not in commits:
+        raise LookupError('sha %s not found in aosp/upstream-master' % sha)
+    revision = commits[sha[:MIN_SHA_LENGTH]]
+    print('Project llvm-project svn: %d  sha: %s' % (revision, sha))
 
     if create_new_branch:
         branch_name = 'merge-upstream-r%s' % revision
@@ -71,6 +81,9 @@ def merge_projects(revision, create_new_branch, dry_run):
 
     # Check changes since the previous merge point
     reapplyList = []
+    print('Found %s changes since the last tag llvm-svn.%s'
+          % (numChanges, svnNum))
+    hasUnknownPatch = False
     for i in range(int(numChanges) - 1, -1, -1):
         changeLog = subprocess.check_output([
             'git', 'show', 'HEAD~' + str(i), '--quiet', '--format=%h%x1f%B%x1e'
@@ -78,9 +91,25 @@ def merge_projects(revision, create_new_branch, dry_run):
                                             cwd=path,
                                             universal_newlines=True)
         changeLog = changeLog.strip('\n\x1e')
-        patchSha, patchRev = parse_log(changeLog)
-        if patchRev is None or patchRev > revision:
-            reapplyList.append(patchSha)
+        patchSha, patchRev, cherryPickSha = parse_log(changeLog, commits)
+        if patchRev is None:
+            if not cherryPickSha:
+                print 'To reapply local change ' + patchSha
+                reapplyList.append(patchSha)
+            else:
+                print('Unknown cherry pick, patchSha=%s cherryPickSha=%s'
+                      % (patchSha, cherryPickSha))
+                hasUnknownPatch = True
+        else:
+            if patchRev > revision:
+                print 'To reapply ' + patchSha + ' ' + str(patchRev)
+                reapplyList.append(patchSha)
+            else:
+                print 'To skip ' + patchSha + ' ' + str(patchRev)
+
+    if hasUnknownPatch:
+        print 'Abort, cannot merge with unknown patch!'
+        sys.exit(1)
 
     # Reset to previous branch point, if necessary
     if int(numChanges) > 0:
@@ -151,41 +180,44 @@ def merge_projects(revision, create_new_branch, dry_run):
         print
 
 
-def get_commit_hash(revision, path):
-    # Get sha and commit message body for each log.
-    subprocess.check_call(['git', 'fetch', 'aosp'], cwd=path)
-    p = subprocess.Popen(
-        ['git', 'log', 'aosp/upstream-master', '--format=%h%x1f%B%x1e'],
-        stdout=subprocess.PIPE,
-        cwd=path)
-    (log, _) = p.communicate()
-    if p.returncode != 0:
-        raise LookupError('git log for path: %s failed!' % path)
-
-    # Log will be in reversed order.
-    log = log.strip('\n\x1e').split('\x1e')
-
-    for commit_msg in log:
-        (sha, cur_revision) = parse_log(commit_msg)
-        if cur_revision == revision:
-            return sha
-    raise LookupError('could not find an upstream sha corresponding to %s' %
-                      revision)
-
-
-def parse_log(raw_log):
+def parse_log(raw_log, commits):
     log = raw_log.strip().split('\x1f')
+    cherryPickSha = ''
     # Extract revision number from log data.
-    revision_string = log[1].strip().split('\n')[-1]
-    revision = re.search(r'llvm-svn: (\d+)', revision_string)
-    if revision is None:
-        return (log[0], None)
-    return (log[0], int(revision.group(1)))
+    foundRevision = 0
+    for line in log[1].strip().split('\n'):
+        tmp = re.search(r'^llvm-svn: (\d+)$', line)
+        if tmp is not None:
+            foundRevision = int(tmp.group(1))
+        else:
+            tmp = re.search(r'\(cherry picked from commit (.+)\)', line)
+            if tmp is not None:
+                cherryPickSha = tmp.group(1)
+    if foundRevision:
+        return (log[0], foundRevision, cherryPickSha)
+    if cherryPickSha and cherryPickSha[:MIN_SHA_LENGTH] in commits:
+        return (log[0], commits[cherryPickSha[:MIN_SHA_LENGTH]], cherryPickSha)
+    return (log[0], None, cherryPickSha)
+
+
+def get_upstream_commits(path):
+    subprocess.check_call(['git', 'fetch', 'aosp'], cwd=path)
+    lines = subprocess.check_output([
+        'git', 'log', '--first-parent', '--oneline',
+        LAST_SHA + '..aosp/upstream-master'
+    ], cwd=path, universal_newlines=True).strip('\n\x1e')
+    lines = lines.strip().split('\n')
+    commits = {}
+    svnNum = LAST_REVISION + len(lines)
+    for line in lines:
+        commits[line.split()[0]] = svnNum
+        svnNum -= 1
+    return commits
 
 
 def main():
     args = parse_args()
-    merge_projects(args.revision, args.create_new_branch, args.dry_run)
+    merge_projects(args.sha, args.create_new_branch, args.dry_run)
 
 
 if __name__ == '__main__':
