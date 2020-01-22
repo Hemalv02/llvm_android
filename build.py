@@ -726,6 +726,7 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
         libomp_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         libomp_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
         libomp_defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
+        libomp_defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         libomp_defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if is_shared else 'FALSE'
 
         # Minimum version for OpenMP's CMake is too low for the CMP0056 policy
@@ -1321,6 +1322,7 @@ def build_stage2(stage1_install,
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
     stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
+    stage2_extra_defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
     stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
 
     set_lldb_flags(stage2_install, utils.build_os_type(), stage2_extra_defines,
