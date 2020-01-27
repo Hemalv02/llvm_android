@@ -1418,13 +1418,13 @@ def build_stage2(stage1_install,
         extra_env=stage2_extra_env)
 
 
-def build_runtimes(stage2_install, args):
-    if args.skip_sysroots:
+def build_runtimes(stage2_install, args=None):
+    if args is not None and args.skip_sysroots:
         logger().info('Skip libcxxabi and other sysroot libraries')
     else:
         create_sysroots()
     version = extract_clang_version(stage2_install)
-    if args.skip_compiler_rt:
+    if args is not None and args.skip_compiler_rt:
         logger().info('Skip compiler-rt')
     else:
         build_crts(stage2_install, version)
@@ -1432,25 +1432,25 @@ def build_runtimes(stage2_install, args):
         # 32-bit host crts are not needed for Darwin
         if utils.host_is_linux():
             build_crts_host_i686(stage2_install, version)
-    if args.skip_libfuzzers:
+    if args is not None and args.skip_libfuzzers:
         logger().info('Skip libfuzzers')
     else:
         build_libfuzzers(stage2_install, version)
         build_libfuzzers(stage2_install, version, ndk_cxx=True)
-    if args.skip_libomp:
+    if args is not None and args.skip_libomp:
         logger().info('Skip libomp')
     else:
         build_libomp(stage2_install, version)
         build_libomp(stage2_install, version, ndk_cxx=True)
         build_libomp(stage2_install, version, ndk_cxx=True, is_shared=True)
-    if args.skip_lldb:
+    if args is not None and args.skip_lldb:
         logger().info('Skip lldb server')
     else:
         build_lldb_server(stage2_install, version, ndk_cxx=True)
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(stage2_install, version)
-    if args.skip_asan:
+    if args is not None and args.skip_asan:
         logger().info('Skip asan test, map, symlink')
     else:
         build_asan_test(stage2_install)
