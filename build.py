@@ -29,6 +29,7 @@ import textwrap
 import utils
 
 import android_version
+import source_manager
 from version import Version
 
 import mapfile
@@ -1918,6 +1919,12 @@ def parse_args():
         default=False,
         help='Fail if expected PGO profile doesn\'t exist')
 
+    parser.add_argument(
+        '--build-llvm-next',
+        action='store_true',
+        default=False,
+        help='Build next LLVM revision (android_version.py:svn_revision_next)')
+
     return parser.parse_args()
 
 
@@ -1946,6 +1953,12 @@ def main():
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
     windows64_install = utils.out_path('windows-x86-64-install')
+
+    # Clone sources to be built and optionally apply patches.  Currently
+    # text-based patches are only applied with the --build-llvm-next option.
+    source_manager.setup_sources(source_dir=utils.llvm_path(),
+                                 build_llvm_next=args.build_llvm_next,
+                                 patch_sources=args.build_llvm_next)
 
     # Build the stage1 Clang for the build host
     instrumented = utils.host_is_linux() and args.build_instrumented

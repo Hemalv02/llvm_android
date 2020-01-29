@@ -24,6 +24,7 @@ import subprocess
 
 import build
 import compiler_wrapper
+import source_manager
 import utils
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
@@ -292,6 +293,13 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
 def build_clang(instrumented=False, pgo=True):
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
+
+    # Clone sources to be built.  test_compiler doesn't build llvm_next and
+    # doesn't need to patch sources.
+    source_manager.setup_sources(source_dir=utils.llvm_path(),
+                                 build_llvm_next=False,
+                                 patch_sources=False)
+
 
     # LLVM tool llvm-profdata from stage1 is needed to merge the collected
     # profiles.  Build all LLVM tools if building instrumented stage2

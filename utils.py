@@ -49,13 +49,13 @@ def android_path(*args):
     return os.path.realpath(os.path.join(THIS_DIR, '../../', *args))
 
 
-def llvm_path(*args):
-    return os.path.realpath(os.path.join(THIS_DIR, '../llvm-project', *args))
-
-
 def out_path(*args):
     out_dir = os.environ.get('OUT_DIR', android_path('out'))
     return os.path.realpath(os.path.join(out_dir, *args))
+
+
+def llvm_path(*args):
+    return out_path('llvm-project', *args)
 
 
 def build_os_type():
