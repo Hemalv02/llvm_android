@@ -1,0 +1,32 @@
+From 6e765c10313d15c02ab29977a82938f66742c3a9 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <pcc@google.com>
+Date: Thu, 21 Nov 2019 17:51:38 -0800
+Subject: ANDROID: fix incorrect cherry-pick of r373035
+
+The change r373035 had an unexpected dependency on r372338,
+which would have changed the type of the third argument of
+int_hwasan_check_memaccess_shortgranules from "imm" to "timm". Since we
+don't have r372338, change the type to "imm" to match the pre-r372338 code.
+
+Bug: 144955929
+Change-Id: I709fde8491b66faef1d12af652a4360f4c0c6ee9
+---
+ llvm/lib/Target/AArch64/AArch64InstrInfo.td | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.td b/llvm/lib/Target/AArch64/AArch64InstrInfo.td
+index 383ad684b6e..f2ce2def176 100644
+--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.td
++++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.td
+@@ -802,7 +802,7 @@ def HWASAN_CHECK_MEMACCESS : Pseudo<
+   Sched<[]>;
+ def HWASAN_CHECK_MEMACCESS_SHORTGRANULES : Pseudo<
+   (outs), (ins GPR64noip:$ptr, i32imm:$accessinfo),
+-  [(int_hwasan_check_memaccess_shortgranules X9, GPR64noip:$ptr, (i32 timm:$accessinfo))]>,
++  [(int_hwasan_check_memaccess_shortgranules X9, GPR64noip:$ptr, (i32 imm:$accessinfo))]>,
+   Sched<[]>;
+ }
+ 
+-- 
+2.25.0.341.g760bfbb309-goog
+

@@ -1,0 +1,163 @@
+From 847a57651e32a2933aba188d3078aeb1a9f42c28 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Mon, 30 Sep 2019 20:23:00 +0000
+Subject: [UPSTREAM] ELF: Don't merge SHF_LINK_ORDER sections for different
+ output sections in relocatable links.
+
+Merging SHF_LINK_ORDER sections can affect semantics if the sh_link
+fields point to different sections.
+
+Specifically, for SHF_LINK_ORDER sections, the sh_link field acts as a reverse
+dependency from the linked section, causing the SHF_LINK_ORDER section to
+be included if the linked section is included. Merging sections with different
+sh_link fields will cause the entire contents of the SHF_LINK_ORDER section
+to be associated with a single (arbitrarily chosen) output section, whereas the
+correct semantics are for the individual pieces of the SHF_LINK_ORDER section
+to be associated with their linked output sections. As a result we can end up
+incorrectly dropping SHF_LINK_ORDER section contents or including the wrong
+section contents, depending on which linked sections were chosen.
+
+Differential Revision: https://reviews.llvm.org/D68094
+
+llvm-svn: 373255
+(cherry picked from commit 97e251e05a46f5b90af5a0bebebdda98e7fd98ab)
+
+Change-Id: Ic46959e5ee2540c9423a19cadea4e1038c88c6f5
+---
+ lld/ELF/LinkerScript.cpp             | 60 +++++++++++++++++++---------
+ lld/test/ELF/relocatable-linkorder.s | 36 +++++++++++++++++
+ 2 files changed, 78 insertions(+), 18 deletions(-)
+ create mode 100644 lld/test/ELF/relocatable-linkorder.s
+
+diff --git a/lld/ELF/LinkerScript.cpp b/lld/ELF/LinkerScript.cpp
+index 533f2f6ad73..70efc22829c 100644
+--- a/lld/ELF/LinkerScript.cpp
++++ b/lld/ELF/LinkerScript.cpp
+@@ -645,6 +645,20 @@ addInputSec(StringMap<TinyPtrVector<OutputSection *>> &map,
+   for (OutputSection *sec : v) {
+     if (sec->partition != isec->partition)
+       continue;
++
++    if (config->relocatable && (isec->flags & SHF_LINK_ORDER)) {
++      // Merging two SHF_LINK_ORDER sections with different sh_link fields will
++      // change their semantics, so we only merge them in -r links if they will
++      // end up being linked to the same output section. The casts are fine
++      // because everything in the map was created by the orphan placement code.
++      auto *firstIsec = cast<InputSectionBase>(
++          cast<InputSectionDescription>(sec->sectionCommands[0])
++              ->sectionBases[0]);
++      if (firstIsec->getLinkOrderDep()->getOutputSection() !=
++          isec->getLinkOrderDep()->getOutputSection())
++        continue;
++    }
++
+     sec->recordSection(isec);
+     return nullptr;
+   }
+@@ -659,26 +673,30 @@ void LinkerScript::addOrphanSections() {
+   StringMap<TinyPtrVector<OutputSection *>> map;
+   std::vector<OutputSection *> v;
+ 
+-  auto add = [&](InputSectionBase *s) {
+-    if (!s->isLive() || s->parent)
+-      return;
+-
+-    StringRef name = getOutputSectionName(s);
+-
+-    if (config->orphanHandling == OrphanHandlingPolicy::Error)
+-      error(toString(s) + " is being placed in '" + name + "'");
+-    else if (config->orphanHandling == OrphanHandlingPolicy::Warn)
+-      warn(toString(s) + " is being placed in '" + name + "'");
+-
+-    if (OutputSection *sec = findByName(sectionCommands, name)) {
+-      sec->recordSection(s);
+-      return;
++  std::function<void(InputSectionBase *)> add;
++  add = [&](InputSectionBase *s) {
++    if (s->isLive() && !s->parent) {
++      StringRef name = getOutputSectionName(s);
++
++      if (config->orphanHandling == OrphanHandlingPolicy::Error)
++        error(toString(s) + " is being placed in '" + name + "'");
++      else if (config->orphanHandling == OrphanHandlingPolicy::Warn)
++        warn(toString(s) + " is being placed in '" + name + "'");
++
++      if (OutputSection *sec = findByName(sectionCommands, name)) {
++        sec->recordSection(s);
++      } else {
++        if (OutputSection *os = addInputSec(map, s, name))
++          v.push_back(os);
++        assert(isa<MergeInputSection>(s) ||
++               s->getOutputSection()->sectionIndex == UINT32_MAX);
++      }
+     }
+ 
+-    if (OutputSection *os = addInputSec(map, s, name))
+-      v.push_back(os);
+-    assert(isa<MergeInputSection>(s) ||
+-           s->getOutputSection()->sectionIndex == UINT32_MAX);
++    if (config->relocatable)
++      for (InputSectionBase *depSec : s->dependentSections)
++        if (depSec->flags & SHF_LINK_ORDER)
++          add(depSec);
+   };
+ 
+   // For futher --emit-reloc handling code we need target output section
+@@ -686,6 +704,12 @@ void LinkerScript::addOrphanSections() {
+   // to create target sections first. We do not want priority handling
+   // for synthetic sections because them are special.
+   for (InputSectionBase *isec : inputSections) {
++    // In -r links, SHF_LINK_ORDER sections are added while adding their parent
++    // sections because we need to know the parent's output section before we
++    // can select an output section for the SHF_LINK_ORDER section.
++    if (config->relocatable && (isec->flags & SHF_LINK_ORDER))
++      continue;
++
+     if (auto *sec = dyn_cast<InputSection>(isec))
+       if (InputSectionBase *rel = sec->getRelocatedSection())
+         if (auto *relIS = dyn_cast_or_null<InputSectionBase>(rel->parent))
+diff --git a/lld/test/ELF/relocatable-linkorder.s b/lld/test/ELF/relocatable-linkorder.s
+new file mode 100644
+index 00000000000..0a7dfc6c12a
+--- /dev/null
++++ b/lld/test/ELF/relocatable-linkorder.s
+@@ -0,0 +1,36 @@
++// REQUIRES: x86
++// RUN: llvm-mc %s -o %t.o -filetype=obj --triple=x86_64-unknown-linux
++// RUN: ld.lld %t.o -o %t -r
++// RUN: llvm-readelf -S %t | FileCheck --check-prefix=DIFFERENT %s
++// RUN: echo 'SECTIONS { .text.f1 : { *(.text.f1) } .text.f2 : { *(.text.f2) } }' > %t.lds
++// RUN: ld.lld %t.o -o %t -r %t.lds
++// RUN: llvm-readelf -S %t | FileCheck --check-prefix=DIFFERENT %s
++// RUN: echo 'SECTIONS { .text : { *(.text.f1) *(.text.f2) } }' > %t.lds
++// RUN: ld.lld %t.o -o %t -r %t.lds
++// RUN: llvm-readelf -S -x foo %t | FileCheck --check-prefix=SAME %s
++
++/// Test that SHF_LINK_ORDER sections with different linked sections
++/// aren't merged.
++
++.section .text.f1,"ax",@progbits
++.globl f1
++f1:
++ret
++
++.section .text.f2,"ax",@progbits
++.globl f2
++f2:
++ret
++
++// SAME: foo
++// DIFFERENT: foo
++.section foo,"ao",@progbits,.text.f2,unique,2
++.quad 2
++
++// SAME-NOT: foo
++// DIFFERENT: foo
++.section foo,"ao",@progbits,.text.f1,unique,1
++.quad 1
++
++// SAME: Hex dump of section 'foo':
++// SAME: 01000000 00000000 02000000 00000000
+-- 
+2.25.0.341.g760bfbb309-goog
+

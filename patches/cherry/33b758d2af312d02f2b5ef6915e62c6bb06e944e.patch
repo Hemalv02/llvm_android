@@ -1,0 +1,43 @@
+From 1b53a0eeee76cf92a5134ad74857190514bfb06b Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Fri, 18 Oct 2019 22:51:38 +0000
+Subject: [UPSTREAM] hwasan: Add missing SANITIZER_INTERFACE_ATTRIBUTE on
+ __hwasan_personality_wrapper.
+
+Differential Revision: https://reviews.llvm.org/D69201
+
+llvm-svn: 375298
+(cherry picked from commit 33b758d2af312d02f2b5ef6915e62c6bb06e944e)
+Bug: 139945549
+Signed-off-by: Nick Desaulniers <ndesaulniers@google.com>
+
+Change-Id: I225890d7786250d01b3b2914ad626c13dac52ae2
+---
+ compiler-rt/lib/hwasan/hwasan_exceptions.cpp | 11 +++++++----
+ 1 file changed, 7 insertions(+), 4 deletions(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_exceptions.cpp b/compiler-rt/lib/hwasan/hwasan_exceptions.cpp
+index 57a1438064c..169e7876cb5 100644
+--- a/compiler-rt/lib/hwasan/hwasan_exceptions.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_exceptions.cpp
+@@ -32,10 +32,13 @@ typedef _Unwind_Reason_Code PersonalityFn(int version, _Unwind_Action actions,
+ typedef _Unwind_Word GetGRFn(_Unwind_Context* context, int index);
+ typedef _Unwind_Word GetCFAFn(_Unwind_Context* context);
+ 
+-extern "C" _Unwind_Reason_Code __hwasan_personality_wrapper(
+-    int version, _Unwind_Action actions, uint64_t exception_class,
+-    _Unwind_Exception* unwind_exception, _Unwind_Context* context,
+-    PersonalityFn* real_personality, GetGRFn* get_gr, GetCFAFn* get_cfa) {
++extern "C" SANITIZER_INTERFACE_ATTRIBUTE _Unwind_Reason_Code
++__hwasan_personality_wrapper(int version, _Unwind_Action actions,
++                             uint64_t exception_class,
++                             _Unwind_Exception* unwind_exception,
++                             _Unwind_Context* context,
++                             PersonalityFn* real_personality, GetGRFn* get_gr,
++                             GetCFAFn* get_cfa) {
+   _Unwind_Reason_Code rc;
+   if (real_personality)
+     rc = real_personality(version, actions, exception_class, unwind_exception,
+-- 
+2.25.0.341.g760bfbb309-goog
+

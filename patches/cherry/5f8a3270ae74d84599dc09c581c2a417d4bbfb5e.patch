@@ -1,0 +1,43 @@
+From 29ef7c2bdaeeab23c770a30feb924391504c43ef Mon Sep 17 00:00:00 2001
+From: Haibo Huang <hhb@google.com>
+Date: Wed, 18 Sep 2019 01:00:12 +0000
+Subject: [UPSTREAM] Cache PYTHON_EXECUTABLE for windows
+
+Summary: This way it can be overwritten when cross compiling.
+
+Subscribers: mgorny, lldb-commits
+
+Tags: #lldb
+
+Differential Revision: https://reviews.llvm.org/D67641
+
+llvm-svn: 372194
+(cherry picked from commit 5f8a3270ae74d84599dc09c581c2a417d4bbfb5e)
+
+Change-Id: I0c6e4958f2aaf2f23efeb4f05840f3942d5c24e4
+---
+ lldb/cmake/modules/LLDBConfig.cmake | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/lldb/cmake/modules/LLDBConfig.cmake b/lldb/cmake/modules/LLDBConfig.cmake
+index 792fd520741..e6e78a83182 100644
+--- a/lldb/cmake/modules/LLDBConfig.cmake
++++ b/lldb/cmake/modules/LLDBConfig.cmake
+@@ -250,10 +250,10 @@ function(find_python_libs_windows)
+   endif()
+ 
+   # Set the same variables as FindPythonInterp and FindPythonLibs.
+-  set(PYTHON_EXECUTABLE         "${PYTHON_EXECUTABLE}"          PARENT_SCOPE)
+-  set(PYTHON_LIBRARY            "${PYTHON_LIBRARY}"             PARENT_SCOPE)
+-  set(PYTHON_DLL                "${PYTHON_DLL}"                 PARENT_SCOPE)
+-  set(PYTHON_INCLUDE_DIR        "${PYTHON_INCLUDE_DIR}"         PARENT_SCOPE)
++  set(PYTHON_EXECUTABLE         "${PYTHON_EXECUTABLE}"          CACHE PATH "")
++  set(PYTHON_LIBRARY            "${PYTHON_LIBRARY}"             CACHE PATH "")
++  set(PYTHON_DLL                "${PYTHON_DLL}"                 CACHE PATH "")
++  set(PYTHON_INCLUDE_DIR        "${PYTHON_INCLUDE_DIR}"         CACHE PATH "")
+   set(PYTHONLIBS_VERSION_STRING "${PYTHONLIBS_VERSION_STRING}"  PARENT_SCOPE)
+   set(PYTHON_VERSION_STRING     "${PYTHON_VERSION_STRING}"      PARENT_SCOPE)
+   set(PYTHON_VERSION_MAJOR      "${PYTHON_VERSION_MAJOR}"       PARENT_SCOPE)
+-- 
+2.25.0.341.g760bfbb309-goog
+

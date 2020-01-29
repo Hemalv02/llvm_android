@@ -1,0 +1,146 @@
+From cc916e05aded752f16d770aae61eed384bf53388 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <maskray@google.com>
+Date: Fri, 6 Sep 2019 15:57:44 +0000
+Subject: [UPSTREAM] Reland D66717 [ELF] Do not ICF two sections with different
+ output sections (by SECTIONS commands)
+
+Recommit r370635 (reverted by r371202), with one change: move addOrphanSections() before ICF.
+
+Before, orphan sections in two different partitions may be folded and
+moved to the main partition.
+
+Now, InputSection->OutputSection assignment for orphans happens before
+ICF. ICF does not fold input sections with different output sections.
+
+With the PR43241 reproduce,
+`llvm-objcopy --extract-partition libvr.so libchrome__combined.so libvr.so` => no error
+
+Updated description:
+
+Fixes PR39418. Complements D47241 (the non-linker-script case).
+
+processSectionCommands() assigns input sections to output sections.
+ICF is called before it, so .text.foo and .text.bar may be folded even if
+their output sections are made different by SECTIONS commands.
+
+```
+markLive<ELFT>()
+doIcf<ELFT>()                      // During ICF, we don't know the output sections
+writeResult()
+  combineEhSections<ELFT>()
+  script->processSectionCommands() // InputSection -> OutputSection assignment
+```
+
+This patch splits processSectionCommands() into processSectionCommands()
+and processSymbolAssignments(), and moves
+processSectionCommands()/addOrphanSections() before ICF:
+
+```
+markLive<ELFT>()
+combineEhSections<ELFT>()
+script->processSectionCommands()
+script->addOrphanSections();
+doIcf<ELFT>()                      // should remove folded input sections
+writeResult()
+  script->processSymbolAssignments()
+```
+
+An alternative approach is to unfold a section `sec` in
+processSectionCommands() when we find `sec` and `sec->repl` belong to
+different output sections. I feel this patch is superior because this
+can fold more sections and the decouple of
+SectionCommand/SymbolAssignment gives flexibility:
+
+* An ExprValue can't be evaluated before its section is assigned to an
+  output section -> we can delete getOutputSectionVA and simplify
+  another place where we had to check if the output section is null.
+  Moreover, a case in linkerscript/early-assign-symbol.s can be handled
+  now.
+* processSectionCommands/processSymbolAssignments can be freely moved
+  around.
+
+llvm-svn: 371216
+(cherry picked from commit 8d30c1dcec2a935e0b1cffc26fdc6054ff101f53)
+
+Change-Id: I206ade1dac6953a54e7733661aa5057e2638c4d5
+---
+ lld/ELF/Driver.cpp           | 5 +++++
+ lld/ELF/ICF.cpp              | 4 ++--
+ lld/ELF/Writer.cpp           | 5 -----
+ lld/test/ELF/partition-icf.s | 7 ++++---
+ 4 files changed, 11 insertions(+), 10 deletions(-)
+
+diff --git a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+index 36cda3a1e3d..9cab10e49da 100644
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -1919,6 +1919,11 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
+   // Create output sections described by SECTIONS commands.
+   script->processSectionCommands();
+ 
++  // Linker scripts control how input sections are assigned to output sections.
++  // Input sections that were not handled by scripts are called "orphans", and
++  // they are assigned to output sections by the default rule. Process that.
++  script->addOrphanSections();
++
+   // Two input sections with different output sections should not be folded.
+   // ICF runs after processSectionCommands() so that we know the output sections.
+   if (config->icf != ICFLevel::None) {
+diff --git a/lld/ELF/ICF.cpp b/lld/ELF/ICF.cpp
+index a780ee12448..8664811a4a5 100644
+--- a/lld/ELF/ICF.cpp
++++ b/lld/ELF/ICF.cpp
+@@ -306,8 +306,8 @@ bool ICF<ELFT>::equalsConstant(const InputSection *a, const InputSection *b) {
+     return false;
+ 
+   // If two sections have different output sections, we cannot merge them.
+-  if (getOutputSectionName(a) != getOutputSectionName(b) ||
+-      a->getParent() != b->getParent())
++  assert(a->getParent() && b->getParent());
++  if (a->getParent() != b->getParent())
+     return false;
+ 
+   if (a->areRelocsRela)
+diff --git a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+index 50730f9c40f..92bcf520fa9 100644
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -534,11 +534,6 @@ template <class ELFT> void elf::createSyntheticSections() {
+ 
+ // The main function of the writer.
+ template <class ELFT> void Writer<ELFT>::run() {
+-  // Linker scripts controls how input sections are assigned to output sections.
+-  // Input sections that were not handled by scripts are called "orphans", and
+-  // they are assigned to output sections by the default rule. Process that.
+-  script->addOrphanSections();
+-
+   if (config->discard != DiscardPolicy::All)
+     copyLocalSymbols();
+ 
+diff --git a/lld/test/ELF/partition-icf.s b/lld/test/ELF/partition-icf.s
+index 58be0c1ad00..e8608c899fc 100644
+--- a/lld/test/ELF/partition-icf.s
++++ b/lld/test/ELF/partition-icf.s
+@@ -3,15 +3,16 @@
+ // RUN: ld.lld %t.o -o %t --export-dynamic --gc-sections --icf=all
+ // RUN: llvm-readelf -S -s %t | FileCheck %s
+ 
+-// CHECK: [[MAIN:[0-9]+]]] .text
++// CHECK: part1
+ // CHECK: [[P1:[0-9]+]]] .text
++// CHECK: part2
+ // CHECK: [[P2:[0-9]+]]] .text
+ 
+ // CHECK: Symbol table '.symtab'
+ // CHECK:   [[P1]] f1
+ // CHECK:   [[P2]] f2
+-// CHECK: [[MAIN]] g1
+-// CHECK: [[MAIN]] g2
++// CHECK:   [[P1]] g1
++// CHECK:   [[P2]] g2
+ 
+ .section .llvm_sympart.f1,"",@llvm_sympart
+ .asciz "part1"
+-- 
+2.25.0.341.g760bfbb309-goog
+

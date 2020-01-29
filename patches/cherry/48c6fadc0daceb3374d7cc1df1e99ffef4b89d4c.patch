@@ -1,0 +1,93 @@
+From 783e60838278033116c246ca1bf2422fef422845 Mon Sep 17 00:00:00 2001
+From: Yuanfang Chen <yuanfang.chen@sony.com>
+Date: Wed, 4 Sep 2019 20:58:15 +0000
+Subject: [UPSTREAM][DebugInfo] Emit DW_TAG_enumeration_type for referenced
+ global enumerator.
+
+This essentially reverts changes from r361400 while keeping behavior for
+CodeView.
+
+Reviewers: akhuang, rnk, probinson
+
+Reviewed by: rnk
+
+Subscribers: cfe-commits
+
+Tags: #clang
+
+Differential Revision: https://reviews.llvm.org/D67141
+
+llvm-svn: 370981
+(cherry picked from commit 48c6fadc0daceb3374d7cc1df1e99ffef4b89d4c)
+
+Change-Id: I222b6683966c7d7b622caa32f098e7636f5f3b91
+---
+ clang/lib/CodeGen/CGDebugInfo.cpp | 26 +++++++++++++++++---------
+ clang/test/CodeGen/enum2.c        |  9 ++++++++-
+ 2 files changed, 25 insertions(+), 10 deletions(-)
+
+diff --git a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
+index b1f82d47d44..e36f6932f86 100644
+--- a/clang/lib/CodeGen/CGDebugInfo.cpp
++++ b/clang/lib/CodeGen/CGDebugInfo.cpp
+@@ -4438,19 +4438,27 @@ void CGDebugInfo::EmitGlobalVariable(const ValueDecl *VD, const APValue &Init) {
+   StringRef Name = VD->getName();
+   llvm::DIType *Ty = getOrCreateType(VD->getType(), Unit);
+ 
+-  // Do not use global variables for enums, unless in CodeView.
+   if (const auto *ECD = dyn_cast<EnumConstantDecl>(VD)) {
+     const auto *ED = cast<EnumDecl>(ECD->getDeclContext());
+     assert(isa<EnumType>(ED->getTypeForDecl()) && "Enum without EnumType?");
+-    (void)ED;
+-
+-    // If CodeView, emit enums as global variables, unless they are defined
+-    // inside a class. We do this because MSVC doesn't emit S_CONSTANTs for
+-    // enums in classes, and because it is difficult to attach this scope
+-    // information to the global variable.
+-    if (!CGM.getCodeGenOpts().EmitCodeView ||
+-        isa<RecordDecl>(ED->getDeclContext()))
++
++    if (CGM.getCodeGenOpts().EmitCodeView) {
++      // If CodeView, emit enums as global variables, unless they are defined
++      // inside a class. We do this because MSVC doesn't emit S_CONSTANTs for
++      // enums in classes, and because it is difficult to attach this scope
++      // information to the global variable.
++      if (isa<RecordDecl>(ED->getDeclContext()))
++        return;
++    } else {
++      // If not CodeView, emit DW_TAG_enumeration_type if necessary. For
++      // example: for "enum { ZERO };", a DW_TAG_enumeration_type is created the
++      // first time `ZERO` is referenced in a function.
++      llvm::DIType *EDTy =
++          getOrCreateType(QualType(ED->getTypeForDecl(), 0), Unit);
++      assert (EDTy->getTag() == llvm::dwarf::DW_TAG_enumeration_type);
++      (void)EDTy;
+       return;
++    }
+   }
+ 
+   llvm::DIScope *DContext = nullptr;
+diff --git a/clang/test/CodeGen/enum2.c b/clang/test/CodeGen/enum2.c
+index 9729ad0b4b0..f41d5a18d02 100644
+--- a/clang/test/CodeGen/enum2.c
++++ b/clang/test/CodeGen/enum2.c
+@@ -1,4 +1,5 @@
+-// RUN: %clang_cc1 -triple i386-unknown-unknown %s -debug-info-kind=limited -emit-llvm -o /dev/null
++// RUN: %clang_cc1 -triple i386-unknown-unknown %s -debug-info-kind=limited -emit-llvm -o - | FileCheck %s
++
+ int v;
+ enum e { MAX };
+ 
+@@ -6,3 +7,9 @@ void foo (void)
+ {
+   v = MAX;
+ }
++// CHECK: !DICompositeType(tag: DW_TAG_enumeration_type,
++// CHECK-SAME: baseType: ![[LONG:[0-9]+]]
++// CHECK-SAME: elements: ![[ELTS:[0-9]+]]
++// CHECK: ![[LONG]] = !DIBasicType(name: "unsigned int", size: 32, encoding: DW_ATE_unsigned)
++// CHECK: ![[ELTS]] = !{![[MAX:[0-9]+]]}
++// CHECK: ![[MAX]] = !DIEnumerator(name: "MAX", value: 0, isUnsigned: true)
+-- 
+2.25.0.341.g760bfbb309-goog
+

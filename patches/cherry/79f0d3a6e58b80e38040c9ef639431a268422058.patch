@@ -1,0 +1,68 @@
+From 77909601c9345f01ccd55a0fde43020cc398c9b1 Mon Sep 17 00:00:00 2001
+From: Eli Friedman <efriedma@quicinc.com>
+Date: Mon, 9 Sep 2019 18:29:27 +0000
+Subject: [UPSTREAM][IfConversion] Correctly handle cases where analyzeBranch
+ fails.
+
+If analyzeBranch fails, on some targets, the out parameters point to
+some blocks in the function. But we can't use that information, so make
+sure to clear it out.  (In some places in IfConversion, we assume that
+any block with a TrueBB is analyzable.)
+
+The change to the testcase makes it trigger a bug on builds without this
+fix: IfConvertDiamond tries to perform a followup "merge" operation,
+which isn't legal, and we somehow end up with a branch to a deleted MBB.
+I'm not sure how this doesn't crash the compiler.
+
+Differential Revision: https://reviews.llvm.org/D67306
+
+llvm-svn: 371434
+(cherry picked from commit 79f0d3a6e58b80e38040c9ef639431a268422058)
+
+Change-Id: Iad7dbf466c436dbe1a15915d1bf198c273e9a00a
+---
+ llvm/lib/CodeGen/IfConversion.cpp                           | 6 ++++++
+ llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir | 5 ++---
+ 2 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/llvm/lib/CodeGen/IfConversion.cpp b/llvm/lib/CodeGen/IfConversion.cpp
+index be30ad30016..99f59f2f946 100644
+--- a/llvm/lib/CodeGen/IfConversion.cpp
++++ b/llvm/lib/CodeGen/IfConversion.cpp
+@@ -912,6 +912,12 @@ void IfConverter::AnalyzeBranches(BBInfo &BBI) {
+   BBI.BrCond.clear();
+   BBI.IsBrAnalyzable =
+       !TII->analyzeBranch(*BBI.BB, BBI.TrueBB, BBI.FalseBB, BBI.BrCond);
++  if (!BBI.IsBrAnalyzable) {
++    BBI.TrueBB = nullptr;
++    BBI.FalseBB = nullptr;
++    BBI.BrCond.clear();
++  }
++
+   SmallVector<MachineOperand, 4> RevCond(BBI.BrCond.begin(), BBI.BrCond.end());
+   BBI.IsBrReversible = (RevCond.size() == 0) ||
+       !TII->reverseBranchCondition(RevCond);
+diff --git a/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir b/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir
+index 57636218403..a2218b149f1 100644
+--- a/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir
++++ b/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir
+@@ -1,4 +1,4 @@
+-# RUN: llc %s -o - -run-pass=if-converter | FileCheck %s
++# RUN: llc %s -o - -run-pass=if-converter -verify-machineinstrs | FileCheck %s
+ # Make sure we correctly if-convert blocks containing an INLINEASM_BR.
+ # CHECK: t2CMPri killed renamable $r2, 34
+ # CHECK-NEXT: $r0 = t2MOVi 2, 1, $cpsr, $noreg
+@@ -48,9 +48,8 @@ body:             |
+     t2B %bb.3, 14, $noreg
+   
+   bb.3:
+-    successors: %bb.4(0x80000000)
+-  
+     INLINEASM &"", 1
++    $sp = t2LDMIA_RET $sp, 14, $noreg, def $r4, def $pc
+   
+   bb.4.l_yes (address-taken):
+     $sp = t2LDMIA_RET $sp, 14, $noreg, def $r4, def $pc
+-- 
+2.25.0.341.g760bfbb309-goog
+

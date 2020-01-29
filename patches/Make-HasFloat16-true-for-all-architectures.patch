@@ -1,0 +1,39 @@
+From 139850ec205acb3130a5af408d27c5efd69308e5 Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Mon, 3 Jun 2019 11:17:38 -0700
+Subject: Make HasFloat16 true for all architectures
+
+Upstream Clang removed _Float16 literal support on non-ARM targets.
+frameworks/ml/nn makes heavy use of _Float16 on x86, causing it fail to
+build.
+
+Make HasFloat16 true for now in Android toolchain so that NN could
+continue to build.
+
+Bug: 127391056
+Change-Id: I51ab64718a4b809fd175c54f07eb92aab3b687c5
+---
+ clang/lib/Basic/TargetInfo.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/clang/lib/Basic/TargetInfo.cpp b/clang/lib/Basic/TargetInfo.cpp
+index 9a8783446ea..f6c5c677c76 100644
+--- a/clang/lib/Basic/TargetInfo.cpp
++++ b/clang/lib/Basic/TargetInfo.cpp
+@@ -34,7 +34,12 @@ TargetInfo::TargetInfo(const llvm::Triple &T) : TargetOpts(), Triple(T) {
+   NoAsmVariants = false;
+   HasLegalHalfType = false;
+   HasFloat128 = false;
+-  HasFloat16 = false;
++
++  // Android-changed: Make HasFloat16 available by default
++  // http://b/127391056
++  // HasFloat16 = false;
++  HasFloat16 = true;
++
+   PointerWidth = PointerAlign = 32;
+   BoolWidth = BoolAlign = 8;
+   IntWidth = IntAlign = 32;
+-- 
+2.25.0.341.g760bfbb309-goog
+

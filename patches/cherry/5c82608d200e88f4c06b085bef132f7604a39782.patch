@@ -1,0 +1,36 @@
+From 38bd33beb14d829335384301d58fcc9a31203a90 Mon Sep 17 00:00:00 2001
+From: Haibo Huang <hhb@google.com>
+Date: Sun, 22 Sep 2019 01:21:34 +0000
+Subject: [UPSTREAM] Use _WIN32 instead of _MSC_VER
+
+Summary: This way it works better with MinGW.
+
+Subscribers: mstorsjo, lldb-commits
+
+Tags: #lldb
+
+Differential Revision: https://reviews.llvm.org/D67887
+
+Change-Id: I59b15dc3e96ae0aaba9f03ce97adfc122195d380
+llvm-svn: 372493
+(cherry picked from commit 5c82608d200e88f4c06b085bef132f7604a39782)
+---
+ lldb/source/Core/IOHandler.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lldb/source/Core/IOHandler.cpp b/lldb/source/Core/IOHandler.cpp
+index 5394f16b7f9..9f47f1ca23d 100644
+--- a/lldb/source/Core/IOHandler.cpp
++++ b/lldb/source/Core/IOHandler.cpp
+@@ -52,7 +52,7 @@
+ 
+ #include "llvm/ADT/StringRef.h"
+ 
+-#ifdef _MSC_VER
++#ifdef _WIN32
+ #include "lldb/Host/windows/windows.h"
+ #endif
+ 
+-- 
+2.25.0.341.g760bfbb309-goog
+

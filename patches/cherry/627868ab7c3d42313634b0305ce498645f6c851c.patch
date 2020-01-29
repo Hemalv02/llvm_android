@@ -1,0 +1,50 @@
+From 23e6aeed5c5ac6c478193d21b51f02d081f99353 Mon Sep 17 00:00:00 2001
+From: Haibo Huang <hhb@google.com>
+Date: Fri, 20 Sep 2019 00:45:26 +0000
+Subject: [UPSTREAM] Revert "Fix swig python package path"
+
+Summary: This reverts commit 5a115e81cdd40c758b10c382aeffc0c8de6930e2.
+
+Reviewers: JDevlieghere, ZeGentzy
+
+Subscribers: mgorny, lldb-commits
+
+Tags: #lldb
+
+Differential Revision: https://reviews.llvm.org/D67781
+
+llvm-svn: 372364
+(cherry picked from commit 627868ab7c3d42313634b0305ce498645f6c851c)
+
+Change-Id: Idaa72c3a676a847a27490baff0d9356143629b57
+---
+ lldb/scripts/CMakeLists.txt | 10 ++++------
+ 1 file changed, 4 insertions(+), 6 deletions(-)
+
+diff --git a/lldb/scripts/CMakeLists.txt b/lldb/scripts/CMakeLists.txt
+index 9de96ef5565..1a0ea96ff9f 100644
+--- a/lldb/scripts/CMakeLists.txt
++++ b/lldb/scripts/CMakeLists.txt
+@@ -42,15 +42,13 @@ add_custom_target(swig_wrapper ALL DEPENDS
+ )
+ 
+ if(NOT LLDB_BUILD_FRAMEWORK)
+-  # The path here should match the result of python function
+-  # distutils.sysconfig.get_python_lib().
+-  if(CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+-    set(swig_python_subdir Lib/site-packages)
++  if(CMAKE_SYSTEM_NAME MATCHES "Windows")
++    set(swig_python_subdir site-packages)
+   else()
+-    set(swig_python_subdir lib/python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR})
++    set(swig_python_subdir python${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR})
+   endif()
+ 
+-  set(SWIG_PYTHON_DIR ${CMAKE_BINARY_DIR}/${CMAKE_CFG_INTDIR}/${swig_python_subdir})
++  set(SWIG_PYTHON_DIR ${LLVM_LIBRARY_OUTPUT_INTDIR}/${swig_python_subdir})
+   set(SWIG_INSTALL_DIR lib${LLVM_LIBDIR_SUFFIX})
+ 
+   # Install the LLDB python module
+-- 
+2.25.0.341.g760bfbb309-goog
+

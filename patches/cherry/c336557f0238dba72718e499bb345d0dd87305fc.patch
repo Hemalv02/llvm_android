@@ -1,0 +1,785 @@
+From 976c041613aef5b390b0ad223e064ab0cd38d053 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Fri, 27 Sep 2019 01:02:10 +0000
+Subject: [UPSTREAM] hwasan: Compatibility fixes for short granules.
+
+We can't use short granules with stack instrumentation when targeting older
+API levels because the rest of the system won't understand the short granule
+tags stored in shadow memory.
+
+Moreover, we need to be able to let old binaries (which won't understand
+short granule tags) run on a new system that supports short granule
+tags. Such binaries will call the __hwasan_tag_mismatch function when their
+outlined checks fail. We can compensate for the binary's lack of support
+for short granules by implementing the short granule part of the check in
+the __hwasan_tag_mismatch function. Unfortunately we can't do anything about
+inline checks, but I don't believe that we can generate these by default on
+aarch64, nor did we do so when the ABI was fixed.
+
+A new function, __hwasan_tag_mismatch_v2, is introduced that lets code
+targeting the new runtime avoid redoing the short granule check. Because tag
+mismatches are rare this isn't important from a performance perspective; the
+main benefit is that it introduces a symbol dependency that prevents binaries
+targeting the new runtime from running on older (i.e. incompatible) runtimes.
+
+Differential Revision: https://reviews.llvm.org/D68059
+
+llvm-svn: 373035
+(cherry picked from commit c336557f0238dba72718e499bb345d0dd87305fc)
+
+Change-Id: Ie0c0e8ad6099274eec3cf22008f9b6e255c977be
+---
+ .../lib/hwasan/hwasan_tag_mismatch_aarch64.S  |  50 +++++-
+ compiler-rt/test/hwasan/TestCases/stack-oob.c |   8 +-
+ compiler-rt/test/hwasan/lit.cfg.py            |   5 +-
+ llvm/include/llvm/IR/Intrinsics.td            |   2 +
+ llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp | 166 ++++++++++--------
+ llvm/lib/Target/AArch64/AArch64InstrInfo.td   |   4 +
+ .../Instrumentation/HWAddressSanitizer.cpp    |  23 ++-
+ .../CodeGen/AArch64/hwasan-check-memaccess.ll |  50 +++---
+ .../HWAddressSanitizer/alloca-compat.ll       |  17 ++
+ .../HWAddressSanitizer/alloca.ll              |   2 +-
+ .../HWAddressSanitizer/basic-compat.ll        |  13 ++
+ .../HWAddressSanitizer/basic.ll               |  42 ++---
+ 12 files changed, 245 insertions(+), 137 deletions(-)
+ create mode 100644 llvm/test/Instrumentation/HWAddressSanitizer/alloca-compat.ll
+ create mode 100644 llvm/test/Instrumentation/HWAddressSanitizer/basic-compat.ll
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_tag_mismatch_aarch64.S b/compiler-rt/lib/hwasan/hwasan_tag_mismatch_aarch64.S
+index 92f62748048..4c060a61e98 100644
+--- a/compiler-rt/lib/hwasan/hwasan_tag_mismatch_aarch64.S
++++ b/compiler-rt/lib/hwasan/hwasan_tag_mismatch_aarch64.S
+@@ -51,14 +51,60 @@
+ // +---------------------------------+ <-- [x30 / SP]
+ 
+ // This function takes two arguments:
+-//   * x0: The address of read/write instruction that caused HWASan check fail.
+-//   * x1: The tag size.
++//   * x0: The data address.
++//   * x1: The encoded access info for the failing access.
+ 
++// This function has two entry points. The first, __hwasan_tag_mismatch, is used
++// by clients that were compiled without short tag checks (i.e. binaries built
++// by older compilers and binaries targeting older runtimes). In this case the
++// outlined tag check will be missing the code handling short tags (which won't
++// be used in the binary's own stack variables but may be used on the heap
++// or stack variables in other binaries), so the check needs to be done here.
++//
++// The second, __hwasan_tag_mismatch_v2, is used by binaries targeting newer
++// runtimes. This entry point bypasses the short tag check since it will have
++// already been done as part of the outlined tag check. Since tag mismatches are
++// uncommon, there isn't a significant performance benefit to being able to
++// bypass the check; the main benefits are that we can sometimes avoid
++// clobbering the x17 register in error reports, and that the program will have
++// a runtime dependency on the __hwasan_tag_mismatch_v2 symbol therefore it will
++// fail to start up given an older (i.e. incompatible) runtime.
+ .section .text
+ .file "hwasan_tag_mismatch_aarch64.S"
+ .global __hwasan_tag_mismatch
+ .type __hwasan_tag_mismatch, %function
+ __hwasan_tag_mismatch:
++  // Compute the granule position one past the end of the access.
++  mov x16, #1
++  and x17, x1, #0xf
++  lsl x16, x16, x17
++  and x17, x0, #0xf
++  add x17, x16, x17
++
++  // Load the shadow byte again and check whether it is a short tag within the
++  // range of the granule position computed above.
++  ubfx x16, x0, #4, #52
++  ldrb w16, [x9, x16]
++  cmp w16, #0xf
++  b.hi __hwasan_tag_mismatch_v2
++  cmp w16, w17
++  b.lo __hwasan_tag_mismatch_v2
++
++  // Load the real tag from the last byte of the granule and compare against
++  // the pointer tag.
++  orr x16, x0, #0xf
++  ldrb w16, [x16]
++  cmp x16, x0, lsr #56
++  b.ne __hwasan_tag_mismatch_v2
++
++  // Restore x0, x1 and sp to their values from before the __hwasan_tag_mismatch
++  // call and resume execution.
++  ldp x0, x1, [sp], #256
++  ret
++
++.global __hwasan_tag_mismatch_v2
++.type __hwasan_tag_mismatch_v2, %function
++__hwasan_tag_mismatch_v2:
+   CFI_STARTPROC
+ 
+   // Set the CFA to be the return address for caller of __hwasan_check_*. Note
+diff --git a/compiler-rt/test/hwasan/TestCases/stack-oob.c b/compiler-rt/test/hwasan/TestCases/stack-oob.c
+index ba74930921a..8c8c1105549 100644
+--- a/compiler-rt/test/hwasan/TestCases/stack-oob.c
++++ b/compiler-rt/test/hwasan/TestCases/stack-oob.c
+@@ -1,4 +1,8 @@
++// RUN: %clang_hwasan_oldrt -DSIZE=2 -O0 %s -o %t && %run %t
++// RUN: %clang_hwasan -DSIZE=2 -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
++// RUN: %clang_hwasan_oldrt -DSIZE=15 -O0 %s -o %t && %run %t
+ // RUN: %clang_hwasan -DSIZE=15 -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
++// RUN: %clang_hwasan_oldrt -DSIZE=16 -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
+ // RUN: %clang_hwasan -DSIZE=16 -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
+ // RUN: %clang_hwasan -DSIZE=64 -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
+ // RUN: %clang_hwasan -DSIZE=0x1000 -O0 %s -o %t && not %run %t 2>&1 | FileCheck %s
+@@ -16,9 +20,9 @@ int f() {
+ }
+ 
+ int main() {
+-  return f();
++  f();
+   // CHECK: READ of size 1 at
+-  // CHECK: #0 {{.*}} in f{{.*}}stack-oob.c:15
++  // CHECK: #0 {{.*}} in f{{.*}}stack-oob.c:19
+ 
+   // CHECK: is located in stack of threa
+ 
+diff --git a/compiler-rt/test/hwasan/lit.cfg.py b/compiler-rt/test/hwasan/lit.cfg.py
+index eead8321972..ee67a261d91 100644
+--- a/compiler-rt/test/hwasan/lit.cfg.py
++++ b/compiler-rt/test/hwasan/lit.cfg.py
+@@ -18,9 +18,11 @@ if config.target_arch == 'x86_64':
+   # equivalent target feature implemented on x86_64.
+   clang_hwasan_common_cflags += ["-mcmodel=large"]
+ clang_hwasan_cflags = clang_hwasan_common_cflags + ["-mllvm", "-hwasan-globals",
++                                                   "-mllvm", "-hwasan-use-short-granules",
+                                                    "-mllvm", "-hwasan-instrument-landing-pads=0",
+                                                    "-mllvm", "-hwasan-instrument-personality-functions"]
+-clang_hwasan_oldrt_cflags = clang_hwasan_common_cflags + ["-mllvm", "-hwasan-instrument-landing-pads=1",
++clang_hwasan_oldrt_cflags = clang_hwasan_common_cflags + ["-mllvm", "-hwasan-use-short-granules=0",
++                                                          "-mllvm", "-hwasan-instrument-landing-pads=1",
+                                                           "-mllvm", "-hwasan-instrument-personality-functions=0"]
+ 
+ clang_hwasan_cxxflags = config.cxx_mode_flags + clang_hwasan_cflags
+@@ -31,6 +33,7 @@ def build_invocation(compile_flags):
+ 
+ config.substitutions.append( ("%clangxx ", build_invocation(clang_cxxflags)) )
+ config.substitutions.append( ("%clang_hwasan ", build_invocation(clang_hwasan_cflags)) )
++config.substitutions.append( ("%clang_hwasan_oldrt ", build_invocation(clang_hwasan_oldrt_cflags)) )
+ config.substitutions.append( ("%clangxx_hwasan ", build_invocation(clang_hwasan_cxxflags)) )
+ config.substitutions.append( ("%clangxx_hwasan_oldrt ", build_invocation(clang_hwasan_oldrt_cxxflags)) )
+ config.substitutions.append( ("%compiler_rt_libdir", config.compiler_rt_libdir) )
+diff --git a/llvm/include/llvm/IR/Intrinsics.td b/llvm/include/llvm/IR/Intrinsics.td
+index 1a67f830435..4cf24ecee49 100644
+--- a/llvm/include/llvm/IR/Intrinsics.td
++++ b/llvm/include/llvm/IR/Intrinsics.td
+@@ -1127,6 +1127,8 @@ def int_load_relative: Intrinsic<[llvm_ptr_ty], [llvm_ptr_ty, llvm_anyint_ty],
+ 
+ def int_hwasan_check_memaccess :
+   Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty, llvm_i32_ty], [IntrInaccessibleMemOnly, ImmArg<2>]>;
++def int_hwasan_check_memaccess_shortgranules :
++  Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty, llvm_i32_ty], [IntrInaccessibleMemOnly, ImmArg<2>]>;
+ 
+ // Xray intrinsics
+ //===----------------------------------------------------------------------===//
+diff --git a/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp b/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp
+index 4a06de9c962..396a43d0608 100644
+--- a/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp
++++ b/llvm/lib/Target/AArch64/AArch64AsmPrinter.cpp
+@@ -99,7 +99,7 @@ public:
+   void LowerPATCHABLE_FUNCTION_EXIT(const MachineInstr &MI);
+   void LowerPATCHABLE_TAIL_CALL(const MachineInstr &MI);
+ 
+-  std::map<std::pair<unsigned, uint32_t>, MCSymbol *> HwasanMemaccessSymbols;
++  std::map<std::tuple<unsigned, bool, uint32_t>, MCSymbol *> HwasanMemaccessSymbols;
+   void LowerHWASAN_CHECK_MEMACCESS(const MachineInstr &MI);
+   void EmitHwasanMemaccessSymbols(Module &M);
+ 
+@@ -237,8 +237,10 @@ void AArch64AsmPrinter::EmitSled(const MachineInstr &MI, SledKind Kind)
+ 
+ void AArch64AsmPrinter::LowerHWASAN_CHECK_MEMACCESS(const MachineInstr &MI) {
+   Register Reg = MI.getOperand(0).getReg();
++  bool IsShort =
++      MI.getOpcode() == AArch64::HWASAN_CHECK_MEMACCESS_SHORTGRANULES;
+   uint32_t AccessInfo = MI.getOperand(1).getImm();
+-  MCSymbol *&Sym = HwasanMemaccessSymbols[{Reg, AccessInfo}];
++  MCSymbol *&Sym = HwasanMemaccessSymbols[{Reg, IsShort, AccessInfo}];
+   if (!Sym) {
+     // FIXME: Make this work on non-ELF.
+     if (!TM.getTargetTriple().isOSBinFormatELF())
+@@ -246,6 +248,8 @@ void AArch64AsmPrinter::LowerHWASAN_CHECK_MEMACCESS(const MachineInstr &MI) {
+ 
+     std::string SymName = "__hwasan_check_x" + utostr(Reg - AArch64::X0) + "_" +
+                           utostr(AccessInfo);
++    if (IsShort)
++      SymName += "_short";
+     Sym = OutContext.getOrCreateSymbol(SymName);
+   }
+ 
+@@ -263,15 +267,22 @@ void AArch64AsmPrinter::EmitHwasanMemaccessSymbols(Module &M) {
+   std::unique_ptr<MCSubtargetInfo> STI(
+       TM.getTarget().createMCSubtargetInfo(TT.str(), "", ""));
+ 
+-  MCSymbol *HwasanTagMismatchSym =
++  MCSymbol *HwasanTagMismatchV1Sym =
+       OutContext.getOrCreateSymbol("__hwasan_tag_mismatch");
++  MCSymbol *HwasanTagMismatchV2Sym =
++      OutContext.getOrCreateSymbol("__hwasan_tag_mismatch_v2");
+ 
+-  const MCSymbolRefExpr *HwasanTagMismatchRef =
+-      MCSymbolRefExpr::create(HwasanTagMismatchSym, OutContext);
++  const MCSymbolRefExpr *HwasanTagMismatchV1Ref =
++      MCSymbolRefExpr::create(HwasanTagMismatchV1Sym, OutContext);
++  const MCSymbolRefExpr *HwasanTagMismatchV2Ref =
++      MCSymbolRefExpr::create(HwasanTagMismatchV2Sym, OutContext);
+ 
+   for (auto &P : HwasanMemaccessSymbols) {
+-    unsigned Reg = P.first.first;
+-    uint32_t AccessInfo = P.first.second;
++    unsigned Reg = std::get<0>(P.first);
++    bool IsShort = std::get<1>(P.first);
++    uint32_t AccessInfo = std::get<2>(P.first);
++    const MCSymbolRefExpr *HwasanTagMismatchRef =
++        IsShort ? HwasanTagMismatchV2Ref : HwasanTagMismatchV1Ref;
+     MCSymbol *Sym = P.second;
+ 
+     OutStreamer->SwitchSection(OutContext.getELFSection(
+@@ -304,82 +315,86 @@ void AArch64AsmPrinter::EmitHwasanMemaccessSymbols(Module &M) {
+             .addReg(Reg)
+             .addImm(AArch64_AM::getShifterImm(AArch64_AM::LSR, 56)),
+         *STI);
+-    MCSymbol *HandlePartialSym = OutContext.createTempSymbol();
++    MCSymbol *HandleMismatchOrPartialSym = OutContext.createTempSymbol();
+     OutStreamer->EmitInstruction(
+         MCInstBuilder(AArch64::Bcc)
+             .addImm(AArch64CC::NE)
+-            .addExpr(MCSymbolRefExpr::create(HandlePartialSym, OutContext)),
++            .addExpr(MCSymbolRefExpr::create(HandleMismatchOrPartialSym,
++                                             OutContext)),
+         *STI);
+     MCSymbol *ReturnSym = OutContext.createTempSymbol();
+     OutStreamer->EmitLabel(ReturnSym);
+     OutStreamer->EmitInstruction(
+         MCInstBuilder(AArch64::RET).addReg(AArch64::LR), *STI);
++    OutStreamer->EmitLabel(HandleMismatchOrPartialSym);
+ 
+-    OutStreamer->EmitLabel(HandlePartialSym);
+-    OutStreamer->EmitInstruction(MCInstBuilder(AArch64::SUBSWri)
+-                                     .addReg(AArch64::WZR)
+-                                     .addReg(AArch64::W16)
+-                                     .addImm(15)
+-                                     .addImm(0),
+-                                 *STI);
+-    MCSymbol *HandleMismatchSym = OutContext.createTempSymbol();
+-    OutStreamer->EmitInstruction(
+-        MCInstBuilder(AArch64::Bcc)
+-            .addImm(AArch64CC::HI)
+-            .addExpr(MCSymbolRefExpr::create(HandleMismatchSym, OutContext)),
+-        *STI);
+-
+-    OutStreamer->EmitInstruction(
+-        MCInstBuilder(AArch64::ANDXri)
+-            .addReg(AArch64::X17)
+-            .addReg(Reg)
+-            .addImm(AArch64_AM::encodeLogicalImmediate(0xf, 64)),
+-        *STI);
+-    unsigned Size = 1 << (AccessInfo & 0xf);
+-    if (Size != 1)
+-      OutStreamer->EmitInstruction(MCInstBuilder(AArch64::ADDXri)
+-                                       .addReg(AArch64::X17)
+-                                       .addReg(AArch64::X17)
+-                                       .addImm(Size - 1)
++    if (IsShort) {
++      OutStreamer->EmitInstruction(MCInstBuilder(AArch64::SUBSWri)
++                                       .addReg(AArch64::WZR)
++                                       .addReg(AArch64::W16)
++                                       .addImm(15)
+                                        .addImm(0),
+                                    *STI);
+-    OutStreamer->EmitInstruction(MCInstBuilder(AArch64::SUBSWrs)
+-                                     .addReg(AArch64::WZR)
+-                                     .addReg(AArch64::W16)
+-                                     .addReg(AArch64::W17)
+-                                     .addImm(0),
+-                                 *STI);
+-    OutStreamer->EmitInstruction(
+-        MCInstBuilder(AArch64::Bcc)
+-            .addImm(AArch64CC::LS)
+-            .addExpr(MCSymbolRefExpr::create(HandleMismatchSym, OutContext)),
+-        *STI);
+-
+-    OutStreamer->EmitInstruction(
+-        MCInstBuilder(AArch64::ORRXri)
+-            .addReg(AArch64::X16)
+-            .addReg(Reg)
+-            .addImm(AArch64_AM::encodeLogicalImmediate(0xf, 64)),
+-        *STI);
+-    OutStreamer->EmitInstruction(MCInstBuilder(AArch64::LDRBBui)
+-                                     .addReg(AArch64::W16)
+-                                     .addReg(AArch64::X16)
+-                                     .addImm(0),
+-                                 *STI);
+-    OutStreamer->EmitInstruction(
+-        MCInstBuilder(AArch64::SUBSXrs)
+-            .addReg(AArch64::XZR)
+-            .addReg(AArch64::X16)
+-            .addReg(Reg)
+-            .addImm(AArch64_AM::getShifterImm(AArch64_AM::LSR, 56)),
+-        *STI);
+-    OutStreamer->EmitInstruction(
+-        MCInstBuilder(AArch64::Bcc)
+-            .addImm(AArch64CC::EQ)
+-            .addExpr(MCSymbolRefExpr::create(ReturnSym, OutContext)),
+-        *STI);
++      MCSymbol *HandleMismatchSym = OutContext.createTempSymbol();
++      OutStreamer->EmitInstruction(
++          MCInstBuilder(AArch64::Bcc)
++              .addImm(AArch64CC::HI)
++              .addExpr(MCSymbolRefExpr::create(HandleMismatchSym, OutContext)),
++          *STI);
++
++      OutStreamer->EmitInstruction(
++          MCInstBuilder(AArch64::ANDXri)
++              .addReg(AArch64::X17)
++              .addReg(Reg)
++              .addImm(AArch64_AM::encodeLogicalImmediate(0xf, 64)),
++          *STI);
++      unsigned Size = 1 << (AccessInfo & 0xf);
++      if (Size != 1)
++        OutStreamer->EmitInstruction(MCInstBuilder(AArch64::ADDXri)
++                                         .addReg(AArch64::X17)
++                                         .addReg(AArch64::X17)
++                                         .addImm(Size - 1)
++                                         .addImm(0),
++                                     *STI);
++      OutStreamer->EmitInstruction(MCInstBuilder(AArch64::SUBSWrs)
++                                       .addReg(AArch64::WZR)
++                                       .addReg(AArch64::W16)
++                                       .addReg(AArch64::W17)
++                                       .addImm(0),
++                                   *STI);
++      OutStreamer->EmitInstruction(
++          MCInstBuilder(AArch64::Bcc)
++              .addImm(AArch64CC::LS)
++              .addExpr(MCSymbolRefExpr::create(HandleMismatchSym, OutContext)),
++          *STI);
++
++      OutStreamer->EmitInstruction(
++          MCInstBuilder(AArch64::ORRXri)
++              .addReg(AArch64::X16)
++              .addReg(Reg)
++              .addImm(AArch64_AM::encodeLogicalImmediate(0xf, 64)),
++          *STI);
++      OutStreamer->EmitInstruction(MCInstBuilder(AArch64::LDRBBui)
++                                       .addReg(AArch64::W16)
++                                       .addReg(AArch64::X16)
++                                       .addImm(0),
++                                   *STI);
++      OutStreamer->EmitInstruction(
++          MCInstBuilder(AArch64::SUBSXrs)
++              .addReg(AArch64::XZR)
++              .addReg(AArch64::X16)
++              .addReg(Reg)
++              .addImm(AArch64_AM::getShifterImm(AArch64_AM::LSR, 56)),
++          *STI);
++      OutStreamer->EmitInstruction(
++          MCInstBuilder(AArch64::Bcc)
++              .addImm(AArch64CC::EQ)
++              .addExpr(MCSymbolRefExpr::create(ReturnSym, OutContext)),
++          *STI);
++
++      OutStreamer->EmitLabel(HandleMismatchSym);
++    }
+ 
+-    OutStreamer->EmitLabel(HandleMismatchSym);
+     OutStreamer->EmitInstruction(MCInstBuilder(AArch64::STPXpre)
+                                      .addReg(AArch64::SP)
+                                      .addReg(AArch64::X0)
+@@ -414,16 +429,16 @@ void AArch64AsmPrinter::EmitHwasanMemaccessSymbols(Module &M) {
+         MCInstBuilder(AArch64::ADRP)
+             .addReg(AArch64::X16)
+             .addExpr(AArch64MCExpr::create(
+-                HwasanTagMismatchRef,
+-                AArch64MCExpr::VariantKind::VK_GOT_PAGE, OutContext)),
++                HwasanTagMismatchRef, AArch64MCExpr::VariantKind::VK_GOT_PAGE,
++                OutContext)),
+         *STI);
+     OutStreamer->EmitInstruction(
+         MCInstBuilder(AArch64::LDRXui)
+             .addReg(AArch64::X16)
+             .addReg(AArch64::X16)
+             .addExpr(AArch64MCExpr::create(
+-                HwasanTagMismatchRef,
+-                AArch64MCExpr::VariantKind::VK_GOT_LO12, OutContext)),
++                HwasanTagMismatchRef, AArch64MCExpr::VariantKind::VK_GOT_LO12,
++                OutContext)),
+         *STI);
+     OutStreamer->EmitInstruction(
+         MCInstBuilder(AArch64::BR).addReg(AArch64::X16), *STI);
+@@ -1094,6 +1109,7 @@ void AArch64AsmPrinter::EmitInstruction(const MachineInstr *MI) {
+     return;
+ 
+   case AArch64::HWASAN_CHECK_MEMACCESS:
++  case AArch64::HWASAN_CHECK_MEMACCESS_SHORTGRANULES:
+     LowerHWASAN_CHECK_MEMACCESS(*MI);
+     return;
+ 
+diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.td b/llvm/lib/Target/AArch64/AArch64InstrInfo.td
+index 7123ba043c3..383ad684b6e 100644
+--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.td
++++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.td
+@@ -800,6 +800,10 @@ def HWASAN_CHECK_MEMACCESS : Pseudo<
+   (outs), (ins GPR64noip:$ptr, i32imm:$accessinfo),
+   [(int_hwasan_check_memaccess X9, GPR64noip:$ptr, (i32 imm:$accessinfo))]>,
+   Sched<[]>;
++def HWASAN_CHECK_MEMACCESS_SHORTGRANULES : Pseudo<
++  (outs), (ins GPR64noip:$ptr, i32imm:$accessinfo),
++  [(int_hwasan_check_memaccess_shortgranules X9, GPR64noip:$ptr, (i32 timm:$accessinfo))]>,
++  Sched<[]>;
+ }
+ 
+ // The cycle counter PMC register is PMCCNTR_EL0.
+diff --git a/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp b/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
+index ca67eee1bef..f11ce8dc5b1 100644
+--- a/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
++++ b/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
+@@ -166,6 +166,11 @@ static cl::opt<bool>
+                             cl::desc("instrument landing pads"), cl::Hidden,
+                             cl::init(false), cl::ZeroOrMore);
+ 
++static cl::opt<bool> ClUseShortGranules(
++    "hwasan-use-short-granules",
++    cl::desc("use short granules in allocas and outlined checks"), cl::Hidden,
++    cl::init(false), cl::ZeroOrMore);
++
+ static cl::opt<bool> ClInstrumentPersonalityFunctions(
+     "hwasan-instrument-personality-functions",
+     cl::desc("instrument personality functions"), cl::Hidden, cl::init(false),
+@@ -269,6 +274,7 @@ private:
+ 
+   bool CompileKernel;
+   bool Recover;
++  bool UseShortGranules;
+   bool InstrumentLandingPads;
+ 
+   Function *HwasanCtorFunction;
+@@ -372,11 +378,14 @@ void HWAddressSanitizer::initializeModule() {
+   HwasanCtorFunction = nullptr;
+ 
+   // Older versions of Android do not have the required runtime support for
+-  // global or personality function instrumentation. On other platforms we
+-  // currently require using the latest version of the runtime.
++  // short granules, global or personality function instrumentation. On other
++  // platforms we currently require using the latest version of the runtime.
+   bool NewRuntime =
+       !TargetTriple.isAndroid() || !TargetTriple.isAndroidVersionLT(30);
+ 
++  UseShortGranules =
++      ClUseShortGranules.getNumOccurrences() ? ClUseShortGranules : NewRuntime;
++
+   // If we don't have personality function support, fall back to landing pads.
+   InstrumentLandingPads = ClInstrumentLandingPads.getNumOccurrences()
+                               ? ClInstrumentLandingPads
+@@ -608,9 +617,11 @@ void HWAddressSanitizer::instrumentMemAccessInline(Value *Ptr, bool IsWrite,
+       TargetTriple.isOSBinFormatELF() && !Recover) {
+     Module *M = IRB.GetInsertBlock()->getParent()->getParent();
+     Ptr = IRB.CreateBitCast(Ptr, Int8PtrTy);
+-    IRB.CreateCall(
+-        Intrinsic::getDeclaration(M, Intrinsic::hwasan_check_memaccess),
+-        {shadowBase(), Ptr, ConstantInt::get(Int32Ty, AccessInfo)});
++    IRB.CreateCall(Intrinsic::getDeclaration(
++                       M, UseShortGranules
++                              ? Intrinsic::hwasan_check_memaccess_shortgranules
++                              : Intrinsic::hwasan_check_memaccess),
++                   {shadowBase(), Ptr, ConstantInt::get(Int32Ty, AccessInfo)});
+     return;
+   }
+ 
+@@ -763,6 +774,8 @@ static uint64_t getAllocaSizeInBytes(const AllocaInst &AI) {
+ bool HWAddressSanitizer::tagAlloca(IRBuilder<> &IRB, AllocaInst *AI,
+                                    Value *Tag, size_t Size) {
+   size_t AlignedSize = alignTo(Size, Mapping.getObjectAlignment());
++  if (!UseShortGranules)
++    Size = AlignedSize;
+ 
+   Value *JustTag = IRB.CreateTrunc(Tag, IRB.getInt8Ty());
+   if (ClInstrumentWithCalls) {
+diff --git a/llvm/test/CodeGen/AArch64/hwasan-check-memaccess.ll b/llvm/test/CodeGen/AArch64/hwasan-check-memaccess.ll
+index d853b148d57..48c5bf68efa 100644
+--- a/llvm/test/CodeGen/AArch64/hwasan-check-memaccess.ll
++++ b/llvm/test/CodeGen/AArch64/hwasan-check-memaccess.ll
+@@ -8,11 +8,11 @@ define i8* @f1(i8* %x0, i8* %x1) {
+   ; CHECK-NEXT: .cfi_def_cfa_offset 16
+   ; CHECK-NEXT: .cfi_offset w30, -16
+   ; CHECK-NEXT: mov x9, x0
+-  ; CHECK-NEXT: bl __hwasan_check_x1_123
++  ; CHECK-NEXT: bl __hwasan_check_x1_1
+   ; CHECK-NEXT: mov x0, x1
+   ; CHECK-NEXT: ldr x30, [sp], #16
+   ; CHECK-NEXT: ret
+-  call void @llvm.hwasan.check.memaccess(i8* %x0, i8* %x1, i32 123)
++  call void @llvm.hwasan.check.memaccess(i8* %x0, i8* %x1, i32 1)
+   ret i8* %x1
+ }
+ 
+@@ -22,20 +22,21 @@ define i8* @f2(i8* %x0, i8* %x1) {
+   ; CHECK-NEXT: .cfi_def_cfa_offset 16
+   ; CHECK-NEXT: .cfi_offset w30, -16
+   ; CHECK-NEXT: mov x9, x1
+-  ; CHECK-NEXT: bl __hwasan_check_x0_456
++  ; CHECK-NEXT: bl __hwasan_check_x0_2_short
+   ; CHECK-NEXT: ldr x30, [sp], #16
+   ; CHECK-NEXT: ret
+-  call void @llvm.hwasan.check.memaccess(i8* %x1, i8* %x0, i32 456)
++  call void @llvm.hwasan.check.memaccess.shortgranules(i8* %x1, i8* %x0, i32 2)
+   ret i8* %x0
+ }
+ 
+ declare void @llvm.hwasan.check.memaccess(i8*, i8*, i32)
++declare void @llvm.hwasan.check.memaccess.shortgranules(i8*, i8*, i32)
+ 
+-; CHECK:      .section .text.hot,"axG",@progbits,__hwasan_check_x0_456,comdat
+-; CHECK-NEXT: .type __hwasan_check_x0_456,@function
+-; CHECK-NEXT: .weak __hwasan_check_x0_456
+-; CHECK-NEXT: .hidden __hwasan_check_x0_456
+-; CHECK-NEXT: __hwasan_check_x0_456:
++; CHECK:      .section .text.hot,"axG",@progbits,__hwasan_check_x0_2_short,comdat
++; CHECK-NEXT: .type __hwasan_check_x0_2_short,@function
++; CHECK-NEXT: .weak __hwasan_check_x0_2_short
++; CHECK-NEXT: .hidden __hwasan_check_x0_2_short
++; CHECK-NEXT: __hwasan_check_x0_2_short:
+ ; CHECK-NEXT: ubfx x16, x0, #4, #52
+ ; CHECK-NEXT: ldrb w16, [x9, x16]
+ ; CHECK-NEXT: cmp x16, x0, lsr #56
+@@ -46,7 +47,7 @@ declare void @llvm.hwasan.check.memaccess(i8*, i8*, i32)
+ ; CHECK-NEXT: cmp w16, #15
+ ; CHECK-NEXT: b.hi .Ltmp2
+ ; CHECK-NEXT: and x17, x0, #0xf
+-; CHECK-NEXT: add x17, x17, #255
++; CHECK-NEXT: add x17, x17, #3
+ ; CHECK-NEXT: cmp w16, w17
+ ; CHECK-NEXT: b.ls .Ltmp2
+ ; CHECK-NEXT: orr x16, x0, #0xf
+@@ -56,17 +57,17 @@ declare void @llvm.hwasan.check.memaccess(i8*, i8*, i32)
+ ; CHECK-NEXT: .Ltmp2:
+ ; CHECK-NEXT: stp x0, x1, [sp, #-256]!
+ ; CHECK-NEXT: stp x29, x30, [sp, #232]
+-; CHECK-NEXT: mov x1, #456
+-; CHECK-NEXT: adrp  x16, :got:__hwasan_tag_mismatch
+-; CHECK-NEXT: ldr x16, [x16, :got_lo12:__hwasan_tag_mismatch]
++; CHECK-NEXT: mov x1, #2
++; CHECK-NEXT: adrp  x16, :got:__hwasan_tag_mismatch_v2
++; CHECK-NEXT: ldr x16, [x16, :got_lo12:__hwasan_tag_mismatch_v2]
+ ; CHECK-NEXT: br  x16
+ 
+ 
+-; CHECK:      .section .text.hot,"axG",@progbits,__hwasan_check_x1_123,comdat
+-; CHECK-NEXT: .type __hwasan_check_x1_123,@function
+-; CHECK-NEXT: .weak __hwasan_check_x1_123
+-; CHECK-NEXT: .hidden __hwasan_check_x1_123
+-; CHECK-NEXT: __hwasan_check_x1_123:
++; CHECK:      .section .text.hot,"axG",@progbits,__hwasan_check_x1_1,comdat
++; CHECK-NEXT: .type __hwasan_check_x1_1,@function
++; CHECK-NEXT: .weak __hwasan_check_x1_1
++; CHECK-NEXT: .hidden __hwasan_check_x1_1
++; CHECK-NEXT: __hwasan_check_x1_1:
+ ; CHECK-NEXT: ubfx x16, x1, #4, #52
+ ; CHECK-NEXT: ldrb w16, [x9, x16]
+ ; CHECK-NEXT: cmp x16, x1, lsr #56
+@@ -74,21 +75,10 @@ declare void @llvm.hwasan.check.memaccess(i8*, i8*, i32)
+ ; CHECK-NEXT: .Ltmp4:
+ ; CHECK-NEXT: ret
+ ; CHECK-NEXT: .Ltmp3:
+-; CHECK-NEXT: cmp w16, #15
+-; CHECK-NEXT: b.hi .Ltmp5
+-; CHECK-NEXT: and x17, x1, #0xf
+-; CHECK-NEXT: add x17, x17, #2047
+-; CHECK-NEXT: cmp w16, w17
+-; CHECK-NEXT: b.ls .Ltmp5
+-; CHECK-NEXT: orr x16, x1, #0xf
+-; CHECK-NEXT: ldrb w16, [x16]
+-; CHECK-NEXT: cmp x16, x1, lsr #56
+-; CHECK-NEXT: b.eq .Ltmp4
+-; CHECK-NEXT: .Ltmp5:
+ ; CHECK-NEXT: stp x0, x1, [sp, #-256]!
+ ; CHECK-NEXT: stp x29, x30, [sp, #232]
+ ; CHECK-NEXT: mov x0, x1
+-; CHECK-NEXT: mov x1, #123
++; CHECK-NEXT: mov x1, #1
+ ; CHECK-NEXT: adrp  x16, :got:__hwasan_tag_mismatch
+ ; CHECK-NEXT: ldr x16, [x16, :got_lo12:__hwasan_tag_mismatch]
+ ; CHECK-NEXT: br  x16
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/alloca-compat.ll b/llvm/test/Instrumentation/HWAddressSanitizer/alloca-compat.ll
+new file mode 100644
+index 00000000000..d2acbf6bdf4
+--- /dev/null
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/alloca-compat.ll
+@@ -0,0 +1,17 @@
++; Test that alloca instrumentation with old API levels does not use short granules.
++;
++; RUN: opt < %s -hwasan -S | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64--linux-android"
++
++declare void @use32(i32*)
++
++define void @test_alloca() sanitize_hwaddress {
++; CHECK-LABEL: @test_alloca(
++; CHECK: %[[X_TAG:[^ ]*]] = trunc i64 {{.*}} to i8
++; CHECK: call void @llvm.memset.p0i8.i64(i8* align 1 {{.*}}, i8 %[[X_TAG]], i64 1, i1 false)
++  %x = alloca i32, align 4
++  call void @use32(i32* nonnull %x)
++  ret void
++}
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/alloca.ll b/llvm/test/Instrumentation/HWAddressSanitizer/alloca.ll
+index 3525f4ddb94..15a1c6828af 100644
+--- a/llvm/test/Instrumentation/HWAddressSanitizer/alloca.ll
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/alloca.ll
+@@ -5,7 +5,7 @@
+ ; RUN: opt < %s -hwasan -hwasan-with-ifunc=1 -hwasan-uar-retag-to-zero=0 -S | FileCheck %s --check-prefixes=CHECK,DYNAMIC-SHADOW,UAR-TAGS
+ 
+ target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64--linux-android"
++target triple = "aarch64--linux-android10000"
+ 
+ declare void @use32(i32*)
+ 
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/basic-compat.ll b/llvm/test/Instrumentation/HWAddressSanitizer/basic-compat.ll
+new file mode 100644
+index 00000000000..22626ed50c2
+--- /dev/null
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/basic-compat.ll
+@@ -0,0 +1,13 @@
++; Test that the old outlined check is used with old API levels.
++
++; RUN: opt < %s -hwasan -S | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64--linux-android"
++
++define i8 @test_load8(i8* %a) sanitize_hwaddress {
++; CHECK-LABEL: @test_load8(
++; CHECK: call void @llvm.hwasan.check.memaccess(i8* {{.*}}, i8* {{.*}}, i32 0)
++  %b = load i8, i8* %a, align 4
++  ret i8 %b
++}
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/basic.ll b/llvm/test/Instrumentation/HWAddressSanitizer/basic.ll
+index 79e414a5e4a..d5406117c87 100644
+--- a/llvm/test/Instrumentation/HWAddressSanitizer/basic.ll
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/basic.ll
+@@ -14,7 +14,7 @@
+ ; CHECK: @llvm.global_ctors = appending global [1 x { i32, void ()*, i8* }] [{ i32, void ()*, i8* } { i32 0, void ()* @hwasan.module_ctor, i8* bitcast (void ()* @hwasan.module_ctor to i8*) }]
+ 
+ target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
+-target triple = "aarch64--linux-android"
++target triple = "aarch64--linux-android10000"
+ 
+ define i8 @test_load8(i8* %a) sanitize_hwaddress {
+ ; CHECK-LABEL: @test_load8(
+@@ -56,8 +56,8 @@ define i8 @test_load8(i8* %a) sanitize_hwaddress {
+ 
+ ; RECOVER: [[CONT]]:
+ 
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %a, i32 0)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %a, i32 0)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %a, i32 0)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %a, i32 0)
+ 
+ ; CHECK: %[[G:[^ ]*]] = load i8, i8* %a, align 4
+ ; CHECK: ret i8 %[[G]]
+@@ -108,8 +108,8 @@ define i16 @test_load16(i16* %a) sanitize_hwaddress {
+ ; RECOVER: [[CONT]]:
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i16* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 1)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 1)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 1)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 1)
+ 
+ ; CHECK: %[[G:[^ ]*]] = load i16, i16* %a, align 4
+ ; CHECK: ret i16 %[[G]]
+@@ -136,8 +136,8 @@ define i32 @test_load32(i32* %a) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i32* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 2)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 2)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 2)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 2)
+ 
+ ; CHECK: %[[G:[^ ]*]] = load i32, i32* %a, align 4
+ ; CHECK: ret i32 %[[G]]
+@@ -164,8 +164,8 @@ define i64 @test_load64(i64* %a) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i64* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 3)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 3)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 3)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 3)
+ 
+ ; CHECK: %[[G:[^ ]*]] = load i64, i64* %a, align 8
+ ; CHECK: ret i64 %[[G]]
+@@ -192,8 +192,8 @@ define i128 @test_load128(i128* %a) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i128* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 4)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 4)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 4)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 4)
+ 
+ ; CHECK: %[[G:[^ ]*]] = load i128, i128* %a, align 16
+ ; CHECK: ret i128 %[[G]]
+@@ -232,8 +232,8 @@ define void @test_store8(i8* %a, i8 %b) sanitize_hwaddress {
+ ; RECOVER: call void asm sideeffect "brk #2352", "{x0}"(i64 %[[A]])
+ ; RECOVER: br label
+ 
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %a, i32 16)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %a, i32 16)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %a, i32 16)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %a, i32 16)
+ 
+ ; CHECK: store i8 %b, i8* %a, align 4
+ ; CHECK: ret void
+@@ -260,8 +260,8 @@ define void @test_store16(i16* %a, i16 %b) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i16* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 17)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 17)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 17)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 17)
+ 
+ ; CHECK: store i16 %b, i16* %a, align 4
+ ; CHECK: ret void
+@@ -288,8 +288,8 @@ define void @test_store32(i32* %a, i32 %b) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i32* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 18)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 18)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 18)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 18)
+ 
+ ; CHECK: store i32 %b, i32* %a, align 4
+ ; CHECK: ret void
+@@ -316,8 +316,8 @@ define void @test_store64(i64* %a, i64 %b) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i64* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 19)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 19)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 19)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 19)
+ 
+ ; CHECK: store i64 %b, i64* %a, align 8
+ ; CHECK: ret void
+@@ -344,8 +344,8 @@ define void @test_store128(i128* %a, i128 %b) sanitize_hwaddress {
+ ; RECOVER: br label
+ 
+ ; ABORT: %[[A:[^ ]*]] = bitcast i128* %a to i8*
+-; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess(i8* %.hwasan.shadow, i8* %[[A]], i32 20)
+-; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess(i8* null, i8* %[[A]], i32 20)
++; ABORT-DYNAMIC-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* %.hwasan.shadow, i8* %[[A]], i32 20)
++; ABORT-ZERO-BASED-SHADOW: call void @llvm.hwasan.check.memaccess.shortgranules(i8* null, i8* %[[A]], i32 20)
+ 
+ ; CHECK: store i128 %b, i128* %a, align 16
+ ; CHECK: ret void
+-- 
+2.25.0.341.g760bfbb309-goog
+

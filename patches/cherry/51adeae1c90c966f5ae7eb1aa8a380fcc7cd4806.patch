@@ -1,0 +1,61 @@
+From 956c6831d97d905836e17c4ce7b58885729d9850 Mon Sep 17 00:00:00 2001
+From: Nick Desaulniers <ndesaulniers@google.com>
+Date: Fri, 8 Nov 2019 09:16:20 -0800
+Subject: [UPSTREAM] remove redundant LLVM version from version string when
+ setting CLANG_VENDOR
+
+Summary:
+When downstream LLVM distributions (like AOSP) set the CLANG_VENDOR
+cmake variable, the version string printed by the clang driver looks
+like:
+
+$ clang --version
+[CLANG_VENDOR] clang version X.X.X ([CLANG_REPOSITORY_STRING] sha) (based on LLVM X.X.X)
+
+Rather than the more standard:
+$ clang --version
+clang version X.X.X ([CLANG_REPOSITORY_STRING] sha)
+
+Based on feedback the the version string is a little long, the trailing
+"(based on LLVM X.X.X)" is redundant and makes less sense after moving
+LLVM to the monorepo. And it is only added should vendors set the cmake
+variable CLANG_VENDOR. Let's remove it.
+
+Reviewers: jyknight, eli.friedman, rsmith, rjmccall, efriedma
+
+Reviewed By: efriedma
+
+Subscribers: arphaman, efriedma, cfe-commits, srhines
+
+Tags: #clang
+
+Differential Revision: https://reviews.llvm.org/D69925
+
+(cherry picked from commit 51adeae1c90c966f5ae7eb1aa8a380fcc7cd4806)
+Bug: 139945549
+Bug: 143464737
+Change-Id: Ib800c51cfe1269f6174c989b5a23258b6de4883c
+Signed-off-by: Nick Desaulniers <ndesaulniers@google.com>
+---
+ clang/lib/Basic/Version.cpp | 5 -----
+ 1 file changed, 5 deletions(-)
+
+diff --git a/clang/lib/Basic/Version.cpp b/clang/lib/Basic/Version.cpp
+index d6564582e77..c69d13b2f68 100644
+--- a/clang/lib/Basic/Version.cpp
++++ b/clang/lib/Basic/Version.cpp
+@@ -127,11 +127,6 @@ std::string getClangToolFullVersion(StringRef ToolName) {
+   OS << ToolName << " version " CLANG_VERSION_STRING " "
+      << getClangFullRepositoryVersion();
+ 
+-  // If vendor supplied, include the base LLVM version as well.
+-#ifdef CLANG_VENDOR
+-  OS << " (based on " << BACKEND_PACKAGE_STRING << ")";
+-#endif
+-
+   return OS.str();
+ }
+ 
+-- 
+2.25.0.341.g760bfbb309-goog
+

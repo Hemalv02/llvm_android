@@ -1,0 +1,248 @@
+[
+    {
+        "comment": "[UPSTREAM][DebugInfo] Emit DW_TAG_enumeration_type for referenced",
+        "rel_patch_path": "cherry/48c6fadc0daceb3374d7cc1df1e99ffef4b89d4c.patch",
+        "start_version": 370808,
+        "end_version": 370981
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Revert \"[builtins] Rounding mode support for",
+        "rel_patch_path": "cherry/33b8a55329b9a968e4f2d859610d638d7fb394e5.patch",
+        "start_version": 370808,
+        "end_version": 371003
+    },
+    {
+        "comment": "[UPSTREAM] Fix windows-x86-debug compilation with python enabled",
+        "rel_patch_path": "cherry/f141de5bc9284f47308564ec9c5544c33ed0a0d7.patch",
+        "start_version": 370808,
+        "end_version": 371090
+    },
+    {
+        "comment": "[UPSTREAM][IfConversion] Fix diamond conversion with unanalyzable",
+        "rel_patch_path": "cherry/cae1e47f6ed7effd82cc47e68c2a42513487a1d7.patch",
+        "start_version": 370808,
+        "end_version": 371111
+    },
+    {
+        "comment": "[UPSTREAM] Revert r370635, it caused PR43241.",
+        "rel_patch_path": "cherry/8455294f2ac13d587b13d728038a9bffa7185f2b.patch",
+        "start_version": 370808,
+        "end_version": 371202
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Revert r370635, it caused PR43241.\"",
+        "rel_patch_path": "cherry/5d9f419a2e01c437a35899952d3342cc96a7d9e1.patch",
+        "start_version": 370808,
+        "end_version": 371215
+    },
+    {
+        "comment": "[UPSTREAM] Reland D66717 [ELF] Do not ICF two sections with different",
+        "rel_patch_path": "cherry/8d30c1dcec2a935e0b1cffc26fdc6054ff101f53.patch",
+        "start_version": 370808,
+        "end_version": 371216
+    },
+    {
+        "comment": "[UPSTREAM][IR] CallBrInst: scan+update arg list when indirect dest",
+        "rel_patch_path": "cherry/7a7bba289521e6d4da199565cf72dc9eaed3d671.patch",
+        "start_version": 370808,
+        "end_version": 371262
+    },
+    {
+        "comment": "[UPSTREAM][IfConversion] Correctly handle cases where analyzeBranch",
+        "rel_patch_path": "cherry/79f0d3a6e58b80e38040c9ef639431a268422058.patch",
+        "start_version": 370808,
+        "end_version": 371434
+    },
+    {
+        "comment": "[UPSTREAM][IRMover] Don't map globals if their types are the same",
+        "rel_patch_path": "cherry/8b46544641ef49e20621a3ac8e14fd4c95338522.patch",
+        "start_version": 370808,
+        "end_version": 371643
+    },
+    {
+        "comment": "[UPSTREAM][ELF] Delete a redundant assignment to",
+        "rel_patch_path": "cherry/51ead00bf81cd92a868bdd1551a06ec5efdb563b.patch",
+        "start_version": 370808,
+        "end_version": 371804
+    },
+    {
+        "comment": "UPSTREAM: [Sema][Typo Correction] Fix potential infite loop on",
+        "rel_patch_path": "cherry/6d186504216446a1620628057c10bddb9b0b9085.patch",
+        "start_version": 370808,
+        "end_version": 371859
+    },
+    {
+        "comment": "[UPSTREAM][ELF] Map the ELF header at imageBase",
+        "rel_patch_path": "cherry/06bb7dfbd445fe928b0ae0263ba9df1acd861c41.patch",
+        "start_version": 370808,
+        "end_version": 371957
+    },
+    {
+        "comment": "[UPSTREAM] Fix swig python package path",
+        "rel_patch_path": "cherry/5a115e81cdd40c758b10c382aeffc0c8de6930e2.patch",
+        "start_version": 370808,
+        "end_version": 372047
+    },
+    {
+        "comment": "[UPSTREAM] Cache PYTHON_EXECUTABLE for windows",
+        "rel_patch_path": "cherry/5f8a3270ae74d84599dc09c581c2a417d4bbfb5e.patch",
+        "start_version": 370808,
+        "end_version": 372194
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Fix swig python package path\"",
+        "rel_patch_path": "cherry/627868ab7c3d42313634b0305ce498645f6c851c.patch",
+        "start_version": 370808,
+        "end_version": 372364
+    },
+    {
+        "comment": "[UPSTREAM] [ELF] Error if the linked-to section of a SHF_LINK_ORDER",
+        "rel_patch_path": "cherry/267205149587595e956db25a12252835a51cd372.patch",
+        "start_version": 370808,
+        "end_version": 372400
+    },
+    {
+        "comment": "[UPSTREAM] [LLDB] Fix compilation for MinGW, remove redundant class",
+        "rel_patch_path": "cherry/f4deacf995c73045a2172f35cbaf289fa97e7abc.patch",
+        "start_version": 370808,
+        "end_version": 372482
+    },
+    {
+        "comment": "[UPSTREAM] Use _WIN32 instead of _MSC_VER",
+        "rel_patch_path": "cherry/5c82608d200e88f4c06b085bef132f7604a39782.patch",
+        "start_version": 370808,
+        "end_version": 372493
+    },
+    {
+        "comment": "[UPSTREAM][LLDB] Add a missing specification of linking against",
+        "rel_patch_path": "cherry/fb31852fbc4e3095527180f0aef655800f3f04d4.patch",
+        "start_version": 370808,
+        "end_version": 372587
+    },
+    {
+        "comment": "[UPSTREAM][ELF] Make MergeInputSection merging aware of output",
+        "rel_patch_path": "cherry/e47bbd28f8e9dfea4e019e27e9d371c144c3302e.patch",
+        "start_version": 370808,
+        "end_version": 372734
+    },
+    {
+        "comment": "[UPSTREAM][ELF] Delete SectionBase::assigned",
+        "rel_patch_path": "cherry/e447d5afd37228125bca280ad96c1a191b0b4169.patch",
+        "start_version": 370808,
+        "end_version": 372735
+    },
+    {
+        "comment": "[UPSTREAM][lldb] [cmake] Fix installing Python modules on systems",
+        "rel_patch_path": "cherry/7efca81f7debcc6fa87f2a9763c2af3d6a8f10ac.patch",
+        "start_version": 370808,
+        "end_version": 372835
+    },
+    {
+        "comment": "[UPSTREAM][ELF] Set SectionBase::partition in processSectionCommands",
+        "rel_patch_path": "cherry/f1e1451946502dd8f808c251bf4c3b571e80fd9d.patch",
+        "start_version": 370808,
+        "end_version": 372996
+    },
+    {
+        "comment": "[UPSTREAM] Always rebuild a DeclRefExpr if its FoundDecl would",
+        "rel_patch_path": "cherry/bf322b7cdd608630a42fd65687b74051601c357d.patch",
+        "start_version": 370808,
+        "end_version": 373022
+    },
+    {
+        "comment": "[UPSTREAM] hwasan: Compatibility fixes for short granules.",
+        "rel_patch_path": "cherry/c336557f0238dba72718e499bb345d0dd87305fc.patch",
+        "start_version": 370808,
+        "end_version": 373035
+    },
+    {
+        "comment": "[UPSTREAM] ELF: Don't merge SHF_LINK_ORDER sections for different",
+        "rel_patch_path": "cherry/97e251e05a46f5b90af5a0bebebdda98e7fd98ab.patch",
+        "start_version": 370808,
+        "end_version": 373255
+    },
+    {
+        "comment": "[UPSTREAM] Fix Calling Convention through aliases",
+        "rel_patch_path": "cherry/8a410bcef02c25b6b3a49fa6483875eb64539aad.patch",
+        "start_version": 370808,
+        "end_version": 373929
+    },
+    {
+        "comment": "[UPSTREAM] libhwasan initialisation include kernel syscall ABI",
+        "rel_patch_path": "cherry/d5282dfc410c6af5518b046c3ec02339aaf19950.patch",
+        "start_version": 370808,
+        "end_version": 375166
+    },
+    {
+        "comment": "[UPSTREAM] hwasan: Add missing SANITIZER_INTERFACE_ATTRIBUTE on",
+        "rel_patch_path": "cherry/33b758d2af312d02f2b5ef6915e62c6bb06e944e.patch",
+        "start_version": 370808,
+        "end_version": 375298
+    },
+    {
+        "comment": "UPSTREAM: [Sema][Typo Correction] Fix another infinite loop on",
+        "rel_patch_path": "cherry/7a2b704bf0cf65f9eb46fe3668a83b75aa2d80a6.patch",
+        "start_version": 370808,
+        "end_version": 375681
+    },
+    {
+        "comment": "[UPSTREAM][Builtins] Fix bug where powerpc builtins specializations",
+        "rel_patch_path": "cherry/8ea148dc0cbff33ac3c80cf4273991465479a01e.patch",
+        "start_version": 370808,
+        "end_version": 376048
+    },
+    {
+        "comment": "[UPSTREAM] remove redundant LLVM version from version string when",
+        "rel_patch_path": "cherry/51adeae1c90c966f5ae7eb1aa8a380fcc7cd4806.patch",
+        "start_version": 370808,
+        "end_version": 376784
+    },
+    {
+        "comment": "[UPSTREAM] ARM: Don't emit R_ARM_NONE relocations to compact",
+        "rel_patch_path": "cherry/1549b4699a84838c3969590dc4f757b72f39f40d.patch",
+        "start_version": 370808,
+        "end_version": 377024
+    },
+    {
+        "comment": "[UPSTREAM][builtins] Implement rounding mode support for i386/x86_64",
+        "rel_patch_path": "cherry/1689ad27af5c5712f42542807eb4ecdfe84c2eca.patch",
+        "start_version": 370808,
+        "end_version": 377449
+    },
+    {
+        "comment": "[UPSTREAM] [CFG] Fix a flaky crash in CFGBlock::getLastCondition().",
+        "rel_patch_path": "cherry/a3b22da4e0ea84ed5890063926b6f54685c23225.patch",
+        "start_version": 370808,
+        "end_version": 377828
+    },
+    {
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
+        "start_version": 370808,
+        "end_version": null
+    },
+    {
+        "comment": "Add stubs and headers for nl_types APIs.",
+        "rel_patch_path": "Add-stubs-and-headers-for-nl_types-APIs.patch",
+        "start_version": 370808,
+        "end_version": null
+    },
+    {
+        "comment": "ANDROID: fix incorrect cherry-pick of r373035",
+        "rel_patch_path": "ANDROID-fix-incorrect-cherry-pick-of-r373035.patch",
+        "start_version": 370808,
+        "end_version": 372338
+    },
+    {
+        "comment": "Add a new library, libclang-cxx",
+        "rel_patch_path": "Add-a-new-library-libclang-cxx.patch",
+        "start_version": 370808,
+        "end_version": null
+    },
+    {
+        "comment": "Make HasFloat16 true for all architectures",
+        "rel_patch_path": "Make-HasFloat16-true-for-all-architectures.patch",
+        "start_version": 370808,
+        "end_version": null
+    }
+]

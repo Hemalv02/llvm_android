@@ -1,0 +1,134 @@
+From 10f72c0581d1804de21dc7408ef439731a8f76d8 Mon Sep 17 00:00:00 2001
+From: Erich Keane <erich.keane@intel.com>
+Date: Mon, 7 Oct 2019 17:28:03 +0000
+Subject: [UPSTREAM] Fix Calling Convention through aliases
+
+r369697 changed the behavior of stripPointerCasts to no longer include
+aliases.  However, the code in CGDeclCXX.cpp's createAtExitStub counted
+on the looking through aliases to properly set the calling convention of
+a call.
+
+The result of the change was that the calling convention mismatch of the
+call would be replaced with a llvm.trap, causing a runtime crash.
+
+Differential Revision: https://reviews.llvm.org/D68584
+
+llvm-svn: 373929
+(cherry picked from commit 8a410bcef02c25b6b3a49fa6483875eb64539aad)
+Bug: http://b/139945549
+Bug: http://b/145013540
+Change-Id: I2dafcb7b7353a66e518d77b68b1e98012fa96319
+---
+ clang/lib/CodeGen/CGDeclCXX.cpp               |  4 ++--
+ .../test/CodeGenCXX/call-conv-thru-alias.cpp  | 21 +++++++++++++++++++
+ llvm/include/llvm/IR/Value.h                  | 10 +++++++++
+ llvm/lib/IR/Value.cpp                         |  8 +++++++
+ 4 files changed, 41 insertions(+), 2 deletions(-)
+ create mode 100644 clang/test/CodeGenCXX/call-conv-thru-alias.cpp
+
+diff --git a/clang/lib/CodeGen/CGDeclCXX.cpp b/clang/lib/CodeGen/CGDeclCXX.cpp
+index 7a0605b8450..fd7dd566696 100644
+--- a/clang/lib/CodeGen/CGDeclCXX.cpp
++++ b/clang/lib/CodeGen/CGDeclCXX.cpp
+@@ -251,8 +251,8 @@ llvm::Function *CodeGenFunction::createAtExitStub(const VarDecl &VD,
+   llvm::CallInst *call = CGF.Builder.CreateCall(dtor, addr);
+ 
+  // Make sure the call and the callee agree on calling convention.
+-  if (llvm::Function *dtorFn =
+-          dyn_cast<llvm::Function>(dtor.getCallee()->stripPointerCasts()))
++  if (auto *dtorFn = dyn_cast<llvm::Function>(
++          dtor.getCallee()->stripPointerCastsAndAliases()))
+     call->setCallingConv(dtorFn->getCallingConv());
+ 
+   CGF.FinishFunction();
+diff --git a/clang/test/CodeGenCXX/call-conv-thru-alias.cpp b/clang/test/CodeGenCXX/call-conv-thru-alias.cpp
+new file mode 100644
+index 00000000000..5bd5c7dbc5c
+--- /dev/null
++++ b/clang/test/CodeGenCXX/call-conv-thru-alias.cpp
+@@ -0,0 +1,21 @@
++// RUN: %clang_cc1 -triple i686-windows-pc -emit-llvm -o - -mconstructor-aliases -O1 -disable-llvm-passes %s | FileCheck %s
++
++struct Base { virtual ~Base(); };
++struct Derived : Base {
++  virtual ~Derived();
++  static Derived inst;
++};
++
++Base::~Base(){}
++Derived::~Derived(){}
++Derived Derived::inst;
++
++// CHECK: @"??1Derived@@UAE@XZ" = dso_local unnamed_addr alias void (%struct.Derived*), bitcast (void (%struct.Base*)* @"??1Base@@UAE@XZ" to void (%struct.Derived*)*)
++
++// CHECK: define dso_local x86_thiscallcc void @"??1Base@@UAE@XZ"
++// CHECK: define internal void @"??__E?inst@Derived@@2U1@A@@YAXXZ"
++// CHECK: call i32 @atexit(void ()* @"??__F?inst@Derived@@2U1@A@@YAXXZ"
++//
++// CHECK: define internal void @"??__F?inst@Derived@@2U1@A@@YAXXZ"
++// CHECK-NEXT: entry:
++// CHECK-NEXT: call x86_thiscallcc void @"??1Derived@@UAE@XZ"
+diff --git a/llvm/include/llvm/IR/Value.h b/llvm/include/llvm/IR/Value.h
+index 03d2ce4d7f8..58502907f0e 100644
+--- a/llvm/include/llvm/IR/Value.h
++++ b/llvm/include/llvm/IR/Value.h
+@@ -523,6 +523,16 @@ public:
+         static_cast<const Value *>(this)->stripPointerCasts());
+   }
+ 
++  /// Strip off pointer casts, all-zero GEPs, address space casts, and aliases.
++  ///
++  /// Returns the original uncasted value.  If this is called on a non-pointer
++  /// value, it returns 'this'.
++  const Value *stripPointerCastsAndAliases() const;
++  Value *stripPointerCastsAndAliases() {
++    return const_cast<Value *>(
++        static_cast<const Value *>(this)->stripPointerCastsAndAliases());
++  }
++
+   /// Strip off pointer casts, all-zero GEPs and address space casts
+   /// but ensures the representation of the result stays the same.
+   ///
+diff --git a/llvm/lib/IR/Value.cpp b/llvm/lib/IR/Value.cpp
+index c66cbddafd9..6b53c91c6e3 100644
+--- a/llvm/lib/IR/Value.cpp
++++ b/llvm/lib/IR/Value.cpp
+@@ -455,6 +455,7 @@ namespace {
+ // Various metrics for how much to strip off of pointers.
+ enum PointerStripKind {
+   PSK_ZeroIndices,
++  PSK_ZeroIndicesAndAliases,
+   PSK_ZeroIndicesSameRepresentation,
+   PSK_ZeroIndicesAndInvariantGroups,
+   PSK_InBoundsConstantIndices,
+@@ -475,6 +476,7 @@ static const Value *stripPointerCastsAndOffsets(const Value *V) {
+     if (auto *GEP = dyn_cast<GEPOperator>(V)) {
+       switch (StripKind) {
+       case PSK_ZeroIndices:
++      case PSK_ZeroIndicesAndAliases:
+       case PSK_ZeroIndicesSameRepresentation:
+       case PSK_ZeroIndicesAndInvariantGroups:
+         if (!GEP->hasAllZeroIndices())
+@@ -497,6 +499,8 @@ static const Value *stripPointerCastsAndOffsets(const Value *V) {
+       // TODO: If we know an address space cast will not change the
+       //       representation we could look through it here as well.
+       V = cast<Operator>(V)->getOperand(0);
++    } else if (StripKind == PSK_ZeroIndicesAndAliases && isa<GlobalAlias>(V)) {
++      V = cast<GlobalAlias>(V)->getAliasee();
+     } else {
+       if (const auto *Call = dyn_cast<CallBase>(V)) {
+         if (const Value *RV = Call->getReturnedArgOperand()) {
+@@ -526,6 +530,10 @@ const Value *Value::stripPointerCasts() const {
+   return stripPointerCastsAndOffsets<PSK_ZeroIndices>(this);
+ }
+ 
++const Value *Value::stripPointerCastsAndAliases() const {
++  return stripPointerCastsAndOffsets<PSK_ZeroIndicesAndAliases>(this);
++}
++
+ const Value *Value::stripPointerCastsSameRepresentation() const {
+   return stripPointerCastsAndOffsets<PSK_ZeroIndicesSameRepresentation>(this);
+ }
+-- 
+2.25.0.341.g760bfbb309-goog
+

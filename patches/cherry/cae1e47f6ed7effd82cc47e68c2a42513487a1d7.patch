@@ -1,0 +1,119 @@
+From a86e2d35152bea1560984b38fd4a5e2065ea7942 Mon Sep 17 00:00:00 2001
+From: Eli Friedman <efriedma@quicinc.com>
+Date: Thu, 5 Sep 2019 20:02:38 +0000
+Subject: [UPSTREAM][IfConversion] Fix diamond conversion with unanalyzable
+ branches.
+
+The code was incorrectly counting the number of identical instructions,
+and therefore tried to predicate an instruction which should not have
+been predicated.  This could have various effects: a compiler crash,
+an assembler failure, a miscompile, or just generating an extra,
+unnecessary instruction.
+
+Instead of depending on TargetInstrInfo::removeBranch, which only
+works on analyzable branches, just remove all branch instructions.
+
+Fixes https://bugs.llvm.org/show_bug.cgi?id=43121 and
+https://bugs.llvm.org/show_bug.cgi?id=41121 .
+
+Differential Revision: https://reviews.llvm.org/D67203
+
+llvm-svn: 371111
+(cherry picked from commit cae1e47f6ed7effd82cc47e68c2a42513487a1d7)
+
+Change-Id: Ia1f03d033981f6902bf21a7b6edf1c87fded36cc
+---
+ llvm/lib/CodeGen/IfConversion.cpp             | 10 +++-
+ .../ARM/ifcvt-diamond-unanalyzable-common.mir | 58 +++++++++++++++++++
+ 2 files changed, 66 insertions(+), 2 deletions(-)
+ create mode 100644 llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir
+
+diff --git a/llvm/lib/CodeGen/IfConversion.cpp b/llvm/lib/CodeGen/IfConversion.cpp
+index 83317194b74..be30ad30016 100644
+--- a/llvm/lib/CodeGen/IfConversion.cpp
++++ b/llvm/lib/CodeGen/IfConversion.cpp
+@@ -1758,9 +1758,15 @@ bool IfConverter::IfConvertDiamondCommon(
+   if (!BBI1->IsBrAnalyzable)
+     verifySameBranchInstructions(&MBB1, &MBB2);
+ #endif
+-  BBI1->NonPredSize -= TII->removeBranch(*BBI1->BB);
+-  // Remove duplicated instructions.
++  // Remove duplicated instructions from the tail of MBB1: any branch
++  // instructions, and the common instructions counted by NumDups2.
+   DI1 = MBB1.end();
++  while (DI1 != MBB1.begin()) {
++    MachineBasicBlock::iterator Prev = std::prev(DI1);
++    if (!Prev->isBranch() && !Prev->isDebugInstr())
++      break;
++    DI1 = Prev;
++  }
+   for (unsigned i = 0; i != NumDups2; ) {
+     // NumDups2 only counted non-dbg_value instructions, so this won't
+     // run off the head of the list.
+diff --git a/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir b/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir
+new file mode 100644
+index 00000000000..57636218403
+--- /dev/null
++++ b/llvm/test/CodeGen/ARM/ifcvt-diamond-unanalyzable-common.mir
+@@ -0,0 +1,58 @@
++# RUN: llc %s -o - -run-pass=if-converter | FileCheck %s
++# Make sure we correctly if-convert blocks containing an INLINEASM_BR.
++# CHECK: t2CMPri killed renamable $r2, 34
++# CHECK-NEXT: $r0 = t2MOVi 2, 1, $cpsr, $noreg
++# CHECK-NEXT: $r0 = t2MOVi 3, 0, killed $cpsr, $noreg, implicit killed $r0
++# CHECK-NEXT: tBL 14, $noreg, @fn2
++# CHECK-NEXT: INLINEASM_BR &"", 9, 13, 0, 13, blockaddress(@fn1, %ir-block.l_yes)
++# CHECK-NEXT: t2B %bb.1, 14, $noreg
++--- |
++  target triple = "thumbv7-unknown-linux-gnueabi"
++  
++  define dso_local void @fn1() {
++  l_yes:
++    ret void
++  }
++  
++  declare dso_local i32 @fn2(...)
++...
++---
++name:            fn1
++alignment:       1
++tracksRegLiveness: true
++body:             |
++  bb.0:
++    successors: %bb.1(0x40000000), %bb.2(0x40000000)
++    liveins: $r0, $r1, $r2, $r4, $lr
++  
++    $sp = frame-setup t2STMDB_UPD $sp, 14, $noreg, killed $r4, killed $lr
++    t2CMPri killed renamable $r2, 34, 14, $noreg, implicit-def $cpsr
++    t2Bcc %bb.2, 1, killed $cpsr
++  
++  bb.1:
++    successors: %bb.3(0x40000000), %bb.4(0x40000000)
++    liveins: $r1
++  
++    $r0 = t2MOVi 3, 14, $noreg, $noreg
++    tBL 14, $noreg, @fn2, csr_aapcs, implicit-def dead $lr, implicit $sp, implicit $r0, implicit $r1, implicit-def $sp, implicit-def dead $r0
++    INLINEASM_BR &"", 9, 13, 0, 13, blockaddress(@fn1, %ir-block.l_yes)
++    t2B %bb.3, 14, $noreg
++  
++  bb.2:
++    successors: %bb.3(0x40000000), %bb.4(0x40000000)
++    liveins: $r1
++  
++    $r0 = t2MOVi 2, 14, $noreg, $noreg
++    tBL 14, $noreg, @fn2, csr_aapcs, implicit-def dead $lr, implicit $sp, implicit $r0, implicit $r1, implicit-def $sp, implicit-def dead $r0
++    INLINEASM_BR &"", 9, 13, 0, 13, blockaddress(@fn1, %ir-block.l_yes)
++    t2B %bb.3, 14, $noreg
++  
++  bb.3:
++    successors: %bb.4(0x80000000)
++  
++    INLINEASM &"", 1
++  
++  bb.4.l_yes (address-taken):
++    $sp = t2LDMIA_RET $sp, 14, $noreg, def $r4, def $pc
++
++...
+-- 
+2.25.0.341.g760bfbb309-goog
+
