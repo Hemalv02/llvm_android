@@ -137,18 +137,6 @@ def format_bug(bug):
         return bug
 
 
-def create_rbe_inputs_file(install_dir, clang_version):
-    with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs'), 'w') as inputs_file:
-        dependencies = ('clang\n'
-                        'clang++\n'
-                        'clang.real\n'
-                        'clang++.real\n'
-                        '../lib64/libc++.so.1\n'
-                        '../lib64/clang/' + clang_version + '/share/cfi_blacklist.txt\n'
-                       )
-        inputs_file.write(dependencies)
-
-
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
                  manifest, overwrite):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
@@ -187,10 +175,6 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             logger().info('Cannot remove/overwrite existing path: ' + install_subdir)
             sys.exit(1)
     os.rename(extract_subdir, install_subdir)
-
-    # Create RBE inputs file. This is only required for Linux.
-    if host == 'linux-x86':
-        create_rbe_inputs_file(install_subdir, clang_version)
 
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
     # coverage instrumentation and rely on the driver to pick the correct

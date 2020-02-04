@@ -1770,6 +1770,21 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         version_file.write('{}\n'.format(version.long_version()))
         version_file.write('based on {}\n'.format(android_version.svn_revision))
 
+    # Create RBE input files.
+    if is_linux:
+        with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs'), 'w') as inputs_file:
+            dependencies = ('clang\n'
+                            'clang++\n'
+                            'clang.real\n'
+                            'clang++.real\n'
+                            '../lib64/libc++.so.1\n'
+                           )
+            blacklist_dir = os.path.join('lib64', 'clang', version.long_version(), 'share')
+            blacklist_files = os.listdir(os.path.join(install_dir, blacklist_dir))
+            for f in blacklist_files:
+                dependencies += ('../' + blacklist_dir + '/' + f + '\n')
+            inputs_file.write(dependencies)
+
     # Package up the resulting trimmed install/ directory.
     if create_tar:
         tarball_name = package_name + '-' + host
