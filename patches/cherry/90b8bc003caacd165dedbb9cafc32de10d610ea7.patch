@@ -1,0 +1,51 @@
+From 90b8bc003caacd165dedbb9cafc32de10d610ea7 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Mon, 25 Nov 2019 12:28:11 -0800
+Subject: [PATCH] IRGen: Call SetLLVMFunctionAttributes{,ForDefinition} on
+ __cfi_check_fail.
+
+This has the main effect of causing target-cpu and target-features to be set
+on __cfi_check_fail, causing the function to become ABI-compatible with other
+functions in the case where these attributes affect ABI (e.g. reserve-x18).
+
+Technically we only need to call SetLLVMFunctionAttributes to get the target-*
+attributes set, but since we're creating a definition we probably ought to
+call the ForDefinition function as well.
+
+Fixes PR44094.
+
+Differential Revision: https://reviews.llvm.org/D70692
+---
+ clang/lib/CodeGen/CGExpr.cpp              | 3 +++
+ clang/test/CodeGen/cfi-check-fail-attrs.c | 5 +++++
+ 2 files changed, 8 insertions(+)
+ create mode 100644 clang/test/CodeGen/cfi-check-fail-attrs.c
+
+diff --git a/clang/lib/CodeGen/CGExpr.cpp b/clang/lib/CodeGen/CGExpr.cpp
+index 214378a966f..04c6504910b 100644
+--- a/clang/lib/CodeGen/CGExpr.cpp
++++ b/clang/lib/CodeGen/CGExpr.cpp
+@@ -3200,6 +3200,9 @@ void CodeGenFunction::EmitCfiCheckFail() {
+   llvm::Function *F = llvm::Function::Create(
+       llvm::FunctionType::get(VoidTy, {VoidPtrTy, VoidPtrTy}, false),
+       llvm::GlobalValue::WeakODRLinkage, "__cfi_check_fail", &CGM.getModule());
++
++  CGM.SetLLVMFunctionAttributes(GlobalDecl(), FI, F);
++  CGM.SetLLVMFunctionAttributesForDefinition(nullptr, F);
+   F->setVisibility(llvm::GlobalValue::HiddenVisibility);
+ 
+   StartFunction(GlobalDecl(), CGM.getContext().VoidTy, F, FI, Args,
+diff --git a/clang/test/CodeGen/cfi-check-fail-attrs.c b/clang/test/CodeGen/cfi-check-fail-attrs.c
+new file mode 100644
+index 00000000000..77ba29a5581
+--- /dev/null
++++ b/clang/test/CodeGen/cfi-check-fail-attrs.c
+@@ -0,0 +1,5 @@
++// RUN: %clang_cc1 -triple aarch64-unknown-linux -fsanitize-cfi-cross-dso -target-feature +reserve-x18 -emit-llvm -o - %s | FileCheck %s
++
++// CHECK: define weak_odr hidden void @__cfi_check_fail{{.*}} [[ATTR:#[0-9]*]]
++
++// CHECK: attributes [[ATTR]] = {{.*}} "target-features"="+reserve-x18"
+-- 
+2.25.0.341.g760bfbb309-goog
+

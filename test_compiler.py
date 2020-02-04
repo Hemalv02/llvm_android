@@ -46,6 +46,14 @@ DISABLED_WARNINGS = [
     '-Wno-error=incomplete-setjmp-declaration',
     '-Wno-error=pointer-compare',
     '-Wno-error=reorder-init-list',
+    "-Wno-error=bitwise-conditional-parentheses",
+    "-Wno-error=bool-operation",
+    "-Wno-error=deprecated-volatile",
+    "-Wno-error=int-in-bool-context",
+    "-Wno-error=invalid-partial-specialization",
+    "-Wno-error=sizeof-array-div",
+    "-Wno-error=tautological-bitwise-compare",
+    "-Wno-error=tautological-overlap-compare",
 ]
 
 

@@ -216,15 +216,51 @@
         "end_version": 377828
     },
     {
+        "comment": "[UPSTREAM] [lldb][CMake] Fix build for the case of custom libedit installation",
+        "rel_patch_path": "cherry/d32484f40cbe1249643f024e3a10c4e3c50ff837.patch",
+        "start_version": 370808,
+        "end_version": 378841
+    },
+    {
+        "comment": "[UPSTREAM] Revert 3f91705ca54 ARM-NEON: make type modifiers orthogonal and allow multiple modifiers.",
+        "rel_patch_path": "cherry/21f26470e9747c472d3c18654e676cbea8393635.patch",
+        "start_version": 377782,
+        "end_version": 377965
+    },
+    {
+        "comment": "[UPSTREAM] IRGen: Call SetLLVMFunctionAttributes{,ForDefinition} on __cfi_check_fail.",
+        "rel_patch_path": "cherry/90b8bc003caacd165dedbb9cafc32de10d610ea7.patch",
+        "start_version": 377782,
+        "end_version": 378000
+    },
+    {
+        "comment": "[UPSTREAM] PR44268: Fix crash if __builtin_object_size is applied to a heap allocation.",
+        "rel_patch_path": "cherry/c5b890e922432bd80a5e3c6d82994ef4cdc41900.patch",
+        "start_version": 377782,
+        "end_version": 379308
+    },
+    {
+        "comment": "[UPSTREAM] hwasan: Move .note.hwasan.globals note to hwasan.module_ctor comdat.",
+        "rel_patch_path": "cherry/cd40bd0a32e29fb62c89b120adbc89a847443da3.patch",
+        "start_version": 377782,
+        "end_version": 381806
+    },
+    {
+        "comment": "[UPSTREAM] [LLD][ELF][ARM] Do not insert interworking thunks for non STT_FUNC symbols",
+        "rel_patch_path": "cherry/4f38ab250ff4680375c4c01db0a88c157093c665.patch",
+        "start_version": 370808,
+        "end_version": 382696
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
-        "end_version": null
+        "end_version": 377781
     },
     {
-        "comment": "Add stubs and headers for nl_types APIs.",
-        "rel_patch_path": "Add-stubs-and-headers-for-nl_types-APIs.patch",
-        "start_version": 370808,
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
+        "start_version": 377782,
         "end_version": null
     },
     {
@@ -232,6 +268,12 @@
         "rel_patch_path": "ANDROID-fix-incorrect-cherry-pick-of-r373035.patch",
         "start_version": 370808,
         "end_version": 372338
+    },
+    {
+        "comment": "Add stubs and headers for nl_types APIs.",
+        "rel_patch_path": "Add-stubs-and-headers-for-nl_types-APIs.patch",
+        "start_version": 370808,
+        "end_version": null
     },
     {
         "comment": "Add a new library, libclang-cxx",

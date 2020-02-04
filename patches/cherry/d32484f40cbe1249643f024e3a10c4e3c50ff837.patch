@@ -1,0 +1,43 @@
+From 1de7d9c88c701903352cb5f3ed79ff7ccad908fb Mon Sep 17 00:00:00 2001
+From: Tatyana Krasnukha <tatyana@synopsys.com>
+Date: Mon, 9 Dec 2019 19:31:29 +0300
+Subject: [PATCH] [lldb][CMake] Fix build for the case of custom libedit
+ installation
+
+---
+ .../Plugins/ScriptInterpreter/Python/CMakeLists.txt   | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/lldb/source/Plugins/ScriptInterpreter/Python/CMakeLists.txt b/lldb/source/Plugins/ScriptInterpreter/Python/CMakeLists.txt
+index 6febb038578..5be6934c191 100644
+--- a/lldb/source/Plugins/ScriptInterpreter/Python/CMakeLists.txt
++++ b/lldb/source/Plugins/ScriptInterpreter/Python/CMakeLists.txt
+@@ -3,6 +3,10 @@ if(NOT LLDB_PYTHON_RELATIVE_PATH)
+ endif()
+ add_definitions(-DLLDB_PYTHON_RELATIVE_LIBDIR="${LLDB_PYTHON_RELATIVE_PATH}")
+ 
++if (NOT LLDB_DISABLE_LIBEDIT)
++  list(APPEND LLDB_LIBEDIT_LIBS ${libedit_LIBRARIES})
++endif()
++
+ add_lldb_library(lldbPluginScriptInterpreterPython PLUGIN
+   PythonDataObjects.cpp
+   PythonReadline.cpp
+@@ -16,7 +20,14 @@ add_lldb_library(lldbPluginScriptInterpreterPython PLUGIN
+     lldbInterpreter
+     lldbTarget
+     ${PYTHON_LIBRARY}
++    ${LLDB_LIBEDIT_LIBS}
+ 
+   LINK_COMPONENTS
+     Support
+   )
++
++if (NOT LLDB_DISABLE_LIBEDIT)
++  target_include_directories(lldbPluginScriptInterpreterPython PUBLIC
++     ${libedit_INCLUDE_DIRS}
++  )
++endif()
+-- 
+2.25.0.341.g760bfbb309-goog
+

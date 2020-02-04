@@ -46,6 +46,7 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir):
         '--patch_metadata_file', patch_json,
         '--filesdir_path', patch_dir,
         '--src_path', source_dir,
+        '--use_src_head',
         '--failure_mode', 'fail'
     ]
 
@@ -80,11 +81,11 @@ def _same_llvm_dirs(dir1, dir2):
     return True
 
 
-def setup_sources(source_dir, build_llvm_next, patch_sources):
+def setup_sources(source_dir, build_llvm_next):
     """Setup toolchain sources into source_dir.
 
-    Copies toolchain/llvm-project into source_dir.  If patch_sources is True,
-    apply patches per the specification in
+    Copy toolchain/llvm-project into source_dir.
+    Apply patches per the specification in
     toolchain/llvm_android/patches/PATCHES.json.  The function overwrites
     source_dir only if necessary to avoid recompiles during incremental builds.
     """
@@ -108,12 +109,11 @@ def setup_sources(source_dir, build_llvm_next, patch_sources):
     # Note: Darwin builds don't copy symlinks with -r.  Use -R instead.
     subprocess.check_call(['cp', '-Rf', copy_from, tmp_source_dir])
 
-    if patch_sources:
-        patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
-        patch_json = os.path.join(patch_dir, 'PATCHES.json')
-        svn_version = _get_svn_version_to_build(build_llvm_next)
-
-        apply_patches(tmp_source_dir, svn_version, patch_json, patch_dir)
+    # patch source tree
+    patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
+    patch_json = os.path.join(patch_dir, 'PATCHES.json')
+    svn_version = _get_svn_version_to_build(build_llvm_next)
+    apply_patches(tmp_source_dir, svn_version, patch_json, patch_dir)
 
     # Copy tmp_source_dir to source_dir if they are different.  This avoids
     # invalidating prior build outputs.

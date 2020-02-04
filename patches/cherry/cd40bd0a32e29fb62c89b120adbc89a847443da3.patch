@@ -1,0 +1,51 @@
+From cd40bd0a32e29fb62c89b120adbc89a847443da3 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Fri, 17 Jan 2020 09:49:40 -0800
+Subject: [PATCH] hwasan: Move .note.hwasan.globals note to hwasan.module_ctor
+ comdat.
+
+As of D70146 lld GCs comdats as a group and no longer considers notes in
+comdats to be GC roots, so we need to move the note to a comdat with a GC root
+section (.init_array) in order to prevent lld from discarding the note.
+
+Differential Revision: https://reviews.llvm.org/D72936
+---
+ llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp | 5 +++--
+ llvm/test/Instrumentation/HWAddressSanitizer/globals.ll    | 4 ++--
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp b/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
+index 7e8f8e27a97..4f69234a58b 100644
+--- a/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
++++ b/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
+@@ -1325,8 +1325,9 @@ void HWAddressSanitizer::instrumentGlobals() {
+   // cases where two libraries mutually depend on each other.
+   //
+   // We only need one note per binary, so put everything for the note in a
+-  // comdat.
+-  Comdat *NoteComdat = M.getOrInsertComdat(kHwasanNoteName);
++  // comdat. This need to be a comdat with an .init_array section to prevent
++  // newer versions of lld from discarding the note.
++  Comdat *NoteComdat = M.getOrInsertComdat(kHwasanModuleCtorName);
+ 
+   Type *Int8Arr0Ty = ArrayType::get(Int8Ty, 0);
+   auto Start =
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll b/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll
+index d5516bfae92..e85a70365ac 100644
+--- a/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll
+@@ -7,9 +7,9 @@
+ ; CHECK30: @__start_hwasan_globals = external hidden constant [0 x i8]
+ ; CHECK30: @__stop_hwasan_globals = external hidden constant [0 x i8]
+ 
+-; CHECK30: @hwasan.note = private constant { i32, i32, i32, [8 x i8], i32, i32 } { i32 8, i32 8, i32 3, [8 x i8] c"LLVM\00\00\00\00", i32 trunc (i64 sub (i64 ptrtoint ([0 x i8]* @__start_hwasan_globals to i64), i64 ptrtoint ({ i32, i32, i32, [8 x i8], i32, i32 }* @hwasan.note to i64)) to i32), i32 trunc (i64 sub (i64 ptrtoint ([0 x i8]* @__stop_hwasan_globals to i64), i64 ptrtoint ({ i32, i32, i32, [8 x i8], i32, i32 }* @hwasan.note to i64)) to i32) }, section ".note.hwasan.globals", comdat, align 4
++; CHECK30: @hwasan.note = private constant { i32, i32, i32, [8 x i8], i32, i32 } { i32 8, i32 8, i32 3, [8 x i8] c"LLVM\00\00\00\00", i32 trunc (i64 sub (i64 ptrtoint ([0 x i8]* @__start_hwasan_globals to i64), i64 ptrtoint ({ i32, i32, i32, [8 x i8], i32, i32 }* @hwasan.note to i64)) to i32), i32 trunc (i64 sub (i64 ptrtoint ([0 x i8]* @__stop_hwasan_globals to i64), i64 ptrtoint ({ i32, i32, i32, [8 x i8], i32, i32 }* @hwasan.note to i64)) to i32) }, section ".note.hwasan.globals", comdat($hwasan.module_ctor), align 4
+ 
+-; CHECK30: @hwasan.dummy.global = private constant [0 x i8] zeroinitializer, section "hwasan_globals", comdat($hwasan.note), !associated [[NOTE:![0-9]+]]
++; CHECK30: @hwasan.dummy.global = private constant [0 x i8] zeroinitializer, section "hwasan_globals", comdat($hwasan.module_ctor), !associated [[NOTE:![0-9]+]]
+ 
+ ; CHECK30: @four.hwasan = private global { i32, [12 x i8] } { i32 1, [12 x i8] c"\00\00\00\00\00\00\00\00\00\00\00\AC" }, align 16
+ ; CHECK30: @four.hwasan.descriptor = private constant { i32, i32 } { i32 trunc (i64 sub (i64 ptrtoint ({ i32, [12 x i8] }* @four.hwasan to i64), i64 ptrtoint ({ i32, i32 }* @four.hwasan.descriptor to i64)) to i32), i32 -1409286140 }, section "hwasan_globals", !associated [[FOUR:![0-9]+]]
+-- 
+2.25.0.341.g760bfbb309-goog
+
