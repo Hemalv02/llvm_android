@@ -105,7 +105,8 @@ def setup_sources(source_dir, build_llvm_next, patch_sources):
     # timestamps from the source.  We instead use rsync below to only update
     # changed files into source_dir.  Using 'cp' will ensure all changed files
     # get a newer timestamp than files in $source_dir.
-    subprocess.check_call(['cp', '-rf', copy_from, tmp_source_dir])
+    # Note: Darwin builds don't copy symlinks with -r.  Use -R instead.
+    subprocess.check_call(['cp', '-Rf', copy_from, tmp_source_dir])
 
     if patch_sources:
         patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
