@@ -218,6 +218,10 @@ def debug_prefix_flag():
     return '-fdebug-prefix-map={}='.format(utils.android_path())
 
 
+def go_bin_dir():
+    return utils.android_path('prebuilts/go', utils.build_os_type(), 'bin')
+
+
 def create_sysroots():
     # Construct the sysroots from scratch, since symlinks can't nest within
     # the right places (without altering source prebuilts).
@@ -1481,22 +1485,24 @@ def build_runtimes(toolchain, args=None):
         create_hwasan_symlink(toolchain, version)
 
 def install_wrappers(llvm_install_path):
-    def _instantiate_wrapper(wrapper_path):
-        wrapper_template = utils.android_path('toolchain', 'llvm_android',
-                                              'compiler_wrapper.py.in')
-
-        append_flags = '\'-Wno-error\'' if BUILD_LLVM_NEXT else ''
-        with open(wrapper_template, 'r') as infile:
-            wrapper_txt = string.Template(infile.read()).substitute(
-                {'append_flags': append_flags})
-
-        with open(wrapper_path, 'w') as outfile:
-            outfile.write(wrapper_txt)
-        # Also preserve permission bits etc.
-        shutil.copystat(wrapper_template, wrapper_path)
-
-    wrapper_path = utils.out_path('compiler_wrapper.py')
-    _instantiate_wrapper(wrapper_path)
+    wrapper_path = utils.out_path('llvm_android_wrapper')
+    wrapper_build_script = utils.android_path('external', 'toolchain-utils',
+                                              'compiler_wrapper', 'build.py')
+    python3_cmd = utils.android_path('prebuilts', 'build-tools',
+                                     utils.build_os_type(), 'bin', 'py3-cmd')
+    # Note: The build script automatically determines the architecture
+    # based on the host.
+    go_env = dict(os.environ)
+    go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
+    check_call([python3_cmd, wrapper_build_script,
+                # Python3 prebuilts in prebuilts/build-tools has an issue
+                # with argument parsing and ignores the first argument.
+                # Pass a dummy argument until the issue is fixed.
+                'blah',
+                '--config=android',
+                '--use_ccache=false',
+                '--use_llvm_next=' + str(BUILD_LLVM_NEXT).lower(),
+                '--output_file=' + wrapper_path], env=go_env)
 
     bisect_path = utils.android_path('toolchain', 'llvm_android',
                                      'bisect_driver.py')
