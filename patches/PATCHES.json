@@ -280,11 +280,5 @@
         "rel_patch_path": "Add-a-new-library-libclang-cxx.patch",
         "start_version": 370808,
         "end_version": null
-    },
-    {
-        "comment": "Make HasFloat16 true for all architectures",
-        "rel_patch_path": "Make-HasFloat16-true-for-all-architectures.patch",
-        "start_version": 370808,
-        "end_version": null
     }
 ]
