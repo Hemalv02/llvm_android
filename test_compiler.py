@@ -302,11 +302,9 @@ def build_clang(instrumented=False, pgo=True):
     stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
 
-    # Clone sources to be built.  test_compiler doesn't build llvm_next and
-    # doesn't need to patch sources.
+    # Clone sources to build the current version, with patches.
     source_manager.setup_sources(source_dir=utils.llvm_path(),
-                                 build_llvm_next=False,
-                                 patch_sources=False)
+                                 build_llvm_next=False)
 
 
     # LLVM tool llvm-profdata from stage1 is needed to merge the collected
