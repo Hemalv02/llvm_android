@@ -769,7 +769,7 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
         # The build system will add '-stdlib=libc++' automatically. Since we
         # have -nostdinc++ here, -stdlib is useless. Adds a flag to avoid the
-        # warnings. (b/148786803)
+        # warnings.
         cflags.append('-Wno-unused-command-line-argument')
 
         lldb_path = utils.out_path('lib', 'lldb-server-' + arch)
