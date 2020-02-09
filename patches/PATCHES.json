@@ -234,6 +234,12 @@
         "end_version": 378000
     },
     {
+        "comment": "[UPSTREAM] Revert \"Revert 1689ad27af5\"[builtins] Implement rounding mode support for i386/x86_64",
+        "rel_patch_path": "cherry/acc79aa0e747b9777077e0a337e99540a52b94b2.patch",
+        "start_version": 377506,
+        "end_version": 378157
+    },
+    {
         "comment": "[UPSTREAM] PR44268: Fix crash if __builtin_object_size is applied to a heap allocation.",
         "rel_patch_path": "cherry/c5b890e922432bd80a5e3c6d82994ef4cdc41900.patch",
         "start_version": 377782,
