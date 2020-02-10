@@ -66,21 +66,6 @@ def _get_svn_version_to_build(build_llvm_next):
     return rev[1:] # strip the leading 'r'
 
 
-def _same_llvm_dirs(dir1, dir2):
-    diff_cmd = ['diff', '-r', dir1, dir2]
-
-    # The libcxx test inputs have a symlink libcxx/test/**/bad_symlink that is
-    # always reported as different by diff.  Ignore these and .git metadata.
-    diff_cmd.extend(('-x', 'bad_symlink'))
-    diff_cmd.extend(('-x', '.git'))
-
-    try:
-        subprocess.check_call(diff_cmd)
-    except subprocess.CalledProcessError:
-        return False
-    return True
-
-
 def setup_sources(source_dir, build_llvm_next):
     """Setup toolchain sources into source_dir.
 
@@ -119,7 +104,7 @@ def setup_sources(source_dir, build_llvm_next):
     # invalidating prior build outputs.
     if not os.path.exists(source_dir):
         os.rename(tmp_source_dir, source_dir)
-    elif not _same_llvm_dirs(tmp_source_dir, source_dir):
+    else:
         # Without a trailing '/' in $SRC, rsync copies $SRC to
         # $DST/BASENAME($SRC) instead of $DST.
         tmp_source_dir = tmp_source_dir.rstrip('/') + '/'
