@@ -53,8 +53,8 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir):
     # py3-cmd in prebuilts/build-tools doesn't seem to add the current script's
     # directory to sys.path.  Explicitly pass the path in PYTHONPATH
     env = dict(os.environ)
-    env['PYTHONPATH'] = os.path.join('external', 'toolchain-utils',
-                                     'llvm_tools')
+    env['PYTHONPATH'] = utils.android_path('external', 'toolchain-utils',
+                                           'llvm_tools')
     subprocess.check_call(patch_manager_cmd, env=env)
 
 
