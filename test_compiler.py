@@ -310,6 +310,7 @@ def build_clang(instrumented=False, pgo=True):
     # LLVM tool llvm-profdata from stage1 is needed to merge the collected
     # profiles.  Build all LLVM tools if building instrumented stage2
     build.build_stage1(stage1_install, build_name='dev',
+                       stage1_targets=build.BASE_TARGETS,
                        build_llvm_tools=instrumented)
 
     profdata = None
@@ -320,7 +321,7 @@ def build_clang(instrumented=False, pgo=True):
     build.build_stage2(
         stage1_install,
         stage2_install,
-        build.STAGE2_TARGETS,
+        build.ANDROID_TARGETS,
         build_name='dev',
         build_instrumented=instrumented,
         profdata_file=profdata)

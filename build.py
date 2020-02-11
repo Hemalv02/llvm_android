@@ -43,7 +43,8 @@ if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
     USE_GOMA_FOR_STAGE1 = True
     del ORIG_ENV['USE_GOMA']
 
-STAGE2_TARGETS = 'AArch64;ARM;BPF;X86'
+BASE_TARGETS = 'X86'
+ANDROID_TARGETS = 'AArch64;ARM;BPF;X86'
 
 # We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
 MAC_MIN_VERSION = '10.9'
@@ -369,7 +370,7 @@ def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
         check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
 
 
-def cross_compile_configs(stage2_install, platform=False, static=False):
+def cross_compile_configs(toolchain, platform=False, static=False):
     configs = [
         ('arm', 'arm', 'arm/arm-linux-androideabi-4.9/arm-linux-androideabi',
          'arm-linux-android', '-march=armv7-a'),
@@ -383,9 +384,9 @@ def cross_compile_configs(stage2_install, platform=False, static=False):
          'i686-linux-android', '-m32'),
     ]
 
-    cc = os.path.join(stage2_install, 'bin', 'clang')
-    cxx = os.path.join(stage2_install, 'bin', 'clang++')
-    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
+    cc = os.path.join(toolchain, 'bin', 'clang')
+    cxx = os.path.join(toolchain, 'bin', 'clang++')
+    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
 
     for (arch, ndk_arch, toolchain_path, llvm_triple, extra_flags) in configs:
         if static:
@@ -457,12 +458,12 @@ def cross_compile_configs(stage2_install, platform=False, static=False):
         yield (arch, llvm_triple, defines, cflags)
 
 
-def build_asan_test(stage2_install):
+def build_asan_test(toolchain):
     # We can not build asan_test using current CMake building system. Since
     # those files are not used to build AOSP, we just simply touch them so that
     # we can pass the build checks.
     for arch in ('aarch64', 'arm', 'i686'):
-        asan_test_path = os.path.join(stage2_install, 'test', arch, 'bin')
+        asan_test_path = os.path.join(toolchain, 'test', arch, 'bin')
         check_create_path(asan_test_path)
         asan_test_bin_path = os.path.join(asan_test_path, 'asan_test')
         open(asan_test_bin_path, 'w+').close()
@@ -472,24 +473,24 @@ def build_sanitizer_map_file(san, arch, lib_dir):
     map_file = os.path.join(lib_dir, 'libclang_rt.{}-{}-android.map.txt'.format(san, arch))
     mapfile.create_map_file(lib_file, map_file)
 
-def build_sanitizer_map_files(stage2_install, clang_version):
-    lib_dir = os.path.join(stage2_install,
+def build_sanitizer_map_files(toolchain, clang_version):
+    lib_dir = os.path.join(toolchain,
                            clang_resource_dir(clang_version.long_version(), ''))
     for arch in ('aarch64', 'arm', 'i686', 'x86_64'):
         build_sanitizer_map_file('asan', arch, lib_dir)
         build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
     build_sanitizer_map_file('hwasan', 'aarch64', lib_dir)
 
-def create_hwasan_symlink(stage2_install, clang_version):
-    lib_dir = os.path.join(stage2_install,
+def create_hwasan_symlink(toolchain, clang_version):
+    lib_dir = os.path.join(toolchain,
                            clang_resource_dir(clang_version.long_version(), ''))
     symlink_path = lib_dir + 'libclang_rt.hwasan_static-aarch64-android.a'
     utils.remove(symlink_path)
     os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
 
-def build_libcxx(stage2_install, clang_version):
+def build_libcxx(toolchain, clang_version):
     for (arch, llvm_triple, libcxx_defines,
-         cflags) in cross_compile_configs(stage2_install): # pylint: disable=not-an-iterable
+         cflags) in cross_compile_configs(toolchain): # pylint: disable=not-an-iterable
         logger().info('Building libcxx for %s', arch)
         libcxx_path = utils.out_path('lib', 'libcxx-' + arch)
 
@@ -512,7 +513,7 @@ def build_libcxx(stage2_install, clang_version):
         # We need to install libcxx manually.
         install_subdir = clang_resource_dir(clang_version.long_version(),
                                             arch_from_triple(llvm_triple))
-        libcxx_install = os.path.join(stage2_install, install_subdir)
+        libcxx_install = os.path.join(toolchain, install_subdir)
 
         libcxx_libs = os.path.join(libcxx_path, 'lib')
         check_create_path(libcxx_install)
@@ -521,14 +522,14 @@ def build_libcxx(stage2_install, clang_version):
                 shutil.copy2(os.path.join(libcxx_libs, f), libcxx_install)
 
 
-def build_crts(stage2_install, clang_version, ndk_cxx=False):
-    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
+def build_crts(toolchain, clang_version, ndk_cxx=False):
+    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
     # Now build compiler-rt for each arch
     for (arch, llvm_triple, crt_defines,
-         cflags) in cross_compile_configs(stage2_install, platform=(not ndk_cxx)): # pylint: disable=not-an-iterable
+         cflags) in cross_compile_configs(toolchain, platform=(not ndk_cxx)): # pylint: disable=not-an-iterable
         logger().info('Building compiler-rt for %s', arch)
         crt_path = utils.out_path('lib', 'clangrt-' + arch)
-        crt_install = os.path.join(stage2_install, 'lib64', 'clang',
+        crt_install = os.path.join(toolchain, 'lib64', 'clang',
                                    clang_version.long_version())
         if ndk_cxx:
             crt_path += '-ndk-cxx'
@@ -581,17 +582,17 @@ def build_crts(stage2_install, clang_version, ndk_cxx=False):
 
         if ndk_cxx:
             src_dir = os.path.join(crt_install, 'lib', 'linux')
-            dst_dir = os.path.join(stage2_install, 'runtimes_ndk_cxx')
+            dst_dir = os.path.join(toolchain, 'runtimes_ndk_cxx')
             check_create_path(dst_dir)
             for f in os.listdir(src_dir):
                 shutil.copy2(os.path.join(src_dir, f), os.path.join(dst_dir, f))
 
 
-def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
-    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
+def build_libfuzzers(toolchain, clang_version, ndk_cxx=False):
+    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
 
     for (arch, llvm_triple, libfuzzer_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
-            stage2_install, platform=(not ndk_cxx)):
+            toolchain, platform=(not ndk_cxx)):
         logger().info('Building libfuzzer for %s (ndk_cxx? %s)', arch, ndk_cxx)
 
         libfuzzer_path = utils.out_path('lib', 'libfuzzer-' + arch)
@@ -639,7 +640,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         else:
             lib_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
-        lib_dir = os.path.join(stage2_install, lib_subdir)
+        lib_dir = os.path.join(toolchain, lib_subdir)
 
         check_create_path(lib_dir)
         shutil.copy2(static_lib, os.path.join(lib_dir, 'libFuzzer.a'))
@@ -647,12 +648,12 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
         # Now install under the libclang_rt.fuzzer[...] name as well.
         if ndk_cxx:
             #  1. Under runtimes_ndk_cxx
-            dst_dir = os.path.join(stage2_install, 'runtimes_ndk_cxx')
+            dst_dir = os.path.join(toolchain, 'runtimes_ndk_cxx')
             check_create_path(dst_dir)
             shutil.copy2(static_lib, os.path.join(dst_dir, static_lib_filename))
         else:
             #  2. Under lib64.
-            libfuzzer_install = os.path.join(stage2_install, 'lib64', 'clang',
+            libfuzzer_install = os.path.join(toolchain, 'lib64', 'clang',
                                              clang_version.long_version())
             libfuzzer_install = os.path.join(libfuzzer_install, "lib", "linux")
             check_create_path(libfuzzer_install)
@@ -660,7 +661,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
 
     # Install libfuzzer headers.
     header_src = utils.llvm_path('compiler-rt', 'lib', 'fuzzer')
-    header_dst = os.path.join(stage2_install, 'prebuilt_include', 'llvm', 'lib',
+    header_dst = os.path.join(toolchain, 'prebuilt_include', 'llvm', 'lib',
                               'Fuzzer')
     check_create_path(header_dst)
     for f in os.listdir(header_src):
@@ -668,7 +669,7 @@ def build_libfuzzers(stage2_install, clang_version, ndk_cxx=False):
             shutil.copy2(os.path.join(header_src, f), header_dst)
 
 
-def build_libcxxabi(stage2_install, build_arch):
+def build_libcxxabi(toolchain, build_arch):
     # Normalize arm64/aarch64
     if build_arch == 'arm64':
         build_arch = 'aarch64'
@@ -676,7 +677,7 @@ def build_libcxxabi(stage2_install, build_arch):
     # TODO: Refactor cross_compile_configs to support per-arch queries in
     # addition to being a generator.
     for (arch, llvm_triple, defines, cflags) in \
-         cross_compile_configs(stage2_install, platform=True): # pylint: disable=not-an-iterable
+         cross_compile_configs(toolchain, platform=True): # pylint: disable=not-an-iterable
 
         # Build only the requested arch.
         if arch != build_arch:
@@ -700,10 +701,10 @@ def build_libcxxabi(stage2_install, build_arch):
         return out_path
 
 
-def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
+def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
 
     for (arch, llvm_triple, libomp_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
-            stage2_install, platform=(not ndk_cxx)):
+            toolchain, platform=(not ndk_cxx)):
 
         logger().info('Building libomp for %s (ndk_cxx? %s)', arch, ndk_cxx)
         # Skip implicit C++ headers and explicitly include C++ header paths.
@@ -751,16 +752,16 @@ def build_libomp(stage2_install, clang_version, ndk_cxx=False, is_shared=False):
         else:
             dst_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
-        dst_dir = os.path.join(stage2_install, dst_subdir)
+        dst_dir = os.path.join(toolchain, dst_subdir)
 
         check_create_path(dst_dir)
         shutil.copy2(src_lib, os.path.join(dst_dir, libname))
 
 
-def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
-    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
+def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
+    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
     for (arch, llvm_triple, lldb_defines,
-         cflags) in cross_compile_configs(stage2_install, platform=(not ndk_cxx),
+         cflags) in cross_compile_configs(toolchain, platform=(not ndk_cxx),
                                           static=True): # pylint: disable=not-an-iterable
 
         logger().info('Building lldb for %s (ndk_cxx? %s)', arch, ndk_cxx)
@@ -791,9 +792,9 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
         lldb_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
         lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
-        lldb_defines['LLVM_TABLEGEN'] = os.path.join(stage2_install, 'bin', 'llvm-tblgen')
-        lldb_defines['CLANG_TABLEGEN'] = os.path.join(stage2_install, '..', 'stage2', 'bin', 'clang-tblgen')
-        lldb_defines['LLDB_TABLEGEN'] = os.path.join(stage2_install, '..', 'stage2', 'bin', 'lldb-tblgen')
+        lldb_defines['LLVM_TABLEGEN'] = os.path.join(toolchain, 'bin', 'llvm-tblgen')
+        lldb_defines['CLANG_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'clang-tblgen')
+        lldb_defines['LLDB_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'lldb-tblgen')
         lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_TARGET_ARCH'] = arch
@@ -818,27 +819,27 @@ def build_lldb_server(stage2_install, clang_version, ndk_cxx=False):
         else:
             dst_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
-        dst_dir = os.path.join(stage2_install, dst_subdir)
+        dst_dir = os.path.join(toolchain, dst_subdir)
 
         check_create_path(dst_dir)
         shutil.copy2(src_lib, os.path.join(dst_dir, libname))
 
 
-def build_crts_host_i686(stage2_install, clang_version):
+def build_crts_host_i686(toolchain, clang_version):
     logger().info('Building compiler-rt for host-i686')
 
-    llvm_config = os.path.join(stage2_install, 'bin', 'llvm-config')
+    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
 
-    crt_install = os.path.join(stage2_install, 'lib64', 'clang',
+    crt_install = os.path.join(toolchain, 'lib64', 'clang',
                                clang_version.long_version())
     crt_cmake_path = utils.llvm_path('compiler-rt')
 
     cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type(), is_32_bit=True)
 
     crt_defines = base_cmake_defines()
-    crt_defines['CMAKE_C_COMPILER'] = os.path.join(stage2_install, 'bin',
+    crt_defines['CMAKE_C_COMPILER'] = os.path.join(toolchain, 'bin',
                                                    'clang')
-    crt_defines['CMAKE_CXX_COMPILER'] = os.path.join(stage2_install, 'bin',
+    crt_defines['CMAKE_CXX_COMPILER'] = os.path.join(toolchain, 'bin',
                                                      'clang++')
 
     # Due to CMake and Clang oddities, we need to explicitly set
@@ -1190,12 +1191,12 @@ def get_shared_extra_defines():
     return extra_defines
 
 
-def build_stage1(stage1_install, build_name, build_llvm_tools=False):
+def build_stage1(stage1_install, build_name, stage1_targets,
+                 build_llvm_tools=False):
     # Build/install the stage 1 toolchain
     cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
 
     stage1_path = utils.out_path('stage1')
-    stage1_targets = 'X86'
 
     stage1_extra_defines = get_shared_extra_defines()
     stage1_extra_defines['CLANG_ENABLE_ARCMT'] = 'OFF'
@@ -1419,44 +1420,44 @@ def build_stage2(stage1_install,
         extra_env=stage2_extra_env)
 
 
-def build_runtimes(stage2_install, args=None):
+def build_runtimes(toolchain, args=None):
     if args is not None and args.skip_sysroots:
         logger().info('Skip libcxxabi and other sysroot libraries')
     else:
         create_sysroots()
-    version = extract_clang_version(stage2_install)
+    version = extract_clang_version(toolchain)
     if args is not None and args.skip_compiler_rt:
         logger().info('Skip compiler-rt')
     else:
-        build_crts(stage2_install, version)
-        build_crts(stage2_install, version, ndk_cxx=True)
+        build_crts(toolchain, version)
+        build_crts(toolchain, version, ndk_cxx=True)
         # 32-bit host crts are not needed for Darwin
         if utils.host_is_linux():
-            build_crts_host_i686(stage2_install, version)
+            build_crts_host_i686(toolchain, version)
     if args is not None and args.skip_libfuzzers:
         logger().info('Skip libfuzzers')
     else:
-        build_libfuzzers(stage2_install, version)
-        build_libfuzzers(stage2_install, version, ndk_cxx=True)
+        build_libfuzzers(toolchain, version)
+        build_libfuzzers(toolchain, version, ndk_cxx=True)
     if args is not None and args.skip_libomp:
         logger().info('Skip libomp')
     else:
-        build_libomp(stage2_install, version)
-        build_libomp(stage2_install, version, ndk_cxx=True)
-        build_libomp(stage2_install, version, ndk_cxx=True, is_shared=True)
+        build_libomp(toolchain, version)
+        build_libomp(toolchain, version, ndk_cxx=True)
+        build_libomp(toolchain, version, ndk_cxx=True, is_shared=True)
     if args is not None and args.skip_lldb:
         logger().info('Skip lldb server')
     else:
-        build_lldb_server(stage2_install, version, ndk_cxx=True)
+        build_lldb_server(toolchain, version, ndk_cxx=True)
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
-    # build_libcxx(stage2_install, version)
+    # build_libcxx(toolchain, version)
     if args is not None and args.skip_asan:
         logger().info('Skip asan test, map, symlink')
     else:
-        build_asan_test(stage2_install)
-        build_sanitizer_map_files(stage2_install, version)
-        create_hwasan_symlink(stage2_install, version)
+        build_asan_test(toolchain)
+        build_sanitizer_map_files(toolchain, version)
+        create_hwasan_symlink(toolchain, version)
 
 def install_wrappers(llvm_install_path):
     wrapper_path = utils.android_path('toolchain', 'llvm_android',
@@ -1962,10 +1963,16 @@ def main():
 
     # Build the stage1 Clang for the build host
     instrumented = utils.host_is_linux() and args.build_instrumented
-    # Windows libs are built with stage1 toolchain. llvm-config is required.
-    stage1_build_llvm_tools = instrumented or (do_build and need_windows)
+
     if do_stage1:
-        build_stage1(stage1_install, args.build_name,
+        # Windows libs are built with stage1 toolchain. llvm-config is required.
+        stage1_build_llvm_tools = instrumented or \
+                                  (do_build and need_windows) or \
+                                  args.debug
+        stage1_targets = BASE_TARGETS
+        if args.debug:
+            stage1_targets = ANDROID_TARGETS
+        build_stage1(stage1_install, args.build_name, stage1_targets,
                      build_llvm_tools=stage1_build_llvm_tools)
 
     if do_build and need_host:
@@ -1981,12 +1988,15 @@ def main():
                                profdata_filename)
 
         if do_stage2:
-            build_stage2(stage1_install, stage2_install, STAGE2_TARGETS,
+            build_stage2(stage1_install, stage2_install, ANDROID_TARGETS,
                          args.build_name, args.enable_assertions,
                          args.debug, args.no_lto, instrumented, profdata)
 
         if utils.host_is_linux() and do_runtimes:
-            build_runtimes(stage2_install, args)
+            runtimes_toolchain = stage2_install
+            if args.debug:
+                runtimes_toolchain = stage1_install
+            build_runtimes(runtimes_toolchain, args)
 
     if do_build and need_windows:
         if os.path.exists(windows64_install):
@@ -1995,7 +2005,7 @@ def main():
         windows64_path = utils.out_path('windows-x86-64')
         build_llvm_for_windows(
             stage1_install=stage1_install,
-            targets=STAGE2_TARGETS,
+            targets=ANDROID_TARGETS,
             enable_assertions=args.enable_assertions,
             build_dir=windows64_path,
             install_dir=windows64_install,
