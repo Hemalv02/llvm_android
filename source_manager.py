@@ -20,6 +20,7 @@ Package to manage LLVM sources when building a toolchain.
 
 import os
 import shutil
+import string
 import subprocess
 
 import android_version
@@ -63,7 +64,8 @@ def _get_svn_version_to_build(build_llvm_next):
         rev = android_version.svn_revision_next
     else:
         rev = android_version.svn_revision
-    return rev[1:] # strip the leading 'r'
+    # strip the leading 'r' and letter suffix, e.g., r377782b => 377782
+    return rev[1:].rstrip(string.ascii_lowercase)
 
 
 def setup_sources(source_dir, build_llvm_next):
