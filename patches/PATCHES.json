@@ -286,5 +286,11 @@
         "rel_patch_path": "Add-a-new-library-libclang-cxx.patch",
         "start_version": 370808,
         "end_version": null
+    },
+    {
+        "comment": "ANDROID Do not record function addresses if value profiling is disabled",
+        "rel_patch_path": "ANDROID-Do-not-record-function-addresses-if-value-profiling-is-disabled.patch",
+        "start_version": 377782,
+        "end_version": null
     }
 ]
