@@ -258,6 +258,12 @@
         "end_version": 382696
     },
     {
+        "comment": "[UPSTREAM] [SimplifyLibCalls] Add __strlen_chk.",
+        "rel_patch_path": "cherry/f8c9ceb1ce9c71574d413a6391812d46d9f9edb3.patch",
+        "start_version": 377782,
+        "end_version": 383990
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
