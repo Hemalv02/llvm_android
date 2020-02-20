@@ -74,7 +74,7 @@ class CompilerWrapper(object):
         self.execargs = []
         self.real_compiler = None
         self.argv0 = None
-        self.append_flags = []
+        self.append_flags = [${append_flags}]
         self.prepend_flags = []
         self.custom_flags = {'--gomacc-path': None}
 

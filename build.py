@@ -1478,8 +1478,23 @@ def build_runtimes(toolchain, args=None):
         create_hwasan_symlink(toolchain, version)
 
 def install_wrappers(llvm_install_path):
-    wrapper_path = utils.android_path('toolchain', 'llvm_android',
-                                      'compiler_wrapper.py')
+    def _instantiate_wrapper(wrapper_path):
+        wrapper_template = utils.android_path('toolchain', 'llvm_android',
+                                              'compiler_wrapper.py.in')
+
+        append_flags = '\'-Wno-error\'' if BUILD_LLVM_NEXT else ''
+        with open(wrapper_template, 'r') as infile:
+            wrapper_txt = string.Template(infile.read()).substitute(
+                {'append_flags': append_flags})
+
+        with open(wrapper_path, 'w') as outfile:
+            outfile.write(wrapper_txt)
+        # Also preserve permission bits etc.
+        shutil.copystat(wrapper_template, wrapper_path)
+
+    wrapper_path = utils.out_path('compiler_wrapper.py')
+    _instantiate_wrapper(wrapper_path)
+
     bisect_path = utils.android_path('toolchain', 'llvm_android',
                                      'bisect_driver.py')
     bin_path = os.path.join(llvm_install_path, 'bin')
