@@ -52,6 +52,7 @@ MAC_MIN_VERSION = '10.9'
 # TODO (Pirama): Put all the build options in a global so it's easy to refer to
 # them instead of plumbing flags through function parameters.
 BUILD_LLDB = False
+BUILD_LLVM_NEXT = False
 
 def logger():
     """Returns the module level logger."""
@@ -89,7 +90,8 @@ def extract_clang_long_version(clang_install):
 
 
 def pgo_profdata_filename():
-    base_revision = android_version.svn_revision.rstrip(string.ascii_lowercase)
+    svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+    base_revision = svn_revision.rstrip(string.ascii_lowercase)
     return '%s.profdata' % base_revision
 
 def pgo_profdata_file(profdata_file):
@@ -899,7 +901,7 @@ def build_llvm(targets,
     cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
     cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
     cmake_defines['CLANG_VENDOR'] = 'Android (' + build_name + ' based on ' + \
-        android_version.svn_revision + ') '
+        android_version.get_svn_revision(BUILD_LLVM_NEXT) + ') '
     cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
         'toolchain/binutils/binutils-2.27/include')
 
@@ -1778,7 +1780,8 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
     version_file_path = os.path.join(install_dir, 'AndroidVersion.txt')
     with open(version_file_path, 'w') as version_file:
         version_file.write('{}\n'.format(version.long_version()))
-        version_file.write('based on {}\n'.format(android_version.svn_revision))
+        svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+        version_file.write('based on {}\n'.format(svn_revision))
 
     # Create RBE input files.
     if is_linux:
@@ -1959,8 +1962,9 @@ def main():
     do_strip_host_package = do_strip and not args.debug
 
     # TODO (Pirama): Avoid using global statement
-    global BUILD_LLDB
+    global BUILD_LLDB, BUILD_LLVM_NEXT
     BUILD_LLDB = 'lldb' not in args.no_build
+    BUILD_LLVM_NEXT = args.build_llvm_next
 
     need_host = utils.host_is_darwin() or ('linux' not in args.no_build)
     need_windows = utils.host_is_linux() and \

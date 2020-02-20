@@ -16,6 +16,12 @@
 #
 
 patch_level = '4'
-svn_revision = 'r377782b'
+_svn_revision = 'r377782b'
 # svn_revision_next will be newer than the official svn_revision in the future.
-svn_revision_next = 'r380035'
+_svn_revision_next = 'r380035'
+
+def get_svn_revision(build_llvm_next):
+    if build_llvm_next:
+        return _svn_revision_next
+    else:
+        return _svn_revision

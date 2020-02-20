@@ -59,15 +59,6 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir):
     subprocess.check_call(patch_manager_cmd, env=env)
 
 
-def _get_svn_version_to_build(build_llvm_next):
-    if build_llvm_next:
-        rev = android_version.svn_revision_next
-    else:
-        rev = android_version.svn_revision
-    # strip the leading 'r' and letter suffix, e.g., r377782b => 377782
-    return rev[1:].rstrip(string.ascii_lowercase)
-
-
 def setup_sources(source_dir, build_llvm_next):
     """Setup toolchain sources into source_dir.
 
@@ -99,7 +90,10 @@ def setup_sources(source_dir, build_llvm_next):
     # patch source tree
     patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
     patch_json = os.path.join(patch_dir, 'PATCHES.json')
-    svn_version = _get_svn_version_to_build(build_llvm_next)
+    svn_version = android_version.get_svn_revision(build_llvm_next)
+    # strip the leading 'r' and letter suffix, e.g., r377782b => 377782
+    svn_version = svn_version[1:].rstrip(string.ascii_lowercase)
+
     apply_patches(tmp_source_dir, svn_version, patch_json, patch_dir)
 
     # Copy tmp_source_dir to source_dir if they are different.  This avoids
