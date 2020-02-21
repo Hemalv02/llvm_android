@@ -796,7 +796,6 @@ def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
         lldb_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
 
         lldb_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-        lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
         lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
         lldb_defines['LLVM_TABLEGEN'] = os.path.join(toolchain, 'bin', 'llvm-tblgen')
         lldb_defines['CLANG_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'clang-tblgen')
@@ -804,6 +803,10 @@ def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
         lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_TARGET_ARCH'] = arch
+
+        lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
+        # Inhibit all of CMake's own NDK handling code.
+        lldb_defines['CMAKE_SYSTEM_VERSION'] = '1'
 
         lldb_env = dict(ORIG_ENV)
 
