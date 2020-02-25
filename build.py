@@ -1495,10 +1495,6 @@ def install_wrappers(llvm_install_path):
     go_env = dict(os.environ)
     go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
     check_call([python3_cmd, wrapper_build_script,
-                # Python3 prebuilts in prebuilts/build-tools has an issue
-                # with argument parsing and ignores the first argument.
-                # Pass a dummy argument until the issue is fixed.
-                'blah',
                 '--config=android',
                 '--use_ccache=false',
                 '--use_llvm_next=' + str(BUILD_LLVM_NEXT).lower(),

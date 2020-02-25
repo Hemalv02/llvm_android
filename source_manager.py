@@ -39,10 +39,6 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir):
                            'bin', 'py3-cmd'),
         utils.android_path('external', 'toolchain-utils', 'llvm_tools',
                           'patch_manager.py'),
-        # Python3 prebuilts in prebuilts/build-tools has an issue with argument
-        # parsing and ignores the first argument.  Pass a dummy argument until
-        # the issue is fixed.
-        'blah',
         '--svn_version', svn_version,
         '--patch_metadata_file', patch_json,
         '--filesdir_path', patch_dir,
