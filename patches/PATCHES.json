@@ -282,6 +282,12 @@
         "end_version": null
     },
     {
+        "comment": "Revert \"[ARM] Always enable UseAA in the arm backend\"",
+        "rel_patch_path": "Revert-ARM-Always-enable-UseAA-in-the-arm-backend.patch",
+        "start_version": 377782,
+        "end_version": null
+    },
+    {
         "comment": "ANDROID: fix incorrect cherry-pick of r373035",
         "rel_patch_path": "ANDROID-fix-incorrect-cherry-pick-of-r373035.patch",
         "start_version": 370808,

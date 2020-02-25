@@ -1,0 +1,239 @@
+From 5af9b849b13601640695233f18217460882cc733 Mon Sep 17 00:00:00 2001
+From: Yabin Cui <yabinc@google.com>
+Date: Mon, 24 Feb 2020 15:36:33 -0800
+Subject: [PATCH] Revert "[ARM] Always enable UseAA in the arm backend"
+
+This reverts commit cf581d7977c5c80e9f6cb6e304d7eb3d0792f360.
+
+Bug: 149838687
+---
+ llvm/lib/Target/ARM/ARM.td                    | 13 ++++-
+ llvm/lib/Target/ARM/ARMSubtarget.h            |  5 +-
+ llvm/test/CodeGen/ARM/memcpy-ldm-stm.ll       |  8 +--
+ .../CodeGen/ARM/thumb1_return_sequence.ll     |  4 +-
+ llvm/test/CodeGen/ARM/useaa.ll                |  2 +-
+ llvm/test/CodeGen/ARM/va_arg.ll               | 51 +++++--------------
+ 6 files changed, 36 insertions(+), 47 deletions(-)
+
+diff --git a/llvm/lib/Target/ARM/ARM.td b/llvm/lib/Target/ARM/ARM.td
+index 6427ebf22ef..d7d90cb59fe 100644
+--- a/llvm/lib/Target/ARM/ARM.td
++++ b/llvm/lib/Target/ARM/ARM.td
+@@ -419,6 +419,10 @@ def FeatureNoPostRASched : SubtargetFeature<"disable-postra-scheduler",
+     "DisablePostRAScheduler", "true",
+     "Don't schedule again after register allocation">;
+ 
++// Enable use of alias analysis during code generation
++def FeatureUseAA : SubtargetFeature<"use-aa", "UseAA", "true",
++                                    "Use alias analysis during codegen">;
++
+ // Armv8.5-A extensions
+ 
+ def FeatureSB       : SubtargetFeature<"sb", "HasSB", "true",
+@@ -594,6 +598,7 @@ def ProcExynos  : SubtargetFeature<"exynos", "ARMProcFamily", "Exynos",
+                                    "Samsung Exynos processors",
+                                    [FeatureZCZeroing,
+                                     FeatureUseWideStrideVFP,
++                                    FeatureUseAA,
+                                     FeatureSplatVFPToNeon,
+                                     FeatureSlowVGETLNi32,
+                                     FeatureSlowVDUP32,
+@@ -1085,11 +1090,13 @@ def : ProcessorModel<"cortex-m3",   CortexM4Model,      [ARMv7m,
+                                                          ProcM3,
+                                                          FeaturePrefLoopAlign32,
+                                                          FeatureUseMISched,
++                                                         FeatureUseAA,
+                                                          FeatureHasNoBranchPredictor]>;
+ 
+ def : ProcessorModel<"sc300",       CortexM4Model,      [ARMv7m,
+                                                          ProcM3,
+                                                          FeatureUseMISched,
++                                                         FeatureUseAA,
+                                                          FeatureHasNoBranchPredictor]>;
+ 
+ def : ProcessorModel<"cortex-m4", CortexM4Model,        [ARMv7em,
+@@ -1098,6 +1105,7 @@ def : ProcessorModel<"cortex-m4", CortexM4Model,        [ARMv7em,
+                                                          FeatureHasSlowFPVMLx,
+                                                          FeatureHasSlowFPVFMx,
+                                                          FeatureUseMISched,
++                                                         FeatureUseAA,
+                                                          FeatureHasNoBranchPredictor]>;
+ 
+ def : ProcNoItin<"cortex-m7",                           [ARMv7em,
+@@ -1113,6 +1121,7 @@ def : ProcessorModel<"cortex-m33", CortexM4Model,       [ARMv8mMainline,
+                                                          FeatureHasSlowFPVMLx,
+                                                          FeatureHasSlowFPVFMx,
+                                                          FeatureUseMISched,
++                                                         FeatureUseAA,
+                                                          FeatureHasNoBranchPredictor]>;
+ 
+ def : ProcessorModel<"cortex-m35p", CortexM4Model,      [ARMv8mMainline,
+@@ -1122,6 +1131,7 @@ def : ProcessorModel<"cortex-m35p", CortexM4Model,      [ARMv8mMainline,
+                                                          FeatureHasSlowFPVMLx,
+                                                          FeatureHasSlowFPVFMx,
+                                                          FeatureUseMISched,
++                                                         FeatureUseAA,
+                                                          FeatureHasNoBranchPredictor]>;
+ 
+ 
+@@ -1230,7 +1240,8 @@ def : ProcNoItin<"kryo",                                [ARMv8a, ProcKryo,
+ 
+ def : ProcessorModel<"cortex-r52", CortexR52Model,      [ARMv8r, ProcR52,
+                                                          FeatureUseMISched,
+-                                                         FeatureFPAO]>;
++                                                         FeatureFPAO,
++                                                         FeatureUseAA]>;
+ 
+ //===----------------------------------------------------------------------===//
+ // Register File Description
+diff --git a/llvm/lib/Target/ARM/ARMSubtarget.h b/llvm/lib/Target/ARM/ARMSubtarget.h
+index 27f67a9acbd..2e9682e99f0 100644
+--- a/llvm/lib/Target/ARM/ARMSubtarget.h
++++ b/llvm/lib/Target/ARM/ARMSubtarget.h
+@@ -228,6 +228,9 @@ protected:
+   /// register allocation.
+   bool DisablePostRAScheduler = false;
+ 
++  /// UseAA - True if using AA during codegen (DAGCombine, MISched, etc)
++  bool UseAA = false;
++
+   /// HasThumb2 - True if Thumb2 instructions are supported.
+   bool HasThumb2 = false;
+ 
+@@ -823,7 +826,7 @@ public:
+ 
+   /// Enable use of alias analysis during code generation (during MI
+   /// scheduling, DAGCombine, etc.).
+-  bool useAA() const override { return true; }
++  bool useAA() const override { return UseAA; }
+ 
+   // enableAtomicExpand- True if we need to expand our atomics.
+   bool enableAtomicExpand() const override;
+diff --git a/llvm/test/CodeGen/ARM/memcpy-ldm-stm.ll b/llvm/test/CodeGen/ARM/memcpy-ldm-stm.ll
+index 0bda070f7b2..59615caf6ad 100644
+--- a/llvm/test/CodeGen/ARM/memcpy-ldm-stm.ll
++++ b/llvm/test/CodeGen/ARM/memcpy-ldm-stm.ll
+@@ -36,10 +36,10 @@ entry:
+ ; CHECKV6-NEXT: ldr [[SB:r[0-7]]],
+ ; CHECKV6-NEXT: ldm{{(\.w)?}} [[LB]]!,
+ ; CHECKV6-NEXT: stm{{(\.w)?}} [[SB]]!,
+-; CHECKV6-DAG: ldrh{{(\.w)?}} {{.*}}, {{\[}}[[LB]]]
+-; CHECKV6-DAG: ldrb{{(\.w)?}} {{.*}}, {{\[}}[[LB]], #2]
+-; CHECKV6-DAG: strb{{(\.w)?}} {{.*}}, {{\[}}[[SB]], #2]
+-; CHECKV6-DAG: strh{{(\.w)?}} {{.*}}, {{\[}}[[SB]]]
++; CHECKV6-NEXT: ldrh{{(\.w)?}} {{.*}}, {{\[}}[[LB]]]
++; CHECKV6-NEXT: ldrb{{(\.w)?}} {{.*}}, {{\[}}[[LB]], #2]
++; CHECKV6-NEXT: strb{{(\.w)?}} {{.*}}, {{\[}}[[SB]], #2]
++; CHECKV6-NEXT: strh{{(\.w)?}} {{.*}}, {{\[}}[[SB]]]
+ ; CHECKV7: movt [[LB:[rl0-9]+]], :upper16:d
+ ; CHECKV7-NEXT: movt [[SB:[rl0-9]+]], :upper16:s
+ ; CHECKV7: ldr{{(\.w)?}} {{.*}}, {{\[}}[[LB]], #11]
+diff --git a/llvm/test/CodeGen/ARM/thumb1_return_sequence.ll b/llvm/test/CodeGen/ARM/thumb1_return_sequence.ll
+index 11e18f1347a..a7f78c74f7f 100644
+--- a/llvm/test/CodeGen/ARM/thumb1_return_sequence.ll
++++ b/llvm/test/CodeGen/ARM/thumb1_return_sequence.ll
+@@ -57,14 +57,14 @@ entry:
+ 
+ ; Epilogue
+ ; --------
+-; CHECK-V4T:         ldr [[POP:r[4567]]], [sp, #12]
++; CHECK-V4T:         ldr [[POP:r[4567]]], [sp, #16]
+ ; CHECK-V4T-NEXT:    mov lr, [[POP]]
+ ; CHECK-V4T-NEXT:    pop {[[SAVED]]}
+ ; CHECK-V4T-NEXT:    add sp, #16
+ ; CHECK-V4T-NEXT:    bx  lr
+ ; CHECK-V5T:         lsls r4
+ ; CHECK-V5T-NEXT:    mov sp, r4
+-; CHECK-V5T:         ldr [[POP:r[4567]]], [sp, #12]
++; CHECK-V5T:         ldr [[POP:r[4567]]], [sp, #16]
+ ; CHECK-V5T-NEXT:    mov lr, [[POP]]
+ ; CHECK-V5T-NEXT:    pop {[[SAVED]]}
+ ; CHECK-V5T-NEXT:    add sp, #16
+diff --git a/llvm/test/CodeGen/ARM/useaa.ll b/llvm/test/CodeGen/ARM/useaa.ll
+index 0cd4732e5e5..076466d4d2c 100644
+--- a/llvm/test/CodeGen/ARM/useaa.ll
++++ b/llvm/test/CodeGen/ARM/useaa.ll
+@@ -7,8 +7,8 @@
+ 
+ ; CHECK-LABEL: test
+ ; GENERIC: ldr
+-; GENERIC: ldr
+ ; GENERIC: str
++; GENERIC: ldr
+ ; GENERIC: str
+ ; USEAA: ldr
+ ; USEAA: ldr
+diff --git a/llvm/test/CodeGen/ARM/va_arg.ll b/llvm/test/CodeGen/ARM/va_arg.ll
+index 87e771375d3..57470694b12 100644
+--- a/llvm/test/CodeGen/ARM/va_arg.ll
++++ b/llvm/test/CodeGen/ARM/va_arg.ll
+@@ -1,27 +1,13 @@
+-; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
+ ; RUN: llc < %s -mtriple=armv7-none-linux-gnueabi -pre-RA-sched=source | FileCheck %s
+ ; Test that we correctly align elements when using va_arg
+ 
+-define i64 @test1(i32 %i, ...) nounwind optsize {
+ ; CHECK-LABEL: test1:
+-; CHECK:       @ %bb.0: @ %entry
+-; CHECK-NEXT:    .pad #12
+-; CHECK-NEXT:    sub sp, sp, #12
+-; CHECK-NEXT:    .pad #4
+-; CHECK-NEXT:    sub sp, sp, #4
+-; CHECK-NEXT:    add r0, sp, #4
+-; CHECK-NEXT:    stmib sp, {r1, r2, r3}
+-; CHECK-NEXT:    add r0, r0, #7
+-; CHECK-NEXT:    bic r1, r0, #7
+-; CHECK-NEXT:    orr r2, r1, #4
+-; CHECK-NEXT:    str r2, [sp]
+-; CHECK-NEXT:    ldr r0, [r1]
+-; CHECK-NEXT:    add r2, r2, #4
+-; CHECK-NEXT:    str r2, [sp]
+-; CHECK-NEXT:    ldr r1, [r1, #4]
+-; CHECK-NEXT:    add sp, sp, #4
+-; CHECK-NEXT:    add sp, sp, #12
+-; CHECK-NEXT:    bx lr
++; CHECK-NOT: bfc
++; CHECK: add	[[REG:(r[0-9]+)|(lr)]], {{(r[0-9]+)|(lr)}}, #7
++; CHECK: bic	{{(r[0-9]+)|(lr)}}, [[REG]], #7
++; CHECK-NOT: bic
++
++define i64 @test1(i32 %i, ...) nounwind optsize {
+ entry:
+   %g = alloca i8*, align 4
+   %g1 = bitcast i8** %g to i8*
+@@ -31,25 +17,14 @@ entry:
+   ret i64 %0
+ }
+ 
+-define double @test2(i32 %a, i32* %b, ...) nounwind optsize {
+ ; CHECK-LABEL: test2:
+-; CHECK:       @ %bb.0: @ %entry
+-; CHECK-NEXT:    .pad #8
+-; CHECK-NEXT:    sub sp, sp, #8
+-; CHECK-NEXT:    .pad #4
+-; CHECK-NEXT:    sub sp, sp, #4
+-; CHECK-NEXT:    add r0, sp, #4
+-; CHECK-NEXT:    stmib sp, {r2, r3}
+-; CHECK-NEXT:    add r0, r0, #11
+-; CHECK-NEXT:    bic r0, r0, #3
+-; CHECK-NEXT:    str r2, [r1]
+-; CHECK-NEXT:    add r1, r0, #8
+-; CHECK-NEXT:    str r1, [sp]
+-; CHECK-NEXT:    vldr d16, [r0]
+-; CHECK-NEXT:    vmov r0, r1, d16
+-; CHECK-NEXT:    add sp, sp, #4
+-; CHECK-NEXT:    add sp, sp, #8
+-; CHECK-NEXT:    bx lr
++; CHECK-NOT: bfc
++; CHECK: add	[[REG:(r[0-9]+)|(lr)]], {{(r[0-9]+)|(lr)}}, #7
++; CHECK: bic	{{(r[0-9]+)|(lr)}}, [[REG]], #7
++; CHECK-NOT:	bic
++; CHECK: bx	lr
++
++define double @test2(i32 %a, i32* %b, ...) nounwind optsize {
+ entry:
+   %ap = alloca i8*, align 4                       ; <i8**> [#uses=3]
+   %ap1 = bitcast i8** %ap to i8*                  ; <i8*> [#uses=2]
+-- 
+2.25.0.265.gbab2e86ba0-goog
+
