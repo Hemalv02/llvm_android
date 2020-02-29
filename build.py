@@ -191,16 +191,12 @@ def libcxx_header_dirs(ndk_cxx):
         ]
 
 
-def cmake_prebuilt_bin_dir():
-    return utils.android_path('prebuilts/cmake', utils.build_os_type(), 'bin')
-
-
 def cmake_bin_path():
-    return os.path.join(cmake_prebuilt_bin_dir(), 'cmake')
+    return utils.android_path('prebuilts/cmake', utils.build_os_type(), 'bin/cmake')
 
 
 def ninja_bin_path():
-    return os.path.join(cmake_prebuilt_bin_dir(), 'ninja')
+    return utils.android_path('prebuilts/ninja', utils.build_os_type(), 'ninja')
 
 
 def check_create_path(path):
@@ -355,9 +351,7 @@ def base_cmake_defines():
 def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
     flags = ['-G', 'Ninja']
 
-    # Specify CMAKE_PREFIX_PATH so 'cmake -G Ninja ...' can find the ninja
-    # executable.
-    flags += ['-DCMAKE_PREFIX_PATH=' + cmake_prebuilt_bin_dir()]
+    flags += ['-DCMAKE_MAKE_PROGRAM=' + ninja_bin_path()]
 
     for key in defines:
         newdef = '-D' + key + '=' + defines[key]
@@ -1076,7 +1070,7 @@ def build_llvm_for_windows(stage1_install,
     # Set CMake path, toolchain file for native compilation (to build tablegen
     # etc).  Also disable libfuzzer build during native compilation.
     windows_extra_defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = \
-        '-DCMAKE_PREFIX_PATH=' + cmake_prebuilt_bin_dir() + ';' + \
+        '-DCMAKE_MAKE_PROGRAM=' + ninja_bin_path() + ';' + \
         '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF;'+ \
         '-DCMAKE_TOOLCHAIN_FILE=' + native_cmake_file_path + ';' + \
         '-DLLVM_ENABLE_LIBCXX=ON;' + \
