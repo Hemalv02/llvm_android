@@ -276,6 +276,12 @@
         "end_version": 383990
     },
     {
+        "comment": "[UPSTREAM] [Backport] Allow customized relative PYTHONHOME",
+        "rel_patch_path": "cherry/3ec3f62f0a0b1ac13230922c91ffc988c1b1e8d5.patch",
+        "start_version": 380035,
+        "end_version": 385429
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
