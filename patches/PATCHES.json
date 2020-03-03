@@ -282,6 +282,12 @@
         "end_version": 385429
     },
     {
+        "comment": "[UPSTREAM] [DAGCombine] Fix alias analysis for unaligned accesses",
+        "rel_patch_path": "cherry/1de10705594c7a2c9b8fde901c391bd84062ae04.patch",
+        "start_version": 377782,
+        "end_version": 385989
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
@@ -290,12 +296,6 @@
     {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
-        "start_version": 377782,
-        "end_version": null
-    },
-    {
-        "comment": "Revert \"[ARM] Always enable UseAA in the arm backend\"",
-        "rel_patch_path": "Revert-ARM-Always-enable-UseAA-in-the-arm-backend.patch",
         "start_version": 377782,
         "end_version": null
     },
