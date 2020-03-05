@@ -1281,6 +1281,10 @@ def build_stage1(stage1_install, build_name, stage1_targets,
         extra_env=stage1_extra_env)
 
 
+def get_python_dir(host):
+    return utils.android_path('prebuilts', 'python', host)
+
+
 def set_lldb_flags(install_dir, host, defines, env):
     if host == 'windows-x86':
         build_os = 'linux-x86'
@@ -1291,17 +1295,23 @@ def set_lldb_flags(install_dir, host, defines, env):
     defines['SWIG_EXECUTABLE'] = os.path.join(swig_root, 'bin', 'swig')
     env['SWIG_LIB'] = os.path.join(swig_root, 'share', 'swig', '3.0.12')
 
-    if host != 'darwin-x86':
-        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python',
-                                        'linux-x86', 'bin', 'python2.7')
-
+    python_root = get_python_dir(host)
     if host == 'linux-x86':
-        python_root = utils.android_path('prebuilts', 'python', host)
-        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython2.7.so')
-        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python2.7')
+        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython3.8.so')
+        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
+        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python','linux-x86', 'bin', 'python3.8')
     elif host == 'windows-x86':
-        defines['PYTHON_HOME'] = utils.android_path('prebuilts', 'python', host, 'x64')
-    defines['LLDB_RELOCATABLE_PYTHON'] = 'ON'
+        # Python Windows uses a different layout.
+        defines['Python3_LIBRARY'] = os.path.join(python_root, 'libs', 'python38.lib')
+        defines['Python3_INCLUDE_DIR'] = os.path.join(python_root, 'include')
+        defines['Python3_EXECUTABLE'] = utils.android_path('prebuilts', 'python','linux-x86', 'bin', 'python3.8')
+    elif host == 'darwin-x86':
+        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'libpython3.8.dylib')
+        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
+        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python','darwin-x86', 'bin', 'python3.8')
+
+    defines['LLDB_EMBED_PYTHON_HOME'] = 'ON'
+    defines['LLDB_PYTHON_HOME'] = '../python3'
 
     if host == 'darwin-x86':
         defines['LLDB_NO_DEBUGSERVER'] = 'ON'
@@ -1315,6 +1325,18 @@ def set_lldb_flags(install_dir, host, defines, env):
         lib_dir = os.path.join(install_dir, 'lib64')
         check_create_path(lib_dir)
         shutil.copy2(libedit_lib, lib_dir)
+
+
+def install_lldb_python(install_dir, host):
+    python_prebuilt_dir = get_python_dir(host)
+    python_dest_dir = os.path.join(install_dir, 'python3')
+    shutil.copytree(python_prebuilt_dir, python_dest_dir)
+    if host == 'linux-x86':
+        os.symlink('../python3/lib/libpython3.8.so.1.0', os.path.join(install_dir, 'lib64', 'libpython3.8.so.1.0'))
+    elif host == 'windows-x86':
+        os.symlink('../python3/python38.dll', os.path.join(install_dir, 'bin', 'python38.dll'))
+    elif host == 'darwin-x86':
+        os.symlink('../python3/lib/libpython3.8.dylib', os.path.join(install_dir, 'lib64', 'libpython3.8.dylib'))
 
 
 def build_stage2(stage1_install,
@@ -1714,16 +1736,16 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         }
         necessary_bin_files -= windows_blacklist_bin_files
 
-        if BUILD_LLDB:
-            # Installs python for lldb.
-            python_dll = utils.android_path('prebuilts', 'python',
-                                            'windows-x86', 'x64', 'python27.dll')
-            shutil.copy(python_dll, os.path.join(install_dir, 'bin'))
+    if BUILD_LLDB:
+        if is_windows:
+            install_lldb_python(install_dir, 'windows-x86')
             windows_additional_bin_files = {
                 'liblldb' + shlib_ext,
-                'python27' + shlib_ext
+                'python38' + shlib_ext
             }
             necessary_bin_files |= windows_additional_bin_files
+        else:
+            install_lldb_python(install_dir, host)
 
     # scripts that should not be stripped
     script_bins = {
