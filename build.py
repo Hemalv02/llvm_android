@@ -1036,6 +1036,10 @@ def build_llvm_for_windows(stage1_install,
 
     if BUILD_LLDB:
         native_cmake_text += (
+            'set(LLDB_ENABLE_PYTHON "OFF" CACHE STRING "" FORCE)\n'
+            'set(LLDB_ENABLE_CURSES "OFF" CACHE STRING "" FORCE)\n'
+            'set(LLDB_ENABLE_LIBEDIT "OFF" CACHE STRING "" FORCE)\n'
+            # TODO: Remove the following on or after r380035.
             'set(LLDB_DISABLE_PYTHON "ON" CACHE STRING "" FORCE)\n'
             'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)\n'
             'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)\n'
