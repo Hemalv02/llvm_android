@@ -16,4 +16,4 @@
 #
 
 patch_level = '8'
-svn_revision = 'r365631c'
+svn_revision = 'r365631c1'
