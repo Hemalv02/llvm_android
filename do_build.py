@@ -1111,8 +1111,6 @@ def build_llvm_for_windows(stage1_install,
     ldflags.extend((
         '-Wl,--dynamicbase',
         '-Wl,--nxcompat',
-        # Use ucrt to find locale functions needed by libc++.
-        '-lucrt', '-lucrtbase',
         # Use static-libgcc to avoid runtime dependence on libgcc_eh.
         '-static-libgcc',
         # pthread is needed by libgcc_eh.
