@@ -25,6 +25,7 @@ import os
 import shutil
 import string
 import subprocess
+import sys
 import textwrap
 import utils
 
@@ -1508,13 +1509,11 @@ def install_wrappers(llvm_install_path):
     wrapper_path = utils.out_path('llvm_android_wrapper')
     wrapper_build_script = utils.android_path('external', 'toolchain-utils',
                                               'compiler_wrapper', 'build.py')
-    python3_cmd = utils.android_path('prebuilts', 'build-tools',
-                                     utils.build_os_type(), 'bin', 'py3-cmd')
     # Note: The build script automatically determines the architecture
     # based on the host.
     go_env = dict(os.environ)
     go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
-    check_call([python3_cmd, wrapper_build_script,
+    check_call([sys.executable, wrapper_build_script,
                 '--config=android',
                 '--use_ccache=false',
                 '--use_llvm_next=' + str(BUILD_LLVM_NEXT).lower(),
