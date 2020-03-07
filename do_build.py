@@ -1310,7 +1310,7 @@ def set_lldb_flags(install_dir, host, defines, env):
         defines['Python3_INCLUDE_DIR'] = os.path.join(python_root, 'include')
         defines['Python3_EXECUTABLE'] = utils.android_path('prebuilts', 'python','linux-x86', 'bin', 'python3.8')
     elif host == 'darwin-x86':
-        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'libpython3.8.dylib')
+        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython3.8.dylib')
         defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
         defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python','darwin-x86', 'bin', 'python3.8')
 
