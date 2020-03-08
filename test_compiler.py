@@ -14,8 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Starts build.py with prebuilt python3."""
+"""Starts do_test_compiler.py with prebuilt python3."""
 
 import py3_utils
 
-py3_utils.run_with_py3('do_build.py')
+py3_utils.run_with_py3('do_test_compiler.py')
