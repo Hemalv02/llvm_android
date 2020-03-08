@@ -16,27 +16,6 @@
 #
 """Starts build.py with prebuilt python3."""
 
-import os
-import subprocess
-import sys
+import py3_utils
 
-THIS_DIR = os.path.realpath(os.path.dirname(__file__))
-def get_host_tag():
-    if sys.platform.startswith('linux'):
-        return "linux-x86"
-    elif sys.platform.startswith('darwin'):
-        return "darwin-x86"
-    else:
-        raise RuntimeError('Unsupported host: {}'.format(sys.platform))
-
-
-def main():
-    python_bin = os.path.join(THIS_DIR, "..", "..", "prebuilts", "python", get_host_tag(), 'bin', 'python3')
-    python_bin = os.path.abspath(python_bin)
-    subprocess.check_call(
-        [python_bin, os.path.join(THIS_DIR, 'do_build.py')] + sys.argv[1:])
-
-
-if __name__ == '__main__':
-    main()
-
+py3_utils.run_with_py3('do_build.py')
