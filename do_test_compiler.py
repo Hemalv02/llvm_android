@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -187,7 +187,7 @@ def link_clang(android_base, clang_path):
 def get_connected_device_list():
     try:
         # Get current connected device list.
-        out = subprocess.check_output(['adb', 'devices', '-l'], universal_newlines=True)
+        out = subprocess.check_output(['adb', 'devices', '-l'], text=True)
         devices = [x.split() for x in out.strip().split('\n')[1:]]
         return devices
     except subprocess.CalledProcessError:
@@ -209,6 +209,7 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
                 'bash', '-c', '. ./build/envsetup.sh;'
                 'lunch ' + target + ' >/dev/null && env'
             ],
+            text=True,
             cwd=android_base)
     except subprocess.CalledProcessError:
         raise RuntimeError('Failed to lunch ' + target)
@@ -259,7 +260,7 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
         env[key] = val
 
     modulesList = ' '.join(modules)
-    print 'Start building target %s and modules %s.' % (target, modulesList)
+    print('Start building target %s and modules %s.' % (target, modulesList))
     subprocess.check_call(
         ['/bin/bash', '-c', 'build/soong/soong_ui.bash --make-mode ' + jobs + \
          ' ' + modulesList],
@@ -272,7 +273,7 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
     [label, target] = device[-1].split(':')
     # If current device is not connected correctly we will just skip it.
     if label != 'device':
-        print 'Device %s is not connecting correctly.' % device[0]
+        print('Device %s is not connecting correctly.' % device[0])
         return True
     else:
         target = 'aosp_' + target + '-eng'
@@ -292,7 +293,7 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
             subprocess.check_call(['./flashall'], cwd=flashall_path)
         result = True
     except subprocess.CalledProcessError:
-        print 'Flashing/testing android for target %s failed!' % target
+        print('Flashing/testing android for target %s failed!' % target)
         result = False
     if clean_output:
         rm_current_product_out()
@@ -400,7 +401,7 @@ def main():
     else:
         devices = get_connected_device_list()
         if len(devices) == 0:
-            print "You don't have any devices connected."
+            print("You don't have any devices connected.")
         for device in devices:
             result = test_device(args.android_path, clang_version, device,
                                  args.jobs, args.clean_built_target,
