@@ -1115,7 +1115,7 @@ def build_llvm_for_windows(stage1_install,
         # Use static-libgcc to avoid runtime dependence on libgcc_eh.
         '-static-libgcc',
         # pthread is needed by libgcc_eh.
-        '-lpthread',
+        '-pthread',
         # Add path to libc++, libc++abi.
         '-L', os.path.join(install_dir, 'lib64')))
 
