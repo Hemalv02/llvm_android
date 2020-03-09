@@ -1333,7 +1333,8 @@ def set_lldb_flags(install_dir, host, defines, env):
 def install_lldb_python(install_dir, host):
     python_prebuilt_dir = get_python_dir(host)
     python_dest_dir = os.path.join(install_dir, 'python3')
-    shutil.copytree(python_prebuilt_dir, python_dest_dir)
+    shutil.copytree(python_prebuilt_dir, python_dest_dir,
+                    ignore=shutil.ignore_patterns('*.pyc', '__pycache__', '.git', 'Android.bp'))
     if host == 'linux-x86':
         os.symlink('../python3/lib/libpython3.8.so.1.0', os.path.join(install_dir, 'lib64', 'libpython3.8.so.1.0'))
     elif host == 'windows-x86':
