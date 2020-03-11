@@ -58,21 +58,6 @@ def llvm_path(*args):
     return out_path('llvm-project', *args)
 
 
-def build_os_type():
-    if sys.platform.startswith('linux'):
-        return 'linux-x86'
-    else:
-        return 'darwin-x86'
-
-
-def host_is_linux():
-    return build_os_type() == 'linux-x86'
-
-
-def host_is_darwin():
-    return build_os_type() == 'darwin-x86'
-
-
 def yes_or_no(prompt, default=True):
     prompt += " (Y/n)" if default else " (y/N)"
     prompt += ": "

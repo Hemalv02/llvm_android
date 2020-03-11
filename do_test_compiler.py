@@ -23,6 +23,7 @@ import shutil
 import subprocess
 
 import do_build as build
+import hosts
 import source_manager
 import utils
 
@@ -179,7 +180,7 @@ def parse_args():
 def link_clang(android_base, clang_path):
     android_clang_path = os.path.join(android_base, 'prebuilts',
                                       'clang', 'host',
-                                      utils.build_os_type(), 'clang-dev')
+                                      hosts.build_host().os_tag, 'clang-dev')
     utils.remove(android_clang_path)
     os.symlink(os.path.abspath(clang_path), android_clang_path)
 
@@ -282,7 +283,7 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
                      redirect_stderr, with_tidy)
         if flashall_path is None:
             bin_path = os.path.join(android_base, 'out', 'host',
-                                    utils.build_os_type(), 'bin')
+                                    hosts.build_host().os_tag, 'bin')
             subprocess.check_call(
                 ['./adb', '-s', device[0], 'reboot', 'bootloader'],
                 cwd=bin_path)
@@ -332,12 +333,12 @@ def build_clang(instrumented=False, pgo=True):
     build.package_toolchain(
         stage2_install,
         'dev',
-        utils.build_os_type(),
+        hosts.build_host(),
         dist_dir=None,
         strip=True,
         create_tar=False)
 
-    clang_path = build.get_package_install_path(utils.build_os_type(), 'clang-dev')
+    clang_path = build.get_package_install_path(hosts.build_host(), 'clang-dev')
     version = build.extract_clang_version(clang_path)
     return clang_path, version
 

@@ -30,6 +30,7 @@ import textwrap
 import utils
 
 import android_version
+import hosts
 import source_manager
 from version import Version
 
@@ -151,7 +152,7 @@ def clang_prebuilt_version():
 
 def clang_prebuilt_base_dir():
     return utils.android_path('prebuilts/clang/host',
-                              utils.build_os_type(), clang_prebuilt_version())
+                              hosts.build_host().os_tag, clang_prebuilt_version())
 
 
 def clang_prebuilt_bin_dir():
@@ -193,11 +194,11 @@ def libcxx_header_dirs(ndk_cxx):
 
 
 def cmake_bin_path():
-    return utils.android_path('prebuilts/cmake', utils.build_os_type(), 'bin/cmake')
+    return utils.android_path('prebuilts/cmake', hosts.build_host().os_tag, 'bin/cmake')
 
 
 def ninja_bin_path():
-    return utils.android_path('prebuilts/ninja', utils.build_os_type(), 'ninja')
+    return utils.android_path('prebuilts/ninja', hosts.build_host().os_tag, 'ninja')
 
 
 def check_create_path(path):
@@ -216,7 +217,7 @@ def debug_prefix_flag():
 
 
 def go_bin_dir():
-    return utils.android_path('prebuilts/go', utils.build_os_type(), 'bin')
+    return utils.android_path('prebuilts/go', hosts.build_host().os_tag, 'bin')
 
 
 def create_sysroots():
@@ -339,7 +340,7 @@ def base_cmake_defines():
     defines['CLANG_REPOSITORY_STRING'] = 'https://android.googlesource.com/toolchain/llvm-project'
     defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
 
-    if utils.host_is_darwin():
+    if hosts.build_host().is_darwin:
         # This will be used to set -mmacosx-version-min. And helps to choose SDK.
         # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
         defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = MAC_MIN_VERSION
@@ -399,7 +400,7 @@ def cross_compile_configs(toolchain, platform=False, static=False):
         else:
             api_level = android_api(arch, platform)
         toolchain_root = utils.android_path('prebuilts/gcc',
-                                            utils.build_os_type())
+                                            hosts.build_host().os_tag)
         toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
         sysroot = get_sysroot(ndk_arch, platform)
 
@@ -842,7 +843,7 @@ def build_crts_host_i686(toolchain, clang_version):
                                clang_version.long_version())
     crt_cmake_path = utils.llvm_path('compiler-rt')
 
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type(), is_32_bit=True)
+    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host(), is_32_bit=True)
 
     crt_defines = base_cmake_defines()
     crt_defines['CMAKE_C_COMPILER'] = os.path.join(toolchain, 'bin',
@@ -933,7 +934,7 @@ def build_libs_for_windows(libname,
                            toolchain_dir,
                            enable_assertions,
                            install_dir):
-    cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
+    cflags, ldflags = host_gcc_toolchain_flags(hosts.Host.Windows)
 
     cflags.extend(windows_cflags())
 
@@ -1085,14 +1086,14 @@ def build_llvm_for_windows(stage1_install,
     if enable_assertions:
         windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
-    cflags, ldflags = host_gcc_toolchain_flags('windows-x86')
+    cflags, ldflags = host_gcc_toolchain_flags(hosts.Host.Windows)
     cflags.extend(windows_cflags())
 
     windows_extra_env = dict()
 
     if BUILD_LLDB:
         windows_extra_defines['LLVM_ENABLE_PROJECTS'] += ';lldb'
-        set_lldb_flags(install_dir, 'windows-x86', windows_extra_defines,
+        set_lldb_flags(install_dir, hosts.Host.Windows, windows_extra_defines,
                        windows_extra_env)
 
     cflags.append('-DMS_WIN64')
@@ -1148,14 +1149,14 @@ def build_llvm_for_windows(stage1_install,
 
 
 def host_sysroot():
-    if utils.host_is_darwin():
+    if hosts.build_host().is_darwin:
         return ""
     else:
-        return utils.android_path('prebuilts/gcc', utils.build_os_type(),
+        return utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                                   'host/x86_64-linux-glibc2.17-4.8/sysroot')
 
 
-def host_gcc_toolchain_flags(host_os, is_32_bit=False):
+def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
     def formatFlags(flags, **values):
         flagsStr = ' '.join(flags)
         flagsStr = flagsStr.format(**values)
@@ -1164,20 +1165,20 @@ def host_gcc_toolchain_flags(host_os, is_32_bit=False):
     cflags = [debug_prefix_flag()]
     ldflags = []
 
-    if host_os == 'darwin-x86':
+    if host.is_darwin:
         return cflags, ldflags
 
     # GCC toolchain flags for Linux and Windows
-    if host_os == 'linux-x86':
-        gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
+    if host.is_linux:
+        gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                                      'host/x86_64-linux-glibc2.17-4.8')
         gccTriple = 'x86_64-linux'
         gccVersion = '4.8.3'
 
         # gcc-toolchain is only needed for Linux
         cflags.append('--gcc-toolchain={gccRoot}')
-    elif host_os == 'windows-x86':
-        gccRoot = utils.android_path('prebuilts/gcc', utils.build_os_type(),
+    elif host.is_windows:
+        gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                                      'host/x86_64-w64-mingw32-4.8')
         gccTriple = 'x86_64-w64-mingw32'
         gccVersion = '4.8.3'
@@ -1214,7 +1215,8 @@ def get_shared_extra_defines():
 def build_stage1(stage1_install, build_name, stage1_targets,
                  build_llvm_tools=False):
     # Build/install the stage 1 toolchain
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
+    host = hosts.build_host()
+    cflags, ldflags = host_gcc_toolchain_flags(host)
 
     stage1_path = utils.out_path('stage1')
 
@@ -1228,7 +1230,7 @@ def build_stage1(stage1_install, build_name, stage1_targets,
 
     update_cmake_sysroot_flags(stage1_extra_defines, host_sysroot())
 
-    if not utils.host_is_darwin():
+    if not host.is_darwin:
         stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
 
     if build_llvm_tools:
@@ -1247,7 +1249,7 @@ def build_stage1(stage1_install, build_name, stage1_targets,
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
     # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-    if utils.host_is_linux():
+    if host.is_linux:
         stage1_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
         stage1_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 
@@ -1256,7 +1258,7 @@ def build_stage1(stage1_install, build_name, stage1_targets,
     # fail compilation of lib/builtins/atomic_*.c that only get built for
     # Darwin and fail compilation due to us using the bionic version of
     # stdatomic.h.
-    if utils.host_is_darwin():
+    if host.is_darwin:
         stage1_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
     # Don't build libfuzzer as part of the first stage build.
@@ -1284,43 +1286,43 @@ def build_stage1(stage1_install, build_name, stage1_targets,
         extra_env=stage1_extra_env)
 
 
-def get_python_dir(host):
-    return utils.android_path('prebuilts', 'python', host)
+def get_python_dir(host: hosts.Host):
+    return utils.android_path('prebuilts', 'python', host.os_tag)
 
 
-def set_lldb_flags(install_dir, host, defines, env):
-    if host == 'windows-x86':
+def set_lldb_flags(install_dir, host: hosts.Host, defines, env):
+    if host.is_windows:
         build_os = 'linux-x86'
     else:
-        build_os = host
+        build_os = host.os_tag
 
     swig_root = utils.android_path('prebuilts', 'swig', build_os)
     defines['SWIG_EXECUTABLE'] = os.path.join(swig_root, 'bin', 'swig')
     env['SWIG_LIB'] = os.path.join(swig_root, 'share', 'swig', '3.0.12')
 
     python_root = get_python_dir(host)
-    if host == 'linux-x86':
+    if host.is_linux:
         defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython3.8.so')
         defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
-        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python','linux-x86', 'bin', 'python3.8')
-    elif host == 'windows-x86':
+        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python', 'linux-x86', 'bin', 'python3.8')
+    elif host.is_windows:
         # Python Windows uses a different layout.
         defines['Python3_LIBRARY'] = os.path.join(python_root, 'libs', 'python38.lib')
         defines['Python3_INCLUDE_DIR'] = os.path.join(python_root, 'include')
-        defines['Python3_EXECUTABLE'] = utils.android_path('prebuilts', 'python','linux-x86', 'bin', 'python3.8')
-    elif host == 'darwin-x86':
+        defines['Python3_EXECUTABLE'] = utils.android_path('prebuilts', 'python', 'linux-x86', 'bin', 'python3.8')
+    elif host.is_darwin:
         defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython3.8.dylib')
         defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
-        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python','darwin-x86', 'bin', 'python3.8')
+        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python', 'darwin-x86', 'bin', 'python3.8')
 
     defines['LLDB_EMBED_PYTHON_HOME'] = 'ON'
     defines['LLDB_PYTHON_HOME'] = '../python3'
 
-    if host == 'darwin-x86':
+    if host.is_darwin:
         defines['LLDB_NO_DEBUGSERVER'] = 'ON'
 
-    if host == 'linux-x86':
-        libedit_root = utils.android_path('prebuilts', 'libedit', host)
+    if host.is_linux:
+        libedit_root = utils.android_path('prebuilts', 'libedit', host.os_tag)
         libedit_lib = os.path.join(libedit_root, 'lib', 'libedit.so.0')
         libedit_include = os.path.join(libedit_root, 'include')
         defines['libedit_INCLUDE_DIRS'] = libedit_include
@@ -1330,16 +1332,16 @@ def set_lldb_flags(install_dir, host, defines, env):
         shutil.copy2(libedit_lib, lib_dir)
 
 
-def install_lldb_python(install_dir, host):
+def install_lldb_python(install_dir, host: hosts.Host):
     python_prebuilt_dir = get_python_dir(host)
     python_dest_dir = os.path.join(install_dir, 'python3')
     shutil.copytree(python_prebuilt_dir, python_dest_dir,
                     ignore=shutil.ignore_patterns('*.pyc', '__pycache__', '.git', 'Android.bp'))
-    if host == 'linux-x86':
+    if host.is_linux:
         os.symlink('../python3/lib/libpython3.8.so.1.0', os.path.join(install_dir, 'lib64', 'libpython3.8.so.1.0'))
-    elif host == 'windows-x86':
+    elif host.is_windows:
         os.symlink('../python3/python38.dll', os.path.join(install_dir, 'bin', 'python38.dll'))
-    elif host == 'darwin-x86':
+    elif host.is_darwin:
         os.symlink('../python3/lib/libpython3.8.dylib', os.path.join(install_dir, 'lib64', 'libpython3.8.dylib'))
 
 
@@ -1352,7 +1354,7 @@ def build_stage2(stage1_install,
                  no_lto=False,
                  build_instrumented=False,
                  profdata_file=None):
-    cflags, ldflags = host_gcc_toolchain_flags(utils.build_os_type())
+    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host())
 
     # Build/install the stage2 toolchain
     stage2_cc = os.path.join(stage1_install, 'bin', 'clang')
@@ -1372,12 +1374,12 @@ def build_stage2(stage1_install,
 
     if BUILD_LLDB:
         stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';lldb'
-        set_lldb_flags(stage2_install, utils.build_os_type(),
+        set_lldb_flags(stage2_install, hosts.build_host(),
                        stage2_extra_defines, stage2_extra_env)
 
     update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
 
-    if not utils.host_is_darwin():
+    if not hosts.build_host().is_darwin:
         stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
 
         # lld, lto and pgo instrumentation doesn't work together
@@ -1387,7 +1389,7 @@ def build_stage2(stage1_install,
 
     # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
     # is not currently supported on Darwin.
-    if utils.host_is_darwin():
+    if hosts.build_host().is_darwin:
         stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
     else:
         stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
@@ -1428,7 +1430,7 @@ def build_stage2(stage1_install,
     # Make libc++.so a symlink to libc++.so.x instead of a linker script that
     # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
     # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-    if utils.host_is_linux():
+    if hosts.build_host().is_linux:
         stage2_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         stage2_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
 
@@ -1437,7 +1439,7 @@ def build_stage2(stage1_install,
     # fail compilation of lib/builtins/atomic_*.c that only get built for
     # Darwin and fail compilation due to us using the bionic version of
     # stdatomic.h.
-    if utils.host_is_darwin():
+    if hosts.build_host().is_darwin:
         stage2_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
     # Point CMake to the libc++ from stage1.  It is possible that once built,
@@ -1477,7 +1479,7 @@ def build_runtimes(toolchain, args=None):
         build_crts(toolchain, version)
         build_crts(toolchain, version, ndk_cxx=True)
         # 32-bit host crts are not needed for Darwin
-        if utils.host_is_linux():
+        if hosts.build_host().is_linux:
             build_crts_host_i686(toolchain, version)
     if args is not None and args.skip_libfuzzers:
         logger().info('Skip libfuzzers')
@@ -1547,8 +1549,8 @@ def install_wrappers(llvm_install_path):
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
-def normalize_llvm_host_libs(install_dir, host, version):
-    if host == 'linux-x86':
+def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
+    if host.is_linux:
         libs = {'libLLVM': 'libLLVM-{version}git.so',
                 'libclang': 'libclang.so.{version}git',
                 'libclang_cxx': 'libclang_cxx.so.{version}git',
@@ -1589,7 +1591,7 @@ def normalize_llvm_host_libs(install_dir, host, version):
         # still need libc++.so or libc++.dylib symlinks for a subsequent stage1
         # build using these prebuilts (where CMake tries to find C++ atomics
         # support) to succeed.
-        libcxx_name = 'libc++.so' if host == 'linux-x86' else 'libc++.dylib'
+        libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
                     lib != libcxx_name and
                     (lib.startswith(libname + '.') or # so libc++abi is ignored
@@ -1657,13 +1659,11 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
                 remove(static_library)
 
 
-def get_package_install_path(host, package_name):
-    return utils.out_path('install', host, package_name)
+def get_package_install_path(host: hosts.Host, package_name):
+    return utils.out_path('install', host.os_tag, package_name)
 
 
-def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_tar=True):
-    is_windows = host == 'windows-x86-64'
-    is_linux = host == 'linux-x86'
+def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=True, create_tar=True):
     package_name = 'clang-' + build_name
     version = extract_clang_version(build_dir)
 
@@ -1678,8 +1678,8 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
     # First copy over the entire set of output objects.
     shutil.copytree(build_dir, install_dir, symlinks=True)
 
-    ext = '.exe' if is_windows else ''
-    shlib_ext = '.dll' if is_windows else '.so' if is_linux else '.dylib'
+    ext = '.exe' if host.is_windows else ''
+    shlib_ext = '.dll' if host.is_windows else '.so' if host.is_linux else '.dylib'
 
     # Next, we remove unnecessary binaries.
     necessary_bin_files = {
@@ -1730,7 +1730,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
             'lldb' + ext,
         })
 
-    if is_windows:
+    if host.is_windows:
         windows_blacklist_bin_files = {
             'clang-' + version.major_version() + ext,
             'scan-build' + ext,
@@ -1739,15 +1739,13 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         necessary_bin_files -= windows_blacklist_bin_files
 
     if BUILD_LLDB:
-        if is_windows:
-            install_lldb_python(install_dir, 'windows-x86')
+        install_lldb_python(install_dir, host)
+        if host.is_windows:
             windows_additional_bin_files = {
                 'liblldb' + shlib_ext,
                 'python38' + shlib_ext
             }
             necessary_bin_files |= windows_additional_bin_files
-        else:
-            install_lldb_python(install_dir, host)
 
     # scripts that should not be stripped
     script_bins = {
@@ -1773,7 +1771,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
 
-    if is_windows:
+    if host.is_windows:
         windows_necessary_lib_files = {
             'libc++.a',
             'libc++abi.a',
@@ -1789,7 +1787,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
             if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
                 raise RuntimeError('Did not find %s under lib64' % necessary_lib_file)
 
-    if not is_windows:
+    if not host.is_windows:
         # Remove unnecessary static libraries.
         remove_static_libraries(lib_dir)
         install_wrappers(install_dir)
@@ -1822,7 +1820,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         version_file.write('based on {}\n'.format(svn_revision))
 
     # Create RBE input files.
-    if is_linux:
+    if host.is_linux:
         with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs'), 'w') as inputs_file:
             dependencies = ('clang\n'
                             'clang++\n'
@@ -1838,7 +1836,7 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
-        tarball_name = package_name + '-' + host
+        tarball_name = package_name + '-' + host.os_tag
         package_path = os.path.join(dist_dir, tarball_name) + '.tar.bz2'
         logger().info('Packaging %s', package_path)
         args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
@@ -2004,8 +2002,8 @@ def main():
     BUILD_LLDB = 'lldb' not in args.no_build
     BUILD_LLVM_NEXT = args.build_llvm_next
 
-    need_host = utils.host_is_darwin() or ('linux' not in args.no_build)
-    need_windows = utils.host_is_linux() and \
+    need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
+    need_windows = hosts.build_host().is_linux and \
         ('windows' not in args.no_build)
 
     log_levels = [logging.INFO, logging.DEBUG]
@@ -2025,7 +2023,7 @@ def main():
                                  build_llvm_next=args.build_llvm_next)
 
     # Build the stage1 Clang for the build host
-    instrumented = utils.host_is_linux() and args.build_instrumented
+    instrumented = hosts.build_host().is_linux and args.build_instrumented
 
     if do_stage1:
         # Windows libs are built with stage1 toolchain. llvm-config is required.
@@ -2055,7 +2053,7 @@ def main():
                          args.build_name, args.enable_assertions,
                          args.debug, args.no_lto, instrumented, profdata)
 
-        if utils.host_is_linux() and do_runtimes:
+        if hosts.build_host().is_linux and do_runtimes:
             runtimes_toolchain = stage2_install
             if args.debug:
                 runtimes_toolchain = stage1_install
@@ -2079,7 +2077,7 @@ def main():
         package_toolchain(
             stage2_install,
             args.build_name,
-            utils.build_os_type(),
+            hosts.build_host(),
             dist_dir,
             strip=do_strip_host_package)
 
@@ -2087,7 +2085,7 @@ def main():
         package_toolchain(
             windows64_install,
             args.build_name,
-            'windows-x86-64',
+            hosts.Host.Windows,
             dist_dir,
             strip=do_strip)
 
