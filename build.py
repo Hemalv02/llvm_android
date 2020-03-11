@@ -1715,20 +1715,12 @@ def package_toolchain(build_dir, build_name, host, dist_dir, strip=True, create_
         normalize_llvm_host_libs(install_dir, host, version)
 
 
-    # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
-    libc_include_path = utils.android_path('bionic', 'libc', 'include')
+    # Next, we copy over stdatomic.h from bionic.
+    stdatomic_path = utils.android_path('bionic', 'libc', 'include',
+                                        'stdatomic.h')
     resdir_top = os.path.join(lib_dir, 'clang')
     header_path = os.path.join(resdir_top, version.long_version(), 'include')
-
-    stdatomic_path = utils.android_path(libc_include_path, 'stdatomic.h')
     install_file(stdatomic_path, header_path)
-
-    bits_install_path = os.path.join(header_path, 'bits')
-    if not os.path.isdir(bits_install_path):
-        os.mkdir(bits_install_path)
-    bits_stdatomic_path = utils.android_path(libc_include_path, 'bits', 'stdatomic.h')
-    install_file(bits_stdatomic_path, bits_install_path)
-
 
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
