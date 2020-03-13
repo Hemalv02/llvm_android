@@ -1157,11 +1157,6 @@ def host_sysroot():
 
 
 def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
-    def formatFlags(flags, **values):
-        flagsStr = ' '.join(flags)
-        flagsStr = flagsStr.format(**values)
-        return flagsStr.split(' ')
-
     cflags = [debug_prefix_flag()]
     ldflags = []
 
@@ -1176,17 +1171,17 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
         gccVersion = '4.8.3'
 
         # gcc-toolchain is only needed for Linux
-        cflags.append('--gcc-toolchain={gccRoot}')
+        cflags.append(f'--gcc-toolchain={gccRoot}')
     elif host.is_windows:
         gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                                      'host/x86_64-w64-mingw32-4.8')
         gccTriple = 'x86_64-w64-mingw32'
         gccVersion = '4.8.3'
 
-    cflags.append('-B{gccRoot}/{gccTriple}/bin')
+    cflags.append(f'-B{gccRoot}/{gccTriple}/bin')
 
-    gccLibDir = '{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
-    gccBuiltinDir = '{gccRoot}/{gccTriple}/lib64'
+    gccLibDir = f'{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
+    gccBuiltinDir = f'{gccRoot}/{gccTriple}/lib64'
     if is_32_bit:
         gccLibDir += '/32'
         gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
@@ -1198,10 +1193,6 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
                     '-fuse-ld=lld',
                    ))
 
-    cflags = formatFlags(cflags, gccRoot=gccRoot, gccTriple=gccTriple,
-                         gccVersion=gccVersion)
-    ldflags = formatFlags(ldflags, gccRoot=gccRoot, gccTriple=gccTriple,
-                          gccVersion=gccVersion)
     return cflags, ldflags
 
 
