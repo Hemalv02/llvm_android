@@ -16,6 +16,8 @@
 #
 # pylint: disable=not-callable
 
+import datetime
+import logging
 import os
 import shutil
 import stat
@@ -71,6 +73,20 @@ def yes_or_no(prompt, default=True):
             return False
         else:
             print("Unrecognized reply, try again")
+
+
+def logger():
+    """Returns the module level logger."""
+    return logging.getLogger(__name__)
+
+
+def check_call(cmd, *args, **kwargs):
+    """subprocess.check_call with logging."""
+    logger().info('check_call:%s %s',
+                  datetime.datetime.now().strftime("%H:%M:%S"),
+                  subprocess.list2cmdline(cmd))
+    subprocess.check_call(cmd, *args, **kwargs)
+
 
 def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
