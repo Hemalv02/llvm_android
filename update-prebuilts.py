@@ -149,14 +149,8 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         check_call(
             ['repo', 'start', branch_name, '.'])
 
-    host_filename = host
-    # Get the correct host file for Windows.  The git project name is
-    # different than the package created by build.py.
-    if host == 'windows-x86':
-        host_filename = 'windows-x86-64'
-
     package = '{}/clang-{}-{}.tar.bz2'.format(
-        download_dir, build_number, host_filename)
+        download_dir, build_number, host)
     manifest_file = '{}/{}'.format(download_dir, manifest)
 
     extract_package(package, prebuilt_dir)
