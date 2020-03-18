@@ -1362,7 +1362,7 @@ def build_stage2(stage1_install,
     stage2_extra_defines = get_shared_extra_defines()
     stage2_extra_env = dict()
 
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp'
+    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp;polly'
     stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
     stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
     stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
