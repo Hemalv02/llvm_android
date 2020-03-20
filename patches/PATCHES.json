@@ -288,6 +288,12 @@
         "end_version": 385989
     },
     {
+        "comment": "[UPSTREAM] [DAGCombiner] Do not fold truncate(build_vector(..)) if it creates an illegal type",
+        "rel_patch_path": "cherry/edcfb47ff6d5562e22207f364c65f84302aa346b.patch",
+        "start_version": 357161,
+        "end_version": 387801
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
