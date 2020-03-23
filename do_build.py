@@ -37,7 +37,7 @@ import hosts
 import paths
 import source_manager
 import toolchains
-from typing import Dict, List
+from typing import Dict, List, Optional, Set
 from version import Version
 
 import mapfile
@@ -76,14 +76,10 @@ def remove(path):
     os.remove(path)
 
 
-def extract_clang_version(clang_install):
-    version_file = os.path.join(clang_install, 'include', 'clang', 'Basic',
+def extract_clang_version(clang_install) -> Version:
+    version_file = (Path(clang_install) / 'include' / 'clang' / 'Basic' /
                                 'Version.inc')
     return Version(version_file)
-
-
-def extract_clang_long_version(clang_install):
-    return extract_clang_version(clang_install).long_version()
 
 
 def pgo_profdata_filename():
@@ -1075,8 +1071,8 @@ def build_llvm_for_windows(stage1_install,
 
     if BUILD_LLDB:
         windows_extra_defines['LLVM_ENABLE_PROJECTS'] += ';lldb'
-        set_lldb_flags(install_dir, hosts.Host.Windows, windows_extra_defines,
-                       windows_extra_env)
+        builders.LLVMBuilder.set_lldb_flags(hosts.Host.Windows, windows_extra_defines)
+        windows_extra_env['SWIG_LIB'] = str(paths.SWIG_LIB)
 
     cflags.append('-DMS_WIN64')
 
@@ -1190,36 +1186,33 @@ class Stage1Builder(builders.LLVMBuilder):
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
     debug_stage2: bool = False
-    toolchain: toolchains.Toolchain = toolchains.PrebuiltToolchain()
+    toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
     config: configs.Config = configs.host_config()
 
     @property
-    def llvm_targets(self) -> List[str]:  # type: ignore
+    def llvm_targets(self) -> Set[str]:
         if self.debug_stage2:
-            return ANDROID_TARGETS.split(';')
+            return set(ANDROID_TARGETS.split(';'))
         else:
-            return BASE_TARGETS.split(';')
+            return set(BASE_TARGETS.split(';'))
 
     @property
-    def llvm_projects(self) -> List[str]:  # type: ignore
-        return ['clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt']
+    def llvm_projects(self) -> Set[str]:
+        return {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
 
     @property
-    def additional_ldflags(self) -> List[str]:
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
         # Point CMake to the libc++.so from the prebuilts.  Install an rpath
         # to prevent linking with the newly-built libc++.so
-        lib_dir = self.toolchain.path / 'lib64'
-        return [f'-L{lib_dir}', f'-Wl,-rpath,{lib_dir}']
+        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        return ldflags
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['LLVM_BUILD_RUNTIME'] = 'ON'
         defines['CLANG_ENABLE_ARCMT'] = 'OFF'
         defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
-
-        if not self.target_os.is_darwin:
-            defines['LLVM_ENABLE_LLD'] = 'ON'
 
         if self.build_llvm_tools:
             defines['LLVM_BUILD_TOOLS'] = 'ON'
@@ -1254,185 +1247,137 @@ class Stage1Builder(builders.LLVMBuilder):
         return env
 
 
-def get_python_dir(host: hosts.Host):
-    return utils.android_path('prebuilts', 'python', host.os_tag)
+def install_lldb_deps(install_dir, host: hosts.Host):
+    lib_dir = os.path.join(install_dir, 'bin' if host.is_windows else 'lib64')
+    check_create_path(lib_dir)
 
-
-def set_lldb_flags(install_dir, host: hosts.Host, defines, env):
-    if host.is_windows:
-        build_os = 'linux-x86'
-    else:
-        build_os = host.os_tag
-
-    swig_root = utils.android_path('prebuilts', 'swig', build_os)
-    defines['SWIG_EXECUTABLE'] = os.path.join(swig_root, 'bin', 'swig')
-    env['SWIG_LIB'] = os.path.join(swig_root, 'share', 'swig', '3.0.12')
-
-    python_root = get_python_dir(host)
-    if host.is_linux:
-        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython3.8.so')
-        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
-        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python', 'linux-x86', 'bin', 'python3.8')
-    elif host.is_windows:
-        # Python Windows uses a different layout.
-        defines['Python3_LIBRARY'] = os.path.join(python_root, 'libs', 'python38.lib')
-        defines['Python3_INCLUDE_DIR'] = os.path.join(python_root, 'include')
-        defines['Python3_EXECUTABLE'] = utils.android_path('prebuilts', 'python', 'linux-x86', 'bin', 'python3.8')
-    elif host.is_darwin:
-        defines['PYTHON_LIBRARY'] = os.path.join(python_root, 'lib', 'libpython3.8.dylib')
-        defines['PYTHON_INCLUDE_DIR'] = os.path.join(python_root, 'include', 'python3.8')
-        defines['PYTHON_EXECUTABLE'] = utils.android_path('prebuilts', 'python', 'darwin-x86', 'bin', 'python3.8')
-
-    defines['LLDB_EMBED_PYTHON_HOME'] = 'ON'
-    defines['LLDB_PYTHON_HOME'] = '../python3'
-
-    if host.is_darwin:
-        defines['LLDB_NO_DEBUGSERVER'] = 'ON'
-
-    if host.is_linux:
-        libedit_root = utils.android_path('prebuilts', 'libedit', host.os_tag)
-        libedit_lib = os.path.join(libedit_root, 'lib', 'libedit.so.0')
-        libedit_include = os.path.join(libedit_root, 'include')
-        defines['libedit_INCLUDE_DIRS'] = libedit_include
-        defines['libedit_LIBRARIES'] = libedit_lib
-        lib_dir = os.path.join(install_dir, 'lib64')
-        check_create_path(lib_dir)
-        shutil.copy2(libedit_lib, lib_dir)
-
-
-def install_lldb_python(install_dir, host: hosts.Host):
-    python_prebuilt_dir = get_python_dir(host)
+    python_prebuilt_dir = paths.get_python_dir(host)
     python_dest_dir = os.path.join(install_dir, 'python3')
     shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True,
                     ignore=shutil.ignore_patterns('*.pyc', '__pycache__', '.git', 'Android.bp'))
+
+    py_lib = paths.get_python_dynamic_lib(host)
+    py_lib_rel = os.path.relpath(str(py_lib), lib_dir)
+    os.symlink(py_lib_rel, os.path.join(lib_dir, py_lib.name))
     if host.is_linux:
-        os.symlink('../python3/lib/libpython3.8.so.1.0', os.path.join(install_dir, 'lib64', 'libpython3.8.so.1.0'))
-    elif host.is_windows:
-        os.symlink('../python3/python38.dll', os.path.join(install_dir, 'bin', 'python38.dll'))
-    elif host.is_darwin:
-        os.symlink('../python3/lib/libpython3.8.dylib', os.path.join(install_dir, 'lib64', 'libpython3.8.dylib'))
+        shutil.copy2(paths.get_libedit_lib(host), lib_dir)
 
 
-def build_stage2(stage1_install,
-                 stage2_install,
-                 stage2_targets,
-                 build_name,
-                 enable_assertions=False,
-                 debug_build=False,
-                 no_lto=False,
-                 build_instrumented=False,
-                 profdata_file=None):
-    cflags, ldflags = host_gcc_toolchain_flags(hosts.build_host())
+class Stage2Builder(builders.LLVMBuilder):
+    name: str = 'stage2'
+    install_dir: Path = paths.OUT_DIR / 'stage2-install'
+    toolchain: toolchains.Toolchain = toolchains.build_toolchain_for_path(
+        Stage1Builder.install_dir)
+    config: configs.Config = configs.host_config()
+    build_lldb: bool = True
+    debug_build: bool = False
+    build_instrumented: bool = False
+    profdata_file: Optional[Path] = None
+    enable_assertions: bool = False
+    lto: bool = True
 
-    # Build/install the stage2 toolchain
-    stage2_cc = os.path.join(stage1_install, 'bin', 'clang')
-    stage2_cxx = os.path.join(stage1_install, 'bin', 'clang++')
-    stage2_path = utils.out_path('stage2')
+    @property
+    def llvm_targets(self) -> Set[str]:
+        return set(ANDROID_TARGETS.split(';'))
 
-    stage2_extra_defines = get_shared_extra_defines()
-    stage2_extra_env = dict()
+    @property
+    def llvm_projects(self) -> Set[str]:
+        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt', 
+                'clang-tools-extra', 'openmp', 'polly'}
+        if self.build_lldb:
+            proj.add('lldb')
+        return proj
 
-    stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';clang-tools-extra;openmp;polly'
-    stage2_extra_defines['CMAKE_C_COMPILER'] = stage2_cc
-    stage2_extra_defines['CMAKE_CXX_COMPILER'] = stage2_cxx
-    stage2_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-    stage2_extra_defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
-    stage2_extra_defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
-    stage2_extra_defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        # Point CMake to the libc++ from stage1.  It is possible that once built,
+        # the newly-built libc++ may override this because of the rpath pointing to
+        # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
+        # the same sources.
+        env['LD_LIBRARY_PATH'] = str(self.toolchain.lib_dir)
+        return env
 
-    if BUILD_LLDB:
-        stage2_extra_defines['LLVM_ENABLE_PROJECTS'] += ';lldb'
-        set_lldb_flags(stage2_install, hosts.build_host(),
-                       stage2_extra_defines, stage2_extra_env)
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        if self.build_instrumented:
+            # Building libcxx, libcxxabi with instrumentation causes linker errors
+            # because these are built with -nodefaultlibs and prevent libc symbols
+            # needed by libclang_rt.profile from being resolved.  Manually adding
+            # the libclang_rt.profile to linker flags fixes the issue.
+            resource_dir = self.toolchain.get_resource_dir()
+            ldflags.append(str(resource_dir / 'libclang_rt.profile-x86_64.a'))
+        return ldflags
 
-    update_cmake_sysroot_flags(stage2_extra_defines, host_sysroot())
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        if self.profdata_file:
+            cflags.append('-Wno-profile-instr-out-of-date')
+            cflags.append('-Wno-profile-instr-unprofiled')
+        return cflags
 
-    if not hosts.build_host().is_darwin:
-        stage2_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+        defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
+        defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
+        defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
 
         # lld, lto and pgo instrumentation doesn't work together
         # http://b/79419131
-        if not build_instrumented and not no_lto and not debug_build:
-            stage2_extra_defines['LLVM_ENABLE_LTO'] = 'Thin'
+        if (self.lto and
+            not self.target_os.is_darwin and
+            not self.build_instrumented and
+            not self.debug_build):
+            defines['LLVM_ENABLE_LTO'] = 'Thin'
 
-    # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
-    # is not currently supported on Darwin.
-    if hosts.build_host().is_darwin:
-        stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
-    else:
-        stage2_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
+        # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
+        # is not currently supported on Darwin.
+        if self.target_os.is_darwin:
+            defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+        else:
+            defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
 
-    if enable_assertions:
-        stage2_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
+        if self.enable_assertions:
+            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
 
-    if debug_build:
-        stage2_extra_defines['CMAKE_BUILD_TYPE'] = 'Debug'
+        if self.debug_build:
+            defines['CMAKE_BUILD_TYPE'] = 'Debug'
 
-    if build_instrumented:
-        stage2_extra_defines['LLVM_BUILD_INSTRUMENTED'] = 'ON'
+        if self.build_instrumented:
+            defines['LLVM_BUILD_INSTRUMENTED'] = 'ON'
 
-        # llvm-profdata is only needed to finish CMake configuration
-        # (tools/clang/utils/perf-training/CMakeLists.txt) and not needed for
-        # build
-        llvm_profdata = os.path.join(stage1_install, 'bin', 'llvm-profdata')
-        stage2_extra_defines['LLVM_PROFDATA'] = llvm_profdata
+            # llvm-profdata is only needed to finish CMake configuration
+            # (tools/clang/utils/perf-training/CMakeLists.txt) and not needed for
+            # build
+            llvm_profdata = self.toolchain.path / 'bin' / 'llvm-profdata'
+            defines['LLVM_PROFDATA'] = str(llvm_profdata)
 
-        # Building libcxx, libcxxabi with instrumentation causes linker errors
-        # because these are built with -nodefaultlibs and prevent libc symbols
-        # needed by libclang_rt.profile from being resolved.  Manually adding
-        # the libclang_rt.profile to linker flags fixes the issue.
-        version = extract_clang_long_version(stage1_install)
-        resource_dir = clang_resource_dir(version, '')
-        ldflags.append(os.path.join(stage1_install, resource_dir,
-                                    'libclang_rt.profile-x86_64.a'))
+        if self.profdata_file:
+            if self.build_instrumented:
+                raise RuntimeError(
+                    'Cannot simultaneously instrument and use profiles')
+            defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
-    if profdata_file:
-        if build_instrumented:
-            raise RuntimeError(
-                'Cannot simultaneously instrument and use profiles')
+        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+        # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+        if self.target_os.is_linux:
+            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+            defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
 
-        stage2_extra_defines['LLVM_PROFDATA_FILE'] = profdata_file
-        cflags.append('-Wno-profile-instr-out-of-date')
-        cflags.append('-Wno-profile-instr-unprofiled')
+        # Do not build compiler-rt for Darwin.  We don't ship host (or any
+        # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
+        # fail compilation of lib/builtins/atomic_*.c that only get built for
+        # Darwin and fail compilation due to us using the bionic version of
+        # stdatomic.h.
+        if self.target_os.is_darwin:
+            defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
-    # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-    # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-    # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-    if hosts.build_host().is_linux:
-        stage2_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-        stage2_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-
-    # Do not build compiler-rt for Darwin.  We don't ship host (or any
-    # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
-    # fail compilation of lib/builtins/atomic_*.c that only get built for
-    # Darwin and fail compilation due to us using the bionic version of
-    # stdatomic.h.
-    if hosts.build_host().is_darwin:
-        stage2_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
-
-    # Point CMake to the libc++ from stage1.  It is possible that once built,
-    # the newly-built libc++ may override this because of the rpath pointing to
-    # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
-    # the same sources.
-    ldflags.append('-L' + os.path.join(stage1_install, 'lib64'))
-    stage2_extra_env['LD_LIBRARY_PATH'] = os.path.join(stage1_install, 'lib64')
-
-    # Set the compiler and linker flags
-    stage2_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    stage2_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    stage2_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-    stage2_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage2_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage2_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    build_llvm(
-        targets=stage2_targets,
-        build_dir=stage2_path,
-        install_dir=stage2_install,
-        build_name=build_name,
-        extra_defines=stage2_extra_defines,
-        extra_env=stage2_extra_env)
+        return defines
 
 
 def build_runtimes(toolchain, args=None):
@@ -1711,7 +1656,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         necessary_bin_files -= windows_blacklist_bin_files
 
     if BUILD_LLDB:
-        install_lldb_python(install_dir, host)
+        install_lldb_deps(install_dir, host)
         if host.is_windows:
             windows_additional_bin_files = {
                 'liblldb' + shlib_ext,
@@ -1996,19 +1941,19 @@ def main():
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
 
-    if do_stage1:
-        # Windows libs are built with stage1 toolchain. llvm-config is required.
-        stage1_build_llvm_tools = instrumented or \
-                                  (do_build and need_windows) or \
-                                  args.debug
+    # Windows libs are built with stage1 toolchain. llvm-config is required.
+    stage1_build_llvm_tools = instrumented or \
+                              (do_build and need_windows) or \
+                              args.debug
 
-        stage1 = Stage1Builder()
-        stage1.build_name = args.build_name
-        stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-        stage1.build_llvm_tools = stage1_build_llvm_tools
-        stage1.debug_stage2 = args.debug
+    stage1 = Stage1Builder()
+    stage1.build_name = args.build_name
+    stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+    stage1.build_llvm_tools = stage1_build_llvm_tools
+    stage1.debug_stage2 = args.debug
+    if do_stage1:
         stage1.build()
-        stage1_install = str(stage1.install_dir)
+    stage1_install = str(stage1.install_dir)
 
     if do_build and need_host:
         if os.path.exists(stage2_install) and do_stage2:
@@ -2022,10 +1967,18 @@ def main():
             raise RuntimeError('Profdata file does not exist for ' +
                                profdata_filename)
 
+        stage2 = Stage2Builder()
+        stage2.build_name = args.build_name
+        stage2.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+        stage2.build_lldb = BUILD_LLDB
+        stage2.debug_build = args.debug
+        stage2.enable_assertions = args.enable_assertions
+        stage2.lto = not args.no_lto
+        stage2.build_instrumented = instrumented
+        stage2.profdata_file = Path(profdata) if profdata else None
         if do_stage2:
-            build_stage2(stage1_install, stage2_install, ANDROID_TARGETS,
-                         args.build_name, args.enable_assertions,
-                         args.debug, args.no_lto, instrumented, profdata)
+            stage2.build()
+        stage2_install = str(stage2.install_dir)
 
         if hosts.build_host().is_linux and do_runtimes:
             runtimes_toolchain = stage2_install

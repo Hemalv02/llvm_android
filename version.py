@@ -14,33 +14,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# pylint: disable=not-callable
+"""A class to represent clang version."""
 
+from pathlib import Path
 import re
 
-
-class Version(object):
+class Version():
     """Parse and save clang version from version file."""
 
-    def __init__(self, version_file):
+    def __init__(self, version_file: Path) -> None:
         self._parse_version_file(version_file)
 
-    def _parse(self, text, key):
+    @staticmethod
+    def _parse(text, key) -> str:
         return re.findall(r'%s\s+(\d+)' % key, text)[0]
 
-    def _parse_version_file(self, version_file):
-        f = open(version_file, 'r')
-        text = f.read()
-        f.close()
+    def _parse_version_file(self, version_file: Path) -> None:
+        with version_file.open() as vfile:
+            text = vfile.read()
         self.major = self._parse(text, 'CLANG_VERSION_MAJOR')
         self.minor = self._parse(text, 'CLANG_VERSION_MINOR')
         self.patch = self._parse(text, 'CLANG_VERSION_PATCHLEVEL')
 
-    def long_version(self):
+    def long_version(self) -> str:
+        """Returns a long version including major, minor and patch level."""
         return '.'.join([self.major, self.minor, self.patch])
 
-    def short_version(self):
+    def short_version(self) -> str:
+        """Returns a short version including major and minor."""
         return '.'.join([self.major, self.minor])
 
-    def major_version(self):
-        return self.major
+    def major_version(self) -> str:
+        """Returns only the major version."""
+        return str(self.major)

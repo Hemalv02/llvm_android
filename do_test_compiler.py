@@ -324,13 +324,15 @@ def build_clang(instrumented=False, pgo=True):
         long_version = build.extract_clang_long_version(stage1_install)
         profdata = build.pgo_profdata_file(long_version)
 
-    build.build_stage2(
-        stage1_install,
-        stage2_install,
-        build.ANDROID_TARGETS,
-        build_name='dev',
-        build_instrumented=instrumented,
-        profdata_file=profdata)
+    stage2 = build.Stage2Builder()
+    stage2.build_name = 'dev'
+    stage2.svn_revision = 'dev'
+    stage2.build_lldb = False
+    stage2.build_instrumented = instrumented
+    stage2.profdata_file = Path(profdata) if profdata else None
+    stage2.build()
+    stage2_install = str(stage2.install_dir)
+
     build.build_runtimes(stage2_install)
 
     build.package_toolchain(
