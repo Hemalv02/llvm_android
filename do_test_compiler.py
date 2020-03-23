@@ -302,7 +302,6 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
 
 
 def build_clang(instrumented=False, pgo=True):
-    stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
 
     # Clone sources to build the current version, with patches.
@@ -312,9 +311,13 @@ def build_clang(instrumented=False, pgo=True):
 
     # LLVM tool llvm-profdata from stage1 is needed to merge the collected
     # profiles.  Build all LLVM tools if building instrumented stage2
-    build.build_stage1(stage1_install, build_name='dev',
-                       stage1_targets=build.BASE_TARGETS,
-                       build_llvm_tools=instrumented)
+    stage1 = build.Stage1Builder()
+    stage1.build_name = 'dev'
+    stage1.svn_revision = 'dev'
+    stage1.build_llvm_tools = instrumented
+    stage1.debug_stage2 = False
+    stage1.build()
+    stage1_install = str(stage1.install_dir)
 
     profdata = None
     if pgo:
