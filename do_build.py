@@ -17,10 +17,10 @@
 # pylint: disable=not-callable, relative-import, line-too-long, no-else-return
 
 import argparse
-import datetime
 import glob
 import logging
 import multiprocessing
+from pathlib import Path
 import os
 import shutil
 import string
@@ -30,8 +30,14 @@ import textwrap
 import utils
 
 import android_version
+import builders
+import configs
+import constants
 import hosts
+import paths
 import source_manager
+import toolchains
+from typing import Dict, List
 from version import Version
 
 import mapfile
@@ -48,9 +54,6 @@ if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
 BASE_TARGETS = 'X86'
 ANDROID_TARGETS = 'AArch64;ARM;BPF;X86'
 
-# We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
-MAC_MIN_VERSION = '10.9'
-
 # TODO (Pirama): Put all the build options in a global so it's easy to refer to
 # them instead of plumbing flags through function parameters.
 BUILD_LLDB = False
@@ -59,14 +62,6 @@ BUILD_LLVM_NEXT = False
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
-
-
-def check_call(cmd, *args, **kwargs):
-    """subprocess.check_call with logging."""
-    logger().info('check_call:%s %s',
-                  datetime.datetime.now().strftime("%H:%M:%S"),
-                  subprocess.list2cmdline(cmd))
-    subprocess.check_call(cmd, *args, **kwargs)
 
 
 def install_file(src, dst):
@@ -145,22 +140,13 @@ def support_headers():
     return os.path.join(ndk_base(), 'sources', 'android', 'support', 'include')
 
 
-# This is the baseline stable version of Clang to start our stage-1 build.
-def clang_prebuilt_version():
-    return 'clang-r377782c'
-
-
 def clang_prebuilt_base_dir():
     return utils.android_path('prebuilts/clang/host',
-                              hosts.build_host().os_tag, clang_prebuilt_version())
+                              hosts.build_host().os_tag, constants.CLANG_PREBUILT_VERSION)
 
 
 def clang_prebuilt_bin_dir():
     return utils.android_path(clang_prebuilt_base_dir(), 'bin')
-
-
-def clang_prebuilt_lib_dir():
-    return utils.android_path(clang_prebuilt_base_dir(), 'lib64')
 
 
 def arch_from_triple(triple):
@@ -281,7 +267,7 @@ def create_sysroots():
                         void _ZTIN10__cxxabiv121__vmi_class_type_infoE() {}
                         void _ZTISt9type_info() {}
                     """))
-                check_call([utils.out_path('stage2-install', 'bin', 'clang'),
+                utils.check_call([utils.out_path('stage2-install', 'bin', 'clang'),
                             '--target=' + target,
                             '-fuse-ld=lld', '-nostdlib', '-shared',
                             '-Wl,-soname,libc++.so',
@@ -339,7 +325,7 @@ def base_cmake_defines():
     if hosts.build_host().is_darwin:
         # This will be used to set -mmacosx-version-min. And helps to choose SDK.
         # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
-        defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = MAC_MIN_VERSION
+        defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = constants.MAC_MIN_VERSION
 
     # http://b/111885871 - Disable building xray because of MacOS issues.
     defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
@@ -366,10 +352,10 @@ def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
     else:
         ninja_target = []
 
-    check_call([cmake_bin_path()] + flags, cwd=out_path, env=env)
-    check_call([ninja_bin_path()] + ninja_target, cwd=out_path, env=env)
+    utils.check_call([cmake_bin_path()] + flags, cwd=out_path, env=env)
+    utils.check_call([ninja_bin_path()] + ninja_target, cwd=out_path, env=env)
     if install:
-        check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
+        utils.check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
 
 
 def cross_compile_configs(toolchain, platform=False, static=False):
@@ -1153,8 +1139,8 @@ def host_sysroot():
 
 
 def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
-    cflags = [debug_prefix_flag()]
-    ldflags = []
+    cflags: List[str] = [debug_prefix_flag()]
+    ldflags: List[str] = []
 
     if host.is_darwin:
         return cflags, ldflags
@@ -1199,78 +1185,73 @@ def get_shared_extra_defines():
     return extra_defines
 
 
-def build_stage1(stage1_install, build_name, stage1_targets,
-                 build_llvm_tools=False):
-    # Build/install the stage 1 toolchain
-    host = hosts.build_host()
-    cflags, ldflags = host_gcc_toolchain_flags(host)
+class Stage1Builder(builders.LLVMBuilder):
+    name: str = 'stage1'
+    install_dir: Path = paths.OUT_DIR / 'stage1-install'
+    build_llvm_tools: bool = False
+    debug_stage2: bool = False
+    toolchain: toolchains.Toolchain = toolchains.PrebuiltToolchain()
+    config: configs.Config = configs.host_config()
 
-    stage1_path = utils.out_path('stage1')
+    @property
+    def llvm_targets(self) -> List[str]:  # type: ignore
+        if self.debug_stage2:
+            return ANDROID_TARGETS.split(';')
+        else:
+            return BASE_TARGETS.split(';')
 
-    stage1_extra_defines = get_shared_extra_defines()
-    stage1_extra_defines['CLANG_ENABLE_ARCMT'] = 'OFF'
-    stage1_extra_defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
-    stage1_extra_defines['CMAKE_C_COMPILER'] = os.path.join(
-        clang_prebuilt_bin_dir(), 'clang')
-    stage1_extra_defines['CMAKE_CXX_COMPILER'] = os.path.join(
-        clang_prebuilt_bin_dir(), 'clang++')
+    @property
+    def llvm_projects(self) -> List[str]:  # type: ignore
+        return ['clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt']
 
-    update_cmake_sysroot_flags(stage1_extra_defines, host_sysroot())
+    @property
+    def additional_ldflags(self) -> List[str]:
+        # Point CMake to the libc++.so from the prebuilts.  Install an rpath
+        # to prevent linking with the newly-built libc++.so
+        lib_dir = self.toolchain.path / 'lib64'
+        return [f'-L{lib_dir}', f'-Wl,-rpath,{lib_dir}']
 
-    if not host.is_darwin:
-        stage1_extra_defines['LLVM_ENABLE_LLD'] = 'ON'
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LLVM_BUILD_RUNTIME'] = 'ON'
+        defines['CLANG_ENABLE_ARCMT'] = 'OFF'
+        defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
 
-    if build_llvm_tools:
-        stage1_extra_defines['LLVM_BUILD_TOOLS'] = 'ON'
-    else:
-        stage1_extra_defines['LLVM_BUILD_TOOLS'] = 'OFF'
+        if not self.target_os.is_darwin:
+            defines['LLVM_ENABLE_LLD'] = 'ON'
 
-    # Have clang use libc++, ...
-    stage1_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+        if self.build_llvm_tools:
+            defines['LLVM_BUILD_TOOLS'] = 'ON'
+        else:
+            defines['LLVM_BUILD_TOOLS'] = 'OFF'
 
-    # ... and point CMake to the libc++.so from the prebuilts.  Install an rpath
-    # to prevent linking with the newly-built libc++.so
-    ldflags.append('-L' + clang_prebuilt_lib_dir())
-    ldflags.append('-Wl,-rpath,' + clang_prebuilt_lib_dir())
+        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+        # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+        if self.target_os.is_linux:
+            defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 
-    # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-    # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-    # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-    if host.is_linux:
-        stage1_extra_defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-        stage1_extra_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        # Do not build compiler-rt for Darwin.  We don't ship host (or any
+        # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
+        # fail compilation of lib/builtins/atomic_*.c that only get built for
+        # Darwin and fail compilation due to us using the bionic version of
+        # stdatomic.h.
+        if self.target_os.is_darwin:
+            defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
-    # Do not build compiler-rt for Darwin.  We don't ship host (or any
-    # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
-    # fail compilation of lib/builtins/atomic_*.c that only get built for
-    # Darwin and fail compilation due to us using the bionic version of
-    # stdatomic.h.
-    if host.is_darwin:
-        stage1_extra_defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
+        # Don't build libfuzzer as part of the first stage build.
+        defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
-    # Don't build libfuzzer as part of the first stage build.
-    stage1_extra_defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+        return defines
 
-    # Set the compiler and linker flags
-    stage1_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    stage1_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    stage1_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-    stage1_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage1_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    stage1_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    stage1_extra_env = dict()
-    if USE_GOMA_FOR_STAGE1:
-        stage1_extra_env['USE_GOMA'] = 'true'
-
-    build_llvm(
-        targets=stage1_targets,
-        build_dir=stage1_path,
-        install_dir=stage1_install,
-        build_name=build_name,
-        extra_defines=stage1_extra_defines,
-        extra_env=stage1_extra_env)
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        if USE_GOMA_FOR_STAGE1:
+            env['USE_GOMA'] = 'true'
+        return env
 
 
 def get_python_dir(host: hosts.Host):
@@ -1754,7 +1735,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
             if bin_filename not in necessary_bin_files:
                 remove(binary)
             elif strip and bin_filename not in script_bins:
-                check_call(['strip', binary])
+                utils.check_call(['strip', binary])
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
@@ -1831,7 +1812,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         package_path = os.path.join(dist_dir, tarball_name) + '.tar.bz2'
         logger().info('Packaging %s', package_path)
         args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
-        check_call(args)
+        utils.check_call(args)
 
 
 def parse_args():
@@ -2005,7 +1986,6 @@ def main():
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r' %
                   (do_build, do_stage1, do_stage2, do_runtimes, do_package, need_windows))
 
-    stage1_install = utils.out_path('stage1-install')
     stage2_install = utils.out_path('stage2-install')
     windows64_install = utils.out_path('windows-x86-64-install')
 
@@ -2021,11 +2001,14 @@ def main():
         stage1_build_llvm_tools = instrumented or \
                                   (do_build and need_windows) or \
                                   args.debug
-        stage1_targets = BASE_TARGETS
-        if args.debug:
-            stage1_targets = ANDROID_TARGETS
-        build_stage1(stage1_install, args.build_name, stage1_targets,
-                     build_llvm_tools=stage1_build_llvm_tools)
+
+        stage1 = Stage1Builder()
+        stage1.build_name = args.build_name
+        stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+        stage1.build_llvm_tools = stage1_build_llvm_tools
+        stage1.debug_stage2 = args.debug
+        stage1.build()
+        stage1_install = str(stage1.install_dir)
 
     if do_build and need_host:
         if os.path.exists(stage2_install) and do_stage2:
