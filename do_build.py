@@ -1247,18 +1247,19 @@ class Stage1Builder(builders.LLVMBuilder):
         return env
 
 
-def install_lldb_deps(install_dir, host: hosts.Host):
-    lib_dir = os.path.join(install_dir, 'bin' if host.is_windows else 'lib64')
+def install_lldb_deps(install_dir: Path, host: hosts.Host):
+    lib_dir = install_dir / ('bin' if host.is_windows else 'lib64')
     check_create_path(lib_dir)
 
-    python_prebuilt_dir = paths.get_python_dir(host)
-    python_dest_dir = os.path.join(install_dir, 'python3')
+    python_prebuilt_dir: Path = paths.get_python_dir(host)
+    python_dest_dir: Path = install_dir / 'python3'
     shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True,
                     ignore=shutil.ignore_patterns('*.pyc', '__pycache__', '.git', 'Android.bp'))
 
-    py_lib = paths.get_python_dynamic_lib(host)
-    py_lib_rel = os.path.relpath(str(py_lib), lib_dir)
-    os.symlink(py_lib_rel, os.path.join(lib_dir, py_lib.name))
+    py_lib = paths.get_python_dynamic_lib(host).relative_to(python_prebuilt_dir)
+    dest_py_lib = python_dest_dir / py_lib
+    py_lib_rel = os.path.relpath(dest_py_lib, lib_dir)
+    os.symlink(py_lib_rel, lib_dir / py_lib.name)
     if host.is_linux:
         shutil.copy2(paths.get_libedit_lib(host), lib_dir)
 
@@ -1657,7 +1658,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         necessary_bin_files -= windows_blacklist_bin_files
 
     if BUILD_LLDB:
-        install_lldb_deps(install_dir, host)
+        install_lldb_deps(Path(install_dir), host)
         if host.is_windows:
             windows_additional_bin_files = {
                 'liblldb' + shlib_ext,
