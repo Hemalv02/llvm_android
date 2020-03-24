@@ -294,6 +294,12 @@
         "end_version": 387801
     },
     {
+        "comment": "[UPSTREAM] [llvm-ar] Use target triple to deduce archive kind for bitcode inputs",
+        "rel_patch_path": "cherry/fe5599eac6a57ad5a354e3b6fec9e97332304bac.patch",
+        "start_version": 377782,
+        "end_version": 387824
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
