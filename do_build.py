@@ -1566,6 +1566,7 @@ def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
         libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
                     lib != libcxx_name and
+                    not lib.endswith('.a') and # skip static host libraries
                     (lib.startswith(libname + '.') or # so libc++abi is ignored
                      lib.startswith(libname + '-'))]
 
@@ -1742,29 +1743,30 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
             raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
 
+    necessary_lib_files = {
+        'libc++.a',
+        'libc++abi.a',
+    }
 
     if host.is_windows:
-        windows_necessary_lib_files = {
-            'libc++.a',
-            'libc++abi.a',
+        necessary_lib_files |= {
             'LLVMgold' + shlib_ext,
             'libwinpthread-1' + shlib_ext,
         }
         # For Windows, add other relevant libraries.
         install_winpthreads(bin_dir, lib_dir)
-        # Next, we remove unnecessary static libraries.
-        remove_static_libraries(lib_dir, windows_necessary_lib_files)
-        # Check necessary Windows lib files exist.
-        for necessary_lib_file in windows_necessary_lib_files:
-            if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
-                raise RuntimeError('Did not find %s under lib64' % necessary_lib_file)
+
+    # Remove unnecessary static libraries.
+    remove_static_libraries(lib_dir, necessary_lib_files)
 
     if not host.is_windows:
-        # Remove unnecessary static libraries.
-        remove_static_libraries(lib_dir)
         install_wrappers(install_dir)
         normalize_llvm_host_libs(install_dir, host, version)
 
+    # Check necessary lib files exist.
+    for necessary_lib_file in necessary_lib_files:
+        if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
+            raise RuntimeError('Did not find %s in %s' % (necessary_lib_file, lib_dir))
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
     libc_include_path = utils.android_path('bionic', 'libc', 'include')
