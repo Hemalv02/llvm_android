@@ -26,11 +26,17 @@ class Config:
 
     target_os: hosts.Host
 
-    cflags: List[str]
+    @property
+    def cflags(self) -> List[str]:
+        """Returns a list of cflags for this configuration."""
+        raise NotImplementedError()
 
-    ldflags: List[str]
+    @property
+    def ldflags(self) -> List[str]:
+        """Returns a list of ldflags for this configuration."""
+        raise NotImplementedError()
 
-    sysroot: Optional[Path]
+    sysroot: Optional[Path] = None
 
 
 class _BaseConfig(Config):  # pylint: disable=abstract-method
@@ -40,13 +46,13 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
     is_32_bit: bool = False
 
     @property
-    def cflags(self) -> List[str]:  # type: ignore
+    def cflags(self) -> List[str]:
         cflags: List[str] = [f'-fdebug-prefix-map={paths.ANDROID_DIR}=']
         cflags.extend(f'-B{d}' for d in self.bin_dirs)
         return cflags
 
     @property
-    def ldflags(self) -> List[str]:  # type: ignore
+    def ldflags(self) -> List[str]:
         ldflags: List[str] = []
         for lib_dir in self.lib_dirs:
             ldflags.append(f'-B{lib_dir}')
@@ -71,10 +77,6 @@ class DarwinConfig(_BaseConfig):
 
     target_os: hosts.Host = hosts.Host.Darwin
     use_lld: bool = False
-
-    @property
-    def sysroot(self) -> Optional[Path]:  # type: ignore
-        return None
 
 
 class _GccConfig(_BaseConfig):  # pylint: disable=abstract-method
@@ -103,15 +105,19 @@ class LinuxConfig(_GccConfig):
     """Configuration for Linux targets."""
 
     target_os: hosts.Host = hosts.Host.Linux
+    sysroot: Optional[Path] = (
+        paths.PREBUILTS_DIR / 'gcc' / target_os.os_tag / 'host' /
+        'x86_64-linux-glibc2.17-4.8' / 'sysroot')
     gcc_root: Path = (paths.ANDROID_DIR / 'prebuilts' / 'gcc' / target_os.os_tag /
                       'host' / 'x86_64-linux-glibc2.17-4.8')
     gcc_triple: str = 'x86_64-linux'
     gcc_ver: str = '4.8.3'
 
     @property
-    def sysroot(self) -> Optional[Path]:  # type: ignore
-        return (paths.ANDROID_DIR / 'prebuilts' / 'gcc' / self.target_os.os_tag /
-                'host' / 'x86_64-linux-glibc2.17-4.8' / 'sysroot')
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append(f'--gcc-toolchain={self.gcc_root}')
+        return cflags
 
 
 class WindowsConfig(_GccConfig):
