@@ -279,6 +279,12 @@
         "comment": "[UPSTREAM] [Backport] Allow customized relative PYTHONHOME",
         "rel_patch_path": "cherry/3ec3f62f0a0b1ac13230922c91ffc988c1b1e8d5.patch",
         "start_version": 380035,
+        "end_version": 383901
+    },
+    {
+        "comment": "[UPSTREAM] Allow customized relative PYTHONHOME",
+        "rel_patch_path": "cherry/3ec3f62f0a0b1ac13230922c91ffc988c1b1e8d5v2.patch",
+        "start_version": 383902,
         "end_version": 385429
     },
     {
@@ -334,5 +340,11 @@
         "rel_patch_path": "ANDROID-Do-not-record-function-addresses-if-value-profiling-is-disabled.patch",
         "start_version": 377782,
         "end_version": null
+    },
+    {
+        "comment": "Revert two libz changes that break lldb",
+        "rel_patch_path": "Revert-two-zlib-changes.patch",
+        "start_version": 380415,
+        "end_version": 386220
     }
 ]
