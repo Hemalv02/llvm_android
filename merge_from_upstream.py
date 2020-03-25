@@ -94,7 +94,7 @@ def merge_projects(sha, create_new_branch, dry_run):
         patchSha, patchRev, cherryPickSha = parse_log(changeLog, commits)
         if patchRev is None:
             if not cherryPickSha:
-                print 'To reapply local change ' + patchSha
+                print('To reapply local change ' + patchSha)
                 reapplyList.append(patchSha)
             else:
                 print('Unknown cherry pick, patchSha=%s cherryPickSha=%s'
@@ -102,13 +102,13 @@ def merge_projects(sha, create_new_branch, dry_run):
                 hasUnknownPatch = True
         else:
             if patchRev > revision:
-                print 'To reapply ' + patchSha + ' ' + str(patchRev)
+                print('To reapply ' + patchSha + ' ' + str(patchRev))
                 reapplyList.append(patchSha)
             else:
-                print 'To skip ' + patchSha + ' ' + str(patchRev)
+                print('To skip ' + patchSha + ' ' + str(patchRev))
 
     if hasUnknownPatch:
-        print 'Abort, cannot merge with unknown patch!'
+        print('Abort, cannot merge with unknown patch!')
         sys.exit(1)
 
     # Reset to previous branch point, if necessary
@@ -155,8 +155,8 @@ def merge_projects(sha, create_new_branch, dry_run):
                               stderr=FNULL)
 
         if ret_code != 0:
-            print 'Change cannot merge cleanly, please manual merge if needed'
-            print
+            print('Change cannot merge cleanly, please manual merge if needed')
+            print()
             keep_going = yes_or_no('Continue?', default=False)
             if not keep_going:
                 sys.exit(1)
@@ -175,9 +175,9 @@ def merge_projects(sha, create_new_branch, dry_run):
                          cwd=path,
                          dry_run=dry_run)
         else:
-            print 'Skipping ' + sha
+            print('Skipping ' + sha)
 
-        print
+        print()
 
 
 def parse_log(raw_log, commits):
