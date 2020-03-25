@@ -60,10 +60,37 @@ def _get_default_host() -> Host:
     raise RuntimeError('Unsupported host: {}'.format(sys.platform))
 
 
+@enum.unique
+class Arch(enum.Enum):
+    """Enumeration of supported arches."""
+    ARM = 'arm'
+    AARCH64 = 'aarch64'
+    I386 = 'i386'
+    X86_64 = 'x86_64'
+
+    @staticmethod
+    def from_triple(triple: str) -> 'Arch':
+        """Parses arch from a triple."""
+        arch = triple.split('-')[0]
+        if arch == 'i686':
+            arch = 'i386'
+        return Arch(arch)
+
+    @property
+    def ndk_arch(self) -> str:
+        """Converts to ndk arch."""
+        return {
+            Arch.ARM: 'arm',
+            Arch.AARCH64: 'arm64',
+            Arch.I386: 'x86',
+            Arch.X86_64: 'x86_64',
+        }[self]
+
+
 _BUILD_OS_TYPE: Host = _get_default_host()
 
 
 def build_host() -> Host:
     """Returns the cached Host matching the current machine."""
-    global _BUILD_OS_TYPE
+    global _BUILD_OS_TYPE  # pylint: disable=global-statement
     return _BUILD_OS_TYPE

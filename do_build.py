@@ -14,20 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# pylint: disable=not-callable, relative-import, line-too-long, no-else-return
+# pylint: disable=not-callable, line-too-long, no-else-return
 
 import argparse
 import glob
 import logging
-import multiprocessing
 from pathlib import Path
 import os
 import shutil
 import string
-import subprocess
-import sys
 import textwrap
-import utils
+from typing import Dict, List, Optional, Set
 
 import android_version
 import builders
@@ -37,7 +34,7 @@ import hosts
 import paths
 import source_manager
 import toolchains
-from typing import Dict, List, Optional, Set
+import utils
 from version import Version
 
 import mapfile
@@ -78,7 +75,7 @@ def remove(path):
 
 def extract_clang_version(clang_install) -> Version:
     version_file = (Path(clang_install) / 'include' / 'clang' / 'Basic' /
-                                'Version.inc')
+                    'Version.inc')
     return Version(version_file)
 
 
@@ -98,18 +95,13 @@ def ndk_base():
     return utils.android_path('toolchain/prebuilts/ndk', ndk_version)
 
 
-def android_api(arch, platform=False):
+def android_api(arch: hosts.Arch, platform=False):
     if platform:
         return 29
-    elif arch in ['arm', 'i386', 'x86']:
+    elif arch in [hosts.Arch.ARM, hosts.Arch.I386]:
         return 16
     else:
         return 21
-
-
-def ndk_path(arch, platform=False):
-    platform_level = 'android-' + str(android_api(arch, platform))
-    return os.path.join(ndk_base(), 'platforms', platform_level)
 
 
 def ndk_libcxx_headers():
@@ -122,10 +114,10 @@ def ndk_libcxxabi_headers():
                         'include')
 
 
-def ndk_toolchain_lib(arch, toolchain_root, host_tag):
+def ndk_toolchain_lib(arch: hosts.Arch, toolchain_root, host_tag):
     toolchain_lib = os.path.join(ndk_base(), 'toolchains', toolchain_root,
                                  'prebuilt', 'linux-x86_64', host_tag)
-    if arch in ['arm', 'i386']:
+    if arch in [hosts.Arch.ARM, hosts.Arch.I386]:
         toolchain_lib = os.path.join(toolchain_lib, 'lib')
     else:
         toolchain_lib = os.path.join(toolchain_lib, 'lib64')
@@ -145,15 +137,9 @@ def clang_prebuilt_bin_dir():
     return utils.android_path(clang_prebuilt_base_dir(), 'bin')
 
 
-def arch_from_triple(triple):
-    arch = triple.split('-')[0]
-    if arch == 'i686':
-        arch = 'i386'
-    return arch
-
-
-def clang_resource_dir(version, arch):
-    return os.path.join('lib64', 'clang', version, 'lib', 'linux', arch)
+def clang_resource_dir(version, arch: Optional[hosts.Arch] = None):
+    arch_str = arch.value if arch else ''
+    return os.path.join('lib64', 'clang', version, 'lib', 'linux', arch_str)
 
 
 def clang_prebuilt_libcxx_headers():
@@ -188,10 +174,10 @@ def check_create_path(path):
         os.makedirs(path)
 
 
-def get_sysroot(arch, platform=False):
+def get_sysroot(arch: hosts.Arch, platform=False):
     sysroots = utils.out_path('sysroots')
     platform_or_ndk = 'platform' if platform else 'ndk'
-    return os.path.join(sysroots, platform_or_ndk, arch)
+    return os.path.join(sysroots, platform_or_ndk, arch.ndk_arch)
 
 
 def debug_prefix_flag():
@@ -202,10 +188,10 @@ def create_sysroots():
     # Construct the sysroots from scratch, since symlinks can't nest within
     # the right places (without altering source prebuilts).
     configs = [
-        ('arm', 'arm-linux-androideabi'),
-        ('arm64', 'aarch64-linux-android'),
-        ('x86_64', 'x86_64-linux-android'),
-        ('x86', 'i686-linux-android'),
+        (hosts.Arch.ARM, 'arm-linux-androideabi'),
+        (hosts.Arch.AARCH64, 'aarch64-linux-android'),
+        (hosts.Arch.X86_64, 'x86_64-linux-android'),
+        (hosts.Arch.I386, 'i686-linux-android'),
     ]
 
     # TODO(srhines): We destroy and recreate the sysroots each time, but this
@@ -235,23 +221,23 @@ def create_sysroots():
             shutil.copytree(asm_headers, dest_usr_include_asm, symlinks=True)
 
             # Copy over usr/lib.
-            arch_lib_path = os.path.join(base_lib_path, 'arch-' + arch,
+            arch_lib_path = os.path.join(base_lib_path, 'arch-' + arch.ndk_arch,
                                          'usr', 'lib')
             dest_usr_lib = os.path.join(dest_usr, 'lib')
             shutil.copytree(arch_lib_path, dest_usr_lib, symlinks=True)
 
             # For only x86_64, we also need to copy over usr/lib64
-            if arch == 'x86_64':
-                arch_lib64_path = os.path.join(base_lib_path, 'arch-' + arch,
+            if arch == hosts.Arch.X86_64:
+                arch_lib64_path = os.path.join(base_lib_path, 'arch-' + arch.ndk_arch,
                                                'usr', 'lib64')
                 dest_usr_lib64 = os.path.join(dest_usr, 'lib64')
                 shutil.copytree(arch_lib64_path, dest_usr_lib64, symlinks=True)
 
             if platform:
                 # Create a stub library for the platform's libc++.
-                platform_stubs = utils.out_path('platform_stubs', arch)
+                platform_stubs = utils.out_path('platform_stubs', arch.ndk_arch)
                 check_create_path(platform_stubs)
-                libdir = dest_usr_lib64 if arch == 'x86_64' else dest_usr_lib
+                libdir = dest_usr_lib64 if arch == hosts.Arch.X86_64 else dest_usr_lib
                 with open(os.path.join(platform_stubs, 'libc++.c'), 'w') as f:
                     f.write(textwrap.dedent("""\
                         void __cxa_atexit() {}
@@ -264,17 +250,17 @@ def create_sysroots():
                         void _ZTISt9type_info() {}
                     """))
                 utils.check_call([utils.out_path('stage2-install', 'bin', 'clang'),
-                            '--target=' + target,
-                            '-fuse-ld=lld', '-nostdlib', '-shared',
-                            '-Wl,-soname,libc++.so',
-                            '-o', os.path.join(libdir, 'libc++.so'),
-                            os.path.join(platform_stubs, 'libc++.c')])
+                                  '--target=' + target,
+                                  '-fuse-ld=lld', '-nostdlib', '-shared',
+                                  '-Wl,-soname,libc++.so',
+                                  '-o', os.path.join(libdir, 'libc++.so'),
+                                  os.path.join(platform_stubs, 'libc++.c')])
 
                 # For arm64 and x86_64, build static cxxabi library from
                 # toolchain/libcxxabi and use it when building runtimes.  This
                 # should affect all compiler-rt runtimes that use libcxxabi
                 # (e.g. asan, hwasan, scudo, tsan, ubsan, xray).
-                if arch not in ('arm64', 'x86_64'):
+                if arch not in (hosts.Arch.AARCH64, hosts.Arch.X86_64):
                     with open(os.path.join(libdir, 'libc++abi.so'), 'w') as f:
                         f.write('INPUT(-lc++)')
                 else:
@@ -356,15 +342,15 @@ def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
 
 def cross_compile_configs(toolchain, platform=False, static=False):
     configs = [
-        ('arm', 'arm', 'arm/arm-linux-androideabi-4.9/arm-linux-androideabi',
+        (hosts.Arch.ARM, 'arm/arm-linux-androideabi-4.9/arm-linux-androideabi',
          'arm-linux-android', '-march=armv7-a'),
-        ('aarch64', 'arm64',
+        (hosts.Arch.AARCH64,
          'aarch64/aarch64-linux-android-4.9/aarch64-linux-android',
          'aarch64-linux-android', ''),
-        ('x86_64', 'x86_64',
+        (hosts.Arch.X86_64,
          'x86/x86_64-linux-android-4.9/x86_64-linux-android',
          'x86_64-linux-android', ''),
-        ('i386', 'x86', 'x86/x86_64-linux-android-4.9/x86_64-linux-android',
+        (hosts.Arch.I386, 'x86/x86_64-linux-android-4.9/x86_64-linux-android',
          'i686-linux-android', '-m32'),
     ]
 
@@ -372,7 +358,7 @@ def cross_compile_configs(toolchain, platform=False, static=False):
     cxx = os.path.join(toolchain, 'bin', 'clang++')
     llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
 
-    for (arch, ndk_arch, toolchain_path, llvm_triple, extra_flags) in configs:
+    for (arch, toolchain_path, llvm_triple, extra_flags) in configs:
         if static:
             api_level = android_api(arch, platform=True)
         else:
@@ -380,7 +366,7 @@ def cross_compile_configs(toolchain, platform=False, static=False):
         toolchain_root = utils.android_path('prebuilts/gcc',
                                             hosts.build_host().os_tag)
         toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
-        sysroot = get_sysroot(ndk_arch, platform)
+        sysroot = get_sysroot(arch, platform)
 
         defines = {}
         defines['CMAKE_C_COMPILER'] = cc
@@ -392,14 +378,14 @@ def cross_compile_configs(toolchain, platform=False, static=False):
             toolchain_root, toolchain_path, '..', 'lib', 'gcc',
             os.path.basename(toolchain_path), '4.9.x')
         # The 32-bit libgcc.a is sometimes in a separate subdir
-        if arch == 'i386':
+        if arch == hosts.Arch.I386:
             toolchain_builtins = os.path.join(toolchain_builtins, '32')
 
-        if ndk_arch == 'arm':
+        if arch == hosts.Arch.ARM:
             toolchain_lib = ndk_toolchain_lib(arch, 'arm-linux-androideabi-4.9',
                                               'arm-linux-androideabi')
-        elif ndk_arch == 'x86' or ndk_arch == 'x86_64':
-            toolchain_lib = ndk_toolchain_lib(arch, ndk_arch + '-4.9',
+        elif arch in [hosts.Arch.I386, hosts.Arch.X86_64]:
+            toolchain_lib = ndk_toolchain_lib(arch, arch.ndk_arch + '-4.9',
                                               llvm_triple)
         else:
             toolchain_lib = ndk_toolchain_lib(arch, llvm_triple + '-4.9',
@@ -416,7 +402,7 @@ def cross_compile_configs(toolchain, platform=False, static=False):
         if static:
             ldflags.append('-static')
         if not platform:
-            triple = 'arm-linux-androideabi' if ndk_arch == 'arm' else llvm_triple
+            triple = 'arm-linux-androideabi' if arch == hosts.Arch.ARM else llvm_triple
             libcxx_libs = os.path.join(ndk_base(), 'toolchains', 'llvm',
                                        'prebuilt', 'linux-x86_64', 'sysroot',
                                        'usr', 'lib', triple)
@@ -459,7 +445,7 @@ def build_sanitizer_map_file(san, arch, lib_dir):
 
 def build_sanitizer_map_files(toolchain, clang_version):
     lib_dir = os.path.join(toolchain,
-                           clang_resource_dir(clang_version.long_version(), ''))
+                           clang_resource_dir(clang_version.long_version()))
     for arch in ('aarch64', 'arm', 'i686', 'x86_64'):
         build_sanitizer_map_file('asan', arch, lib_dir)
         build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
@@ -467,7 +453,7 @@ def build_sanitizer_map_files(toolchain, clang_version):
 
 def create_hwasan_symlink(toolchain, clang_version):
     lib_dir = os.path.join(toolchain,
-                           clang_resource_dir(clang_version.long_version(), ''))
+                           clang_resource_dir(clang_version.long_version()))
     symlink_path = lib_dir + 'libclang_rt.hwasan_static-aarch64-android.a'
     utils.remove(symlink_path)
     os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
@@ -475,8 +461,8 @@ def create_hwasan_symlink(toolchain, clang_version):
 def build_libcxx(toolchain, clang_version):
     for (arch, llvm_triple, libcxx_defines,
          cflags) in cross_compile_configs(toolchain): # pylint: disable=not-an-iterable
-        logger().info('Building libcxx for %s', arch)
-        libcxx_path = utils.out_path('lib', 'libcxx-' + arch)
+        logger().info('Building libcxx for %s', arch.value)
+        libcxx_path = utils.out_path('lib', 'libcxx-' + arch.value)
 
         libcxx_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
         libcxx_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
@@ -496,7 +482,7 @@ def build_libcxx(toolchain, clang_version):
             install=False)
         # We need to install libcxx manually.
         install_subdir = clang_resource_dir(clang_version.long_version(),
-                                            arch_from_triple(llvm_triple))
+                                            hosts.Arch.from_triple(llvm_triple))
         libcxx_install = os.path.join(toolchain, install_subdir)
 
         libcxx_libs = os.path.join(libcxx_path, 'lib')
@@ -511,8 +497,8 @@ def build_crts(toolchain, clang_version, ndk_cxx=False):
     # Now build compiler-rt for each arch
     for (arch, llvm_triple, crt_defines,
          cflags) in cross_compile_configs(toolchain, platform=(not ndk_cxx)): # pylint: disable=not-an-iterable
-        logger().info('Building compiler-rt for %s', arch)
-        crt_path = utils.out_path('lib', 'clangrt-' + arch)
+        logger().info('Building compiler-rt for %s', arch.value)
+        crt_path = utils.out_path('lib', 'clangrt-' + arch.value)
         crt_install = os.path.join(toolchain, 'lib64', 'clang',
                                    clang_version.long_version())
         if ndk_cxx:
@@ -577,9 +563,9 @@ def build_libfuzzers(toolchain, clang_version, ndk_cxx=False):
 
     for (arch, llvm_triple, libfuzzer_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
             toolchain, platform=(not ndk_cxx)):
-        logger().info('Building libfuzzer for %s (ndk_cxx? %s)', arch, ndk_cxx)
+        logger().info('Building libfuzzer for %s (ndk_cxx? %s)', arch.value, ndk_cxx)
 
-        libfuzzer_path = utils.out_path('lib', 'libfuzzer-' + arch)
+        libfuzzer_path = utils.out_path('lib', 'libfuzzer-' + arch.value)
         if ndk_cxx:
             libfuzzer_path += '-ndk-cxx'
 
@@ -610,17 +596,18 @@ def build_libfuzzers(toolchain, clang_version, ndk_cxx=False):
             target='fuzzer',
             install=False)
         # We need to install libfuzzer manually.
-        sarch = arch
-        if sarch == 'i386':
+        if arch == hosts.Arch.I386:
             sarch = 'i686'
+        else:
+            sarch = arch.value
         static_lib_filename = 'libclang_rt.fuzzer-' + sarch + '-android.a'
         static_lib = os.path.join(libfuzzer_path, 'lib', 'linux', static_lib_filename)
-        triple_arch = arch_from_triple(llvm_triple)
+        triple_arch: Arch = hosts.Arch.from_triple(llvm_triple)
 
         # Install the fuzzer library to the old {arch}/libFuzzer.a path for
         # backwards compatibility.
         if ndk_cxx:
-            lib_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
+            lib_subdir = os.path.join('runtimes_ndk_cxx', triple_arch.value)
         else:
             lib_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
@@ -653,11 +640,7 @@ def build_libfuzzers(toolchain, clang_version, ndk_cxx=False):
             shutil.copy2(os.path.join(header_src, f), header_dst)
 
 
-def build_libcxxabi(toolchain, build_arch):
-    # Normalize arm64/aarch64
-    if build_arch == 'arm64':
-        build_arch = 'aarch64'
-
+def build_libcxxabi(toolchain, build_arch: hosts.Arch):
     # TODO: Refactor cross_compile_configs to support per-arch queries in
     # addition to being a generator.
     for (arch, llvm_triple, defines, cflags) in \
@@ -667,13 +650,13 @@ def build_libcxxabi(toolchain, build_arch):
         if arch != build_arch:
             continue
 
-        logger().info('Building libcxxabi for %s', arch)
+        logger().info('Building libcxxabi for %s', arch.value)
         defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.llvm_path('libcxx', 'include')
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
         defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
 
-        out_path = utils.out_path('lib', 'libcxxabi-' + arch)
+        out_path = utils.out_path('lib', 'libcxxabi-' + arch.value)
         if os.path.exists(out_path):
             utils.rm_tree(out_path)
 
@@ -690,14 +673,14 @@ def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
     for (arch, llvm_triple, libomp_defines, cflags) in cross_compile_configs( # pylint: disable=not-an-iterable
             toolchain, platform=(not ndk_cxx)):
 
-        logger().info('Building libomp for %s (ndk_cxx? %s)', arch, ndk_cxx)
+        logger().info('Building libomp for %s (ndk_cxx? %s)', arch.value, ndk_cxx)
         # Skip implicit C++ headers and explicitly include C++ header paths.
         cflags.append('-nostdinc++')
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
 
         cflags.append('-fPIC')
 
-        libomp_path = utils.out_path('lib', 'libomp-' + arch)
+        libomp_path = utils.out_path('lib', 'libomp-' + arch.value)
         if ndk_cxx:
             libomp_path += '-ndk-cxx'
         libomp_path += '-' + ('shared' if is_shared else 'static')
@@ -730,9 +713,9 @@ def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
         # We need to install libomp manually.
         libname = 'libomp.' + ('so' if is_shared else 'a')
         src_lib = os.path.join(libomp_path, 'runtime', 'src', libname)
-        triple_arch = arch_from_triple(llvm_triple)
+        triple_arch = hosts.Arch.from_triple(llvm_triple)
         if ndk_cxx:
-            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
+            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch.value)
         else:
             dst_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
@@ -748,7 +731,7 @@ def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
          cflags) in cross_compile_configs(toolchain, platform=(not ndk_cxx),
                                           static=True): # pylint: disable=not-an-iterable
 
-        logger().info('Building lldb for %s (ndk_cxx? %s)', arch, ndk_cxx)
+        logger().info('Building lldb for %s (ndk_cxx? %s)', arch.value, ndk_cxx)
         # Skip implicit C++ headers and explicitly include C++ header paths.
         cflags.append('-nostdinc++')
         cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
@@ -757,7 +740,7 @@ def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
         # warnings.
         cflags.append('-Wno-unused-command-line-argument')
 
-        lldb_path = utils.out_path('lib', 'lldb-server-' + arch)
+        lldb_path = utils.out_path('lib', 'lldb-server-' + arch.value)
         if ndk_cxx:
             lldb_path += '-ndk-cxx'
 
@@ -780,7 +763,7 @@ def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
         lldb_defines['LLDB_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'lldb-tblgen')
         lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
         lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
-        lldb_defines['LLVM_TARGET_ARCH'] = arch
+        lldb_defines['LLVM_TARGET_ARCH'] = arch.value
 
         lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
         # Inhibit all of CMake's own NDK handling code.
@@ -800,9 +783,9 @@ def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
         # We need to install manually.
         libname = 'lldb-server'
         src_lib = os.path.join(lldb_path, 'bin', libname)
-        triple_arch = arch_from_triple(llvm_triple)
+        triple_arch = hosts.Arch.from_triple(llvm_triple)
         if ndk_cxx:
-            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch)
+            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch.value)
         else:
             dst_subdir = clang_resource_dir(clang_version.long_version(),
                                             triple_arch)
@@ -1291,7 +1274,7 @@ class Stage2Builder(builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt', 
+        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
                 'clang-tools-extra', 'openmp', 'polly'}
         if self.build_lldb:
             proj.add('lldb')
@@ -1338,9 +1321,9 @@ class Stage2Builder(builders.LLVMBuilder):
         # lld, lto and pgo instrumentation doesn't work together
         # http://b/79419131
         if (self.lto and
-            not self.target_os.is_darwin and
-            not self.build_instrumented and
-            not self.debug_build):
+                not self.target_os.is_darwin and
+                not self.build_instrumented and
+                not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
         # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
