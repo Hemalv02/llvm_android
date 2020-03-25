@@ -28,12 +28,17 @@ class Config:
 
     @property
     def cflags(self) -> List[str]:
-        """Returns a list of cflags for this configuration."""
+        """Returns a list of flags for c compiler."""
         raise NotImplementedError()
 
     @property
+    def cxxflags(self) -> List[str]:
+        """Returns a list of flags used for cxx compiler."""
+        return self.cflags
+
+    @property
     def ldflags(self) -> List[str]:
-        """Returns a list of ldflags for this configuration."""
+        """Returns a list of flags for static linker."""
         raise NotImplementedError()
 
     sysroot: Optional[Path] = None
@@ -124,10 +129,23 @@ class WindowsConfig(_GccConfig):
     """Configuration for Windows targets."""
 
     target_os: hosts.Host = hosts.Host.Windows
-    gcc_root: Path = (paths.ANDROID_DIR / 'prebuilts' / 'gcc' / target_os.os_tag /
-                      'host' / 'x86_64-w64-mingw32-4.8')
-    triple: str = 'x86_64-linux'
+    gcc_root: Path = (
+        paths.PREBUILTS_DIR / 'gcc' / 'linux-x86' / 'host' /
+        'x86_64-w64-mingw32-4.8')
+    sysroot: Optional[Path] = gcc_root / 'x86_64-w64-mingw32'
+    gcc_triple: str = 'x86_64-w64-mingw32'
     gcc_ver: str = '4.8.3'
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('--target=x86_64-pc-windows-gnu')
+        cflags.append('-D_LARGEFILE_SOURCE')
+        cflags.append('-D_FILE_OFFSET_BITS=64')
+        cflags.append('-D_WIN32_WINNT=0x0600')
+        cflags.append('-DWINVER=0x0600')
+        cflags.append('-D__MSVCRT_VERSION__=0x1400')
+        return cflags
 
 
 def _get_default_host_config() -> Config:

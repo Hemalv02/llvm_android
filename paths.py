@@ -32,6 +32,11 @@ SWIG_ROOT: Path = PREBUILTS_DIR / 'swig' / hosts.build_host().os_tag
 SWIG_LIB: Path = SWIG_ROOT / 'share' / 'swig' / '3.0.12'
 SWIG_EXECUTABLE: Path = SWIG_ROOT / 'bin' / 'swig'
 
+
+_WIN_ZLIB_PATH = PREBUILTS_DIR / 'clang' / 'host' / 'windows-x86' / 'toolchain-prebuilts' / 'zlib'
+WIN_ZLIB_INCLUDE_PATH = _WIN_ZLIB_PATH / 'include'
+WIN_ZLIB_LIB_PATH = _WIN_ZLIB_PATH / 'lib'
+
 def get_python_dir(host: hosts.Host) -> Path:
     """Returns the path to python for a host."""
     return PREBUILTS_DIR / 'python' / host.os_tag

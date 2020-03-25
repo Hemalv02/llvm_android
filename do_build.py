@@ -916,222 +916,28 @@ def windows_cflags():
     return cflags
 
 
-def build_libs_for_windows(libname,
-                           toolchain_dir,
-                           enable_assertions,
-                           install_dir):
-    cflags, ldflags = host_gcc_toolchain_flags(hosts.Host.Windows)
-
-    cflags.extend(windows_cflags())
-
-    cmake_defines = dict()
-    cmake_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
-    cmake_defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
-    cmake_defines['CMAKE_C_COMPILER'] = os.path.join(
-        toolchain_dir, 'bin', 'clang')
-    cmake_defines['CMAKE_CXX_COMPILER'] = os.path.join(
-        toolchain_dir, 'bin', 'clang++')
-    cmake_defines['LLVM_CONFIG_PATH'] = os.path.join(
-        toolchain_dir, 'bin', 'llvm-config')
-    # To prevent cmake from checking libstdcxx version.
-    cmake_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-
-    windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86', 'host',
-                                         'x86_64-w64-mingw32-4.8',
-                                         'x86_64-w64-mingw32')
-    update_cmake_sysroot_flags(cmake_defines, windows_sysroot)
-
-    # Build only the static library.
-    cmake_defines[libname.upper() + '_ENABLE_SHARED'] = 'OFF'
-
-    if enable_assertions:
-        cmake_defines[libname.upper() + '_ENABLE_ASSERTIONS'] = 'ON'
-
-    if libname == 'libcxx':
-        cmake_defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-        cmake_defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
-        cmake_defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
-
-        # Use cxxabi header from the source directory since it gets installed
-        # into install_dir only during libcxx's install step.  But use the
-        # library from install_dir.
-        cmake_defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = utils.llvm_path('libcxxabi', 'include')
-        cmake_defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = os.path.join(install_dir, 'lib64')
-
-        # Disable libcxxabi visibility annotations since we're only building it
-        # statically.
-        cflags.append('-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS')
-
-    elif libname == 'libcxxabi':
-        cmake_defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
-        cmake_defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.llvm_path('libcxx', 'include')
-
-        # Disable libcxx visibility annotations and enable WIN32 threads.  These
-        # are needed because the libcxxabi build happens before libcxx and uses
-        # headers directly from the sources.
-        cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
-        cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
-
-    cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
-    cmake_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    cmake_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-    cmake_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    cmake_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    cmake_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    out_path = utils.out_path('lib', 'windows-' + libname)
-    if os.path.exists(out_path):
-        utils.rm_tree(out_path)
-
-    invoke_cmake(out_path=out_path,
-                 defines=cmake_defines,
-                 env=dict(ORIG_ENV),
-                 cmake_path=utils.llvm_path(libname),
-                 install=True)
-
-
-def build_llvm_for_windows(stage1_install,
-                           targets,
-                           enable_assertions,
-                           build_dir,
-                           install_dir,
+def build_llvm_for_windows(enable_assertions,
                            build_name):
+    if WindowsToolchainBuilder.install_dir.exists():
+        shutil.rmtree(WindowsToolchainBuilder.install_dir)
 
     # Build and install libcxxabi and libcxx and use them to build Clang.
-    build_libs_for_windows('libcxxabi',
-                           stage1_install,
-                           enable_assertions,
-                           install_dir)
+    libcxxabi_builder = LibCxxAbiBuilder()
+    libcxxabi_builder.enable_assertions = enable_assertions
+    libcxxabi_builder.build()
 
-    build_libs_for_windows('libcxx',
-                           stage1_install,
-                           enable_assertions,
-                           install_dir)
+    libcxx_builder = LibCxxBuilder()
+    libcxx_builder.enable_assertions = enable_assertions
+    libcxx_builder.build()
 
-    # Write a NATIVE.cmake in windows_path that contains the compilers used
-    # to build native tools such as llvm-tblgen and llvm-config.  This is
-    # used below via the CMake variable CROSS_TOOLCHAIN_FLAGS_NATIVE.
-    cc = os.path.join(stage1_install, 'bin', 'clang')
-    cxx = os.path.join(stage1_install, 'bin', 'clang++')
-    check_create_path(build_dir)
-    native_cmake_file_path = os.path.join(build_dir, 'NATIVE.cmake')
+    win_builder = WindowsToolchainBuilder()
+    win_builder.build_name = build_name
+    win_builder.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+    win_builder.build_lldb = BUILD_LLDB
+    win_builder.enable_assertions = enable_assertions
+    win_builder.build()
 
-    native_projects = 'clang' if not BUILD_LLDB else 'clang;lldb'
-    native_cmake_text = ('set(CMAKE_C_COMPILER {cc})\n'
-                         'set(CMAKE_CXX_COMPILER {cxx})\n'
-                         'set(LLVM_ENABLE_PROJECTS "{projects}" CACHE STRING "" FORCE)\n'
-                        ).format(cc=cc, cxx=cxx, projects=native_projects)
-
-    if BUILD_LLDB:
-        native_cmake_text += (
-            'set(LLDB_ENABLE_PYTHON "OFF" CACHE STRING "" FORCE)\n'
-            'set(LLDB_ENABLE_CURSES "OFF" CACHE STRING "" FORCE)\n'
-            'set(LLDB_ENABLE_LIBEDIT "OFF" CACHE STRING "" FORCE)\n'
-            # TODO: Remove the following on or after r380035.
-            'set(LLDB_DISABLE_PYTHON "ON" CACHE STRING "" FORCE)\n'
-            'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)\n'
-            'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)\n'
-        )
-
-    with open(native_cmake_file_path, 'w') as native_cmake_file:
-        native_cmake_file.write(native_cmake_text)
-
-    # Extra cmake defines to use while building for Windows
-    windows_extra_defines = dict()
-    windows_extra_defines['CMAKE_C_COMPILER'] = cc
-    windows_extra_defines['CMAKE_CXX_COMPILER'] = cxx
-    windows_extra_defines['CMAKE_SYSTEM_NAME'] = 'Windows'
-    windows_extra_defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
-    # Don't build compiler-rt, libcxx etc. for Windows
-    windows_extra_defines['LLVM_BUILD_RUNTIME'] = 'OFF'
-    # Build clang-tidy/clang-format for Windows.
-    windows_extra_defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
-    windows_extra_defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
-    # Don't build tests for Windows.
-    windows_extra_defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-    # Use libc++ for Windows.
-    windows_extra_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-
-    windows_extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;clang-tools-extra;lld'
-
-    windows_sysroot = utils.android_path('prebuilts', 'gcc', 'linux-x86',
-                                         'host', 'x86_64-w64-mingw32-4.8',
-                                         'x86_64-w64-mingw32')
-    update_cmake_sysroot_flags(windows_extra_defines, windows_sysroot)
-
-    # Set CMake path, toolchain file for native compilation (to build tablegen
-    # etc).  Also disable libfuzzer build during native compilation.
-    windows_extra_defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = \
-        '-DCMAKE_MAKE_PROGRAM=' + ninja_bin_path() + ';' + \
-        '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF;'+ \
-        '-DCMAKE_TOOLCHAIN_FILE=' + native_cmake_file_path + ';' + \
-        '-DLLVM_ENABLE_LIBCXX=ON;' + \
-        '-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE;' + \
-        '-DCMAKE_INSTALL_RPATH=' + os.path.join(stage1_install, 'lib64')
-
-    if enable_assertions:
-        windows_extra_defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
-
-    cflags, ldflags = host_gcc_toolchain_flags(hosts.Host.Windows)
-    cflags.extend(windows_cflags())
-
-    windows_extra_env = dict()
-
-    if BUILD_LLDB:
-        windows_extra_defines['LLVM_ENABLE_PROJECTS'] += ';lldb'
-        builders.LLVMBuilder.set_lldb_flags(hosts.Host.Windows, windows_extra_defines)
-        windows_extra_env['SWIG_LIB'] = str(paths.SWIG_LIB)
-
-    cflags.append('-DMS_WIN64')
-
-    cxxflags = list(cflags)
-
-    # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
-    # clang-tools-extra/clangd/Context.cpp
-    cxxflags.append('-fuse-cxa-atexit')
-
-    # Explicitly add the path to libc++ headers.  We don't need to configure
-    # options like visibility annotations, win32 threads etc. because the
-    # __generated_config header in the patch captures all the options used when
-    # building libc++.
-    cxxflags.extend(('-I', os.path.join(install_dir, 'include', 'c++', 'v1')))
-
-    ldflags.extend((
-        '-Wl,--dynamicbase',
-        '-Wl,--nxcompat',
-        # Use static-libgcc to avoid runtime dependence on libgcc_eh.
-        '-static-libgcc',
-        # pthread is needed by libgcc_eh.
-        '-pthread',
-        # Add path to libc++, libc++abi.
-        '-L', os.path.join(install_dir, 'lib64')))
-
-    ldflags.append('-Wl,--high-entropy-va')
-
-    # Include zlib's header and library path
-    zlib_path = utils.android_path('prebuilts', 'clang', 'host', 'windows-x86',
-                                   'toolchain-prebuilts', 'zlib')
-    zlib_inc = os.path.join(zlib_path, 'include')
-    zlib_lib = os.path.join(zlib_path, 'lib')
-
-    cflags.extend(['-I', zlib_inc])
-    cxxflags.extend(['-I', zlib_inc])
-    ldflags.extend(['-L', zlib_lib])
-
-    windows_extra_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-    windows_extra_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-    windows_extra_defines['CMAKE_CXX_FLAGS'] = ' '.join(cxxflags)
-    windows_extra_defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-    windows_extra_defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-    windows_extra_defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-
-    build_llvm(
-        targets=targets,
-        build_dir=build_dir,
-        install_dir=install_dir,
-        build_name=build_name,
-        extra_defines=windows_extra_defines,
-        extra_env=windows_extra_env)
+    return win_builder.install_dir
 
 
 def host_sysroot():
@@ -1254,6 +1060,11 @@ class Stage1Builder(builders.LLVMBuilder):
             env['USE_GOMA'] = 'true'
         return env
 
+    @classmethod
+    def built_toolchain(cls) -> toolchains.Toolchain:
+        """The built (or skipped) toolchain."""
+        return toolchains.build_toolchain_for_path(cls.install_dir)
+
 
 def install_lldb_deps(install_dir: Path, host: hosts.Host):
     lib_dir = install_dir / ('bin' if host.is_windows else 'lib64')
@@ -1275,14 +1086,13 @@ def install_lldb_deps(install_dir: Path, host: hosts.Host):
 class Stage2Builder(builders.LLVMBuilder):
     name: str = 'stage2'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
-    toolchain: toolchains.Toolchain = toolchains.build_toolchain_for_path(
-        Stage1Builder.install_dir)
+    toolchain: toolchains.Toolchain = Stage1Builder.built_toolchain()
     config: configs.Config = configs.host_config()
+    remove_install_dir: bool = True
     build_lldb: bool = True
     debug_build: bool = False
     build_instrumented: bool = False
     profdata_file: Optional[Path] = None
-    enable_assertions: bool = False
     lto: bool = True
 
     @property
@@ -1350,9 +1160,6 @@ class Stage2Builder(builders.LLVMBuilder):
         else:
             defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
 
-        if self.enable_assertions:
-            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
-
         if self.debug_build:
             defines['CMAKE_BUILD_TYPE'] = 'Debug'
 
@@ -1387,6 +1194,192 @@ class Stage2Builder(builders.LLVMBuilder):
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
         return defines
+
+
+class LibCxxBaseBuilder(builders.CMakeBuilder):
+    toolchain: toolchains.Toolchain = Stage1Builder.built_toolchain()
+    config: configs.Config = configs.WindowsConfig()
+    install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
+    remove_cmake_cache: bool = True
+    enable_assertions: bool = False
+
+    @property
+    def output_path(self) -> Path:
+        return paths.OUT_DIR / 'lib' / (f'{self.config.target_os.value}-{self.name}')
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines: Dict[str, str] = super().cmake_defines
+        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
+                                          'bin' / 'llvm-config')
+
+        # To prevent cmake from checking libstdcxx version.
+        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
+
+        # Build only the static library.
+        defines[self.name.upper() + '_ENABLE_SHARED'] = 'OFF'
+
+        if self.enable_assertions:
+            defines[self.name.upper() + '_ENABLE_ASSERTIONS'] = 'ON'
+        return defines
+
+
+class LibCxxAbiBuilder(LibCxxBaseBuilder):
+    name = 'libcxxabi'
+    src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines: Dict[str, str] = super().cmake_defines
+        defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.LLVM_PATH /'libcxx' / 'include')
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # Disable libcxx visibility annotations and enable WIN32 threads.  These
+        # are needed because the libcxxabi build happens before libcxx and uses
+        # headers directly from the sources.
+        cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
+        cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
+        return cflags
+
+
+class LibCxxBuilder(LibCxxBaseBuilder):
+    name = 'libcxx'
+    src_dir: Path = paths.LLVM_PATH / 'libcxx'
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines: Dict[str, str] = super().cmake_defines
+        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
+        defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
+
+        # Use cxxabi header from the source directory since it gets installed
+        # into install_dir only during libcxx's install step.  But use the
+        # library from install_dir.
+        defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = str(paths.LLVM_PATH / 'libcxxabi' / 'include')
+        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(LibCxxAbiBuilder.install_dir / 'lib64')
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # Disable libcxxabi visibility annotations since we're only building it
+        # statically.
+        cflags.append('-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS')
+        return cflags
+
+
+class WindowsToolchainBuilder(builders.LLVMBuilder):
+    name: str = 'windows-x86-64'
+    install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
+    toolchain: toolchains.Toolchain = Stage1Builder.built_toolchain()
+    config: configs.Config = configs.WindowsConfig()
+    build_lldb: bool = True
+
+    @property
+    def llvm_targets(self) -> Set[str]:
+        return set(ANDROID_TARGETS.split(';'))
+
+    @property
+    def llvm_projects(self) -> Set[str]:
+        proj = {'clang', 'clang-tools-extra', 'lld'}
+        if self.build_lldb:
+            proj.add('lldb')
+        return proj
+
+    def _create_native_cmake_file(self) -> Path:
+        # Write a NATIVE.cmake in windows_path that contains the compilers used
+        # to build native tools such as llvm-tblgen and llvm-config.  This is
+        # used below via the CMake variable CROSS_TOOLCHAIN_FLAGS_NATIVE.
+        native_projects = 'clang' if not self.build_lldb else 'clang;lldb'
+        native_cmake_text: List[str] = [
+            f'set(CMAKE_C_COMPILER {self.toolchain.cc})',
+            f'set(CMAKE_CXX_COMPILER {self.toolchain.cxx})',
+            f'set(LLVM_ENABLE_PROJECTS "{native_projects}" CACHE STRING "" FORCE)',
+        ]
+        if self.build_lldb:
+            native_cmake_text.extend([
+                'set(LLDB_ENABLE_PYTHON "OFF" CACHE STRING "" FORCE)',
+                'set(LLDB_ENABLE_CURSES "OFF" CACHE STRING "" FORCE)',
+                'set(LLDB_ENABLE_LIBEDIT "OFF" CACHE STRING "" FORCE)',
+                # TODO: Remove the following on or after r380035.
+                'set(LLDB_DISABLE_PYTHON "ON" CACHE STRING "" FORCE)',
+                'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)',
+                'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)'])
+
+        self.output_path.mkdir(parents=True, exist_ok=True)
+
+        native_cmake_file_path = self.output_path / 'NATIVE.cmake'
+        with native_cmake_file_path.open('w') as native_cmake_file:
+            native_cmake_file.write('\n'.join(native_cmake_text))
+
+        return native_cmake_file_path
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        # Don't build compiler-rt, libcxx etc. for Windows
+        defines['LLVM_BUILD_RUNTIME'] = 'OFF'
+        # Build clang-tidy/clang-format for Windows.
+        defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
+        defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
+        # Don't build tests for Windows.
+        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
+
+        # Set CMake path, toolchain file for native compilation (to build tablegen
+        # etc).  Also disable libfuzzer build during native compilation.
+        native_flags = [
+            f'-DCMAKE_MAKE_PROGRAM={paths.NINJA_BIN_PATH}',
+            '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF',
+            f'-DCMAKE_TOOLCHAIN_FILE={self._create_native_cmake_file()}',
+            '-DLLVM_ENABLE_LIBCXX=ON',
+            '-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE',
+            f'-DCMAKE_INSTALL_RPATH={self.toolchain.lib_dir}',
+        ]
+        defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = ';'.join(native_flags)
+        return defines
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        ldflags.append('-Wl,--dynamicbase')
+        ldflags.append('-Wl,--nxcompat')
+        # Use static-libgcc to avoid runtime dependence on libgcc_eh.
+        ldflags.append('-static-libgcc')
+        # pthread is needed by libgcc_eh.
+        ldflags.append('-pthread')
+        # Add path to libc++, libc++abi.
+        libcxx_lib = LibCxxBuilder.install_dir / 'lib64'
+        ldflags.append(f'-L{libcxx_lib}')
+        ldflags.append('-Wl,--high-entropy-va')
+        ldflags.append(f'-L{paths.WIN_ZLIB_LIB_PATH}')
+        return ldflags
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-DMS_WIN64')
+        cflags.append(f'-I{paths.WIN_ZLIB_INCLUDE_PATH}')
+        return cflags
+
+    @property
+    def cxxflags(self) -> List[str]:
+        cxxflags = super().cxxflags
+
+        # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
+        # clang-tools-extra/clangd/Context.cpp
+        cxxflags.append('-fuse-cxa-atexit')
+
+        # Explicitly add the path to libc++ headers.  We don't need to configure
+        # options like visibility annotations, win32 threads etc. because the
+        # __generated_config header in the patch captures all the options used when
+        # building libc++.
+        cxx_headers = LibCxxBuilder.install_dir / 'include' / 'c++' / 'v1'
+        cxxflags.append(f'-I{cxx_headers}')
+
+        return cxxflags
 
 
 def build_runtimes(toolchain, args=None):
@@ -1942,9 +1935,6 @@ def main():
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r' %
                   (do_build, do_stage1, do_stage2, do_runtimes, do_package, need_windows))
 
-    stage2_install = utils.out_path('stage2-install')
-    windows64_install = utils.out_path('windows-x86-64-install')
-
     # Clone sources to be built and apply patches.
     source_manager.setup_sources(source_dir=utils.llvm_path(),
                                  build_llvm_next=args.build_llvm_next)
@@ -1967,9 +1957,6 @@ def main():
     stage1_install = str(stage1.install_dir)
 
     if do_build and need_host:
-        if os.path.exists(stage2_install) and do_stage2:
-            utils.rm_tree(stage2_install)
-
         profdata_filename = pgo_profdata_filename()
         profdata = pgo_profdata_file(profdata_filename)
         # Do not use PGO profiles if profdata file doesn't exist unless failure
@@ -1998,16 +1985,8 @@ def main():
             build_runtimes(runtimes_toolchain, args)
 
     if do_build and need_windows:
-        if os.path.exists(windows64_install):
-            utils.rm_tree(windows64_install)
-
-        windows64_path = utils.out_path('windows-x86-64')
-        build_llvm_for_windows(
-            stage1_install=stage1_install,
-            targets=ANDROID_TARGETS,
+        windows64_install = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
-            build_dir=windows64_path,
-            install_dir=windows64_install,
             build_name=args.build_name)
 
     dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
