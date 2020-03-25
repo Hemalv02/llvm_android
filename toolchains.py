@@ -18,8 +18,6 @@
 from pathlib import Path
 
 from builder_registry import BuilderRegistry
-import constants
-import hosts
 import paths
 import version
 
@@ -82,12 +80,6 @@ class _HostToolchain(Toolchain):
                 'lib' / 'linux' / arch)
 
 
-def _clang_prebuilt_path(host: hosts.Host) -> Path:
-    """Returns the path to prebuilt clang toolchain."""
-    return (paths.ANDROID_DIR / 'prebuilts' / 'clang' / 'host' /
-            host.os_tag / constants.CLANG_PREBUILT_VERSION)
-
-
 def build_toolchain_for_path(path: Path) -> Toolchain:
     """Returns a toolchain object for a given path."""
     return _HostToolchain(path)
@@ -95,11 +87,22 @@ def build_toolchain_for_path(path: Path) -> Toolchain:
 
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
-    return build_toolchain_for_path(_clang_prebuilt_path(hosts.build_host()))
+    return build_toolchain_for_path(paths.CLANG_PREBUILT_DIR)
 
 
 def get_toolchain_by_name(name: str) -> Toolchain:
     """Tet a toolchain by name."""
     if name == 'prebuilt':
         return get_prebuilt_toolchain()
-    return BuilderRegistry.get(name).built_toolchain()
+    return build_toolchain_for_path(BuilderRegistry.get(name).install_dir)
+
+def get_runtime_toolchain_builder():
+    """Gets the builder for the toolchain used to build runtime libs."""
+    builder = BuilderRegistry.get('stage2')
+    if not builder or builder.build_instrumented or builder.debug_build:
+        builder = BuilderRegistry.get('stage1')
+    return builder
+
+def get_runtime_toolchain() -> Toolchain:
+    """Gets the toolchain used to build runtime."""
+    return build_toolchain_for_path(get_runtime_toolchain_builder().install_dir)

@@ -23,6 +23,7 @@ class Host(enum.Enum):
     Darwin = 'darwin'
     Linux = 'linux'
     Windows = 'windows'
+    Android = 'android'
 
     @property
     def is_windows(self) -> bool:
@@ -47,17 +48,6 @@ class Host(enum.Enum):
             Host.Linux: 'linux-x86',
             Host.Windows: 'windows-x86',
         }[self]
-
-
-def _get_default_host() -> Host:
-    """Returns the Host matching the current machine."""
-    if sys.platform.startswith('linux'):
-        return Host.Linux
-    if sys.platform.startswith('darwin'):
-        return Host.Darwin
-    if sys.platform.startswith('win'):
-        return Host.Windows
-    raise RuntimeError('Unsupported host: {}'.format(sys.platform))
 
 
 @enum.unique
@@ -85,6 +75,17 @@ class Arch(enum.Enum):
             Arch.I386: 'x86',
             Arch.X86_64: 'x86_64',
         }[self]
+
+
+def _get_default_host() -> Host:
+    """Returns the Host matching the current machine."""
+    if sys.platform.startswith('linux'):
+        return Host.Linux
+    if sys.platform.startswith('darwin'):
+        return Host.Darwin
+    if sys.platform.startswith('win'):
+        return Host.Windows
+    raise RuntimeError('Unsupported host: {}'.format(sys.platform))
 
 
 _BUILD_OS_TYPE: Host = _get_default_host()

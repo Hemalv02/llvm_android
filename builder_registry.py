@@ -71,5 +71,5 @@ class BuilderRegistry:
 
     @classmethod
     def get(cls, name: str):
-        """Gets the instance of a builder."""
-        return cls._builders[name]
+        """Gets the instance of a builder. Returns None if not found."""
+        return cls._builders.get(name)

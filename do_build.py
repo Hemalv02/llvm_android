@@ -726,76 +726,6 @@ def build_libomp(toolchain, clang_version, ndk_cxx=False, is_shared=False):
         shutil.copy2(src_lib, os.path.join(dst_dir, libname))
 
 
-def build_lldb_server(toolchain, clang_version, ndk_cxx=False):
-    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
-    for (arch, llvm_triple, lldb_defines,
-         cflags) in cross_compile_configs(toolchain, platform=(not ndk_cxx),
-                                          static=True): # pylint: disable=not-an-iterable
-
-        logger().info('Building lldb for %s (ndk_cxx? %s)', arch.value, ndk_cxx)
-        # Skip implicit C++ headers and explicitly include C++ header paths.
-        cflags.append('-nostdinc++')
-        cflags.extend('-isystem ' + d for d in libcxx_header_dirs(ndk_cxx))
-        # The build system will add '-stdlib=libc++' automatically. Since we
-        # have -nostdinc++ here, -stdlib is useless. Adds a flag to avoid the
-        # warnings.
-        cflags.append('-Wno-unused-command-line-argument')
-
-        lldb_path = utils.out_path('lib', 'lldb-server-' + arch.value)
-        if ndk_cxx:
-            lldb_path += '-ndk-cxx'
-
-        lldb_defines['ANDROID'] = '1'
-        lldb_defines['LLVM_CONFIG_PATH'] = llvm_config
-
-        lldb_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-        lldb_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-        lldb_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-        lldb_defines.update(base_cmake_defines())
-
-        # lldb depends on support libraries.
-        lldb_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
-
-        lldb_defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-        lldb_defines['CMAKE_CROSSCOMPILING'] = 'True'
-        lldb_defines['LLVM_TABLEGEN'] = os.path.join(toolchain, 'bin', 'llvm-tblgen')
-        lldb_defines['CLANG_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'clang-tblgen')
-        lldb_defines['LLDB_TABLEGEN'] = os.path.join(toolchain, '..', 'stage2', 'bin', 'lldb-tblgen')
-        lldb_defines['LLVM_DEFAULT_TARGET_TRIPLE'] = llvm_triple
-        lldb_defines['LLVM_HOST_TRIPLE'] = llvm_triple
-        lldb_defines['LLVM_TARGET_ARCH'] = arch.value
-
-        lldb_defines['CMAKE_SYSTEM_NAME'] = 'Android'
-        # Inhibit all of CMake's own NDK handling code.
-        lldb_defines['CMAKE_SYSTEM_VERSION'] = '1'
-
-        lldb_env = dict(ORIG_ENV)
-
-        lldb_cmake_path = utils.llvm_path('llvm')
-        invoke_cmake(
-            out_path=lldb_path,
-            defines=lldb_defines,
-            env=lldb_env,
-            cmake_path=lldb_cmake_path,
-            target='lldb-server',
-            install=False)
-
-        # We need to install manually.
-        libname = 'lldb-server'
-        src_lib = os.path.join(lldb_path, 'bin', libname)
-        triple_arch = hosts.Arch.from_triple(llvm_triple)
-        if ndk_cxx:
-            dst_subdir = os.path.join('runtimes_ndk_cxx', triple_arch.value)
-        else:
-            dst_subdir = clang_resource_dir(clang_version.long_version(),
-                                            triple_arch)
-        dst_dir = os.path.join(toolchain, dst_subdir)
-
-        check_create_path(dst_dir)
-        shutil.copy2(src_lib, os.path.join(dst_dir, libname))
-
-
 def build_crts_host_i686(toolchain, clang_version):
     logger().info('Building compiler-rt for host-i686')
 
@@ -863,46 +793,10 @@ def build_crts_host_i686(toolchain, clang_version):
         cmake_path=crt_cmake_path)
 
 
-def build_llvm(targets,
-               build_dir,
-               install_dir,
-               build_name,
-               extra_defines=None,
-               extra_env=None):
-    cmake_defines = base_cmake_defines()
-    cmake_defines['CMAKE_INSTALL_PREFIX'] = install_dir
-    cmake_defines['LLVM_TARGETS_TO_BUILD'] = targets
-    cmake_defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
-    cmake_defines['CLANG_VENDOR'] = 'Android (' + build_name + ' based on ' + \
-        android_version.get_svn_revision(BUILD_LLVM_NEXT) + ') '
-    cmake_defines['LLVM_BINUTILS_INCDIR'] = utils.android_path(
-        'toolchain/binutils/binutils-2.27/include')
-
-    if extra_defines is not None:
-        cmake_defines.update(extra_defines)
-
-    env = dict(ORIG_ENV)
-    if extra_env is not None:
-        env.update(extra_env)
-
-    invoke_cmake(
-        out_path=build_dir,
-        defines=cmake_defines,
-        env=env,
-        cmake_path=utils.llvm_path('llvm'))
-
-
-def windows_cflags():
-    cflags = ['--target=x86_64-pc-windows-gnu', '-D_LARGEFILE_SOURCE',
-              '-D_FILE_OFFSET_BITS=64', '-D_WIN32_WINNT=0x0600', '-DWINVER=0x0600',
-              '-D__MSVCRT_VERSION__=0x1400']
-
-    return cflags
-
-
 def build_llvm_for_windows(enable_assertions,
                            build_name):
-    if WindowsToolchainBuilder.install_dir.exists():
+    win_builder = WindowsToolchainBuilder()
+    if win_builder.install_dir.exists():
         shutil.rmtree(WindowsToolchainBuilder.install_dir)
 
     # Build and install libcxxabi and libcxx and use them to build Clang.
@@ -914,7 +808,6 @@ def build_llvm_for_windows(enable_assertions,
     libcxx_builder.enable_assertions = enable_assertions
     libcxx_builder.build()
 
-    win_builder = WindowsToolchainBuilder()
     win_builder.build_name = build_name
     win_builder.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
     win_builder.build_lldb = BUILD_LLDB
@@ -972,20 +865,13 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
     return cflags, ldflags
 
 
-def get_shared_extra_defines():
-    extra_defines = dict()
-    extra_defines['LLVM_BUILD_RUNTIME'] = 'ON'
-    extra_defines['LLVM_ENABLE_PROJECTS'] = 'clang;lld;libcxxabi;libcxx;compiler-rt'
-    return extra_defines
-
-
 class Stage1Builder(builders.LLVMBuilder):
     name: str = 'stage1'
     toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
     build_all_targets: bool = False
-    config: configs.Config = configs.host_config()
+    config_list: List[configs.Config] = [configs.host_config()]
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -1020,7 +906,7 @@ class Stage1Builder(builders.LLVMBuilder):
         # Make libc++.so a symlink to libc++.so.x instead of a linker script that
         # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
         # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-        if self.target_os.is_linux:
+        if self._config.target_os.is_linux:
             defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
             defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 
@@ -1029,7 +915,7 @@ class Stage1Builder(builders.LLVMBuilder):
         # fail compilation of lib/builtins/atomic_*.c that only get built for
         # Darwin and fail compilation due to us using the bionic version of
         # stdatomic.h.
-        if self.target_os.is_darwin:
+        if self._config.target_os.is_darwin:
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
         # Don't build libfuzzer as part of the first stage build.
@@ -1043,11 +929,6 @@ class Stage1Builder(builders.LLVMBuilder):
         if USE_GOMA_FOR_STAGE1:
             env['USE_GOMA'] = 'true'
         return env
-
-    @classmethod
-    def built_toolchain(cls) -> toolchains.Toolchain:
-        """The built (or skipped) toolchain."""
-        return toolchains.build_toolchain_for_path(cls.install_dir)
 
 
 def install_lldb_deps(install_dir: Path, host: hosts.Host):
@@ -1071,7 +952,7 @@ class Stage2Builder(builders.LLVMBuilder):
     name: str = 'stage2'
     toolchain_name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
-    config: configs.Config = configs.host_config()
+    config_list: List[configs.Config] = [configs.host_config()]
     remove_install_dir: bool = True
     build_lldb: bool = True
     debug_build: bool = False
@@ -1124,19 +1005,19 @@ class Stage2Builder(builders.LLVMBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
 
         if (self.lto and
-                not self.target_os.is_darwin and
+                not self._config.target_os.is_darwin and
+                not self.build_instrumented and
                 not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
         # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
         # is not currently supported on Darwin.
-        if self.target_os.is_darwin:
+        if self._config.target_os.is_darwin:
             defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
         else:
             defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
@@ -1158,7 +1039,7 @@ class Stage2Builder(builders.LLVMBuilder):
         # Make libc++.so a symlink to libc++.so.x instead of a linker script that
         # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
         # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-        if self.target_os.is_linux:
+        if self._config.target_os.is_linux:
             defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
             defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
 
@@ -1167,48 +1048,71 @@ class Stage2Builder(builders.LLVMBuilder):
         # fail compilation of lib/builtins/atomic_*.c that only get built for
         # Darwin and fail compilation due to us using the bionic version of
         # stdatomic.h.
-        if self.target_os.is_darwin:
+        if self._config.target_os.is_darwin:
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
         return defines
 
 
-class LibCxxBaseBuilder(builders.CMakeBuilder):
-    toolchain_name: str = 'stage1'
-    config: configs.Config = configs.WindowsConfig()
-    install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
-    remove_cmake_cache: bool = True
-    enable_assertions: bool = False
+class LldbServerBuilder(builders.LLVMRuntimeBuilder):
+    name: str = 'lldb-server'
+    src_dir: Path = paths.LLVM_PATH / 'llvm'
+    config_list: List[configs.Config] = configs.android_configs(platform=False, static=True)
+    ninja_target: str = 'lldb-server'
 
     @property
-    def output_path(self) -> Path:
-        return paths.OUT_DIR / 'lib' / (f'{self.config.target_os.value}-{self.name}')
+    def install_dir(self) -> Path:
+        return self.toolchain.path / 'runtimes_ndk_cxx' / self._config.target_arch.value
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # The build system will add '-stdlib=libc++' automatically. Since we
+        # have -nostdinc++ here, -stdlib is useless. Adds a flag to avoid the
+        # warnings.
+        cflags.append('-Wno-unused-command-line-argument')
+        return cflags
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
-        defines: Dict[str, str] = super().cmake_defines
-        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
-                                          'bin' / 'llvm-config')
-
-        # To prevent cmake from checking libstdcxx version.
-        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-
-        # Build only the static library.
-        defines[self.name.upper() + '_ENABLE_SHARED'] = 'OFF'
-
-        if self.enable_assertions:
-            defines[self.name.upper() + '_ENABLE_ASSERTIONS'] = 'ON'
+        defines = super().cmake_defines
+        # lldb depends on support libraries.
+        defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
+        toolchain_build_path = toolchains.get_runtime_toolchain_builder().output_dir
+        defines['LLVM_TABLEGEN'] = str(toolchain_build_path / 'bin' / 'llvm-tblgen')
+        defines['CLANG_TABLEGEN'] = str(toolchain_build_path / 'bin' / 'clang-tblgen')
+        defines['LLDB_TABLEGEN'] = str(toolchain_build_path / 'bin' / 'lldb-tblgen')
         return defines
 
+    def install(self) -> None:
+        src_path = self.output_dir / 'bin' / 'lldb-server'
+        install_dir = self.install_dir / self._config.target_arch.value
+        install_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_path, install_dir)
 
-class LibCxxAbiBuilder(LibCxxBaseBuilder):
+
+class LibCxxAbiBuilder(builders.LLVMRuntimeBuilder):
     name = 'libcxxabi'
     src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
+    remove_cmake_cache: bool = True
+
+    @property
+    def install_dir(self):
+        return paths.OUT_DIR / 'windows-x86-64-install'
+
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
         defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
         defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.LLVM_PATH /'libcxx' / 'include')
+
+        # Build only the static library.
+        defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
+
+        if self.enable_assertions:
+            defines['LIBCXXABI_ENABLE_ASSERTIONS'] = 'ON'
+
         return defines
 
     @property
@@ -1222,9 +1126,16 @@ class LibCxxAbiBuilder(LibCxxBaseBuilder):
         return cflags
 
 
-class LibCxxBuilder(LibCxxBaseBuilder):
+class LibCxxBuilder(builders.LLVMRuntimeBuilder):
     name = 'libcxx'
     src_dir: Path = paths.LLVM_PATH / 'libcxx'
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
+    remove_cmake_cache: bool = True
+
+    @property
+    def install_dir(self):
+        return paths.OUT_DIR / 'windows-x86-64-install'
+
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
@@ -1237,6 +1148,13 @@ class LibCxxBuilder(LibCxxBaseBuilder):
         # library from install_dir.
         defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = str(paths.LLVM_PATH / 'libcxxabi' / 'include')
         defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(BuilderRegistry.get('libcxxabi').install_dir / 'lib64')
+
+        # Build only the static library.
+        defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+
+        if self.enable_assertions:
+            defines['LIBCXX_ENABLE_ASSERTIONS'] = 'ON'
+
         return defines
 
     @property
@@ -1250,10 +1168,13 @@ class LibCxxBuilder(LibCxxBaseBuilder):
 
 class WindowsToolchainBuilder(builders.LLVMBuilder):
     name: str = 'windows-x86-64'
-    install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
     toolchain_name: str = 'stage1'
-    config: configs.Config = configs.WindowsConfig()
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
     build_lldb: bool = True
+
+    @property
+    def install_dir(self) -> Path:
+        return paths.OUT_DIR / 'windows-x86-64-install'
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -1286,9 +1207,9 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
                 'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)',
                 'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)'])
 
-        self.output_path.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        native_cmake_file_path = self.output_path / 'NATIVE.cmake'
+        native_cmake_file_path = self.output_dir / 'NATIVE.cmake'
         with native_cmake_file_path.open('w') as native_cmake_file:
             native_cmake_file.write('\n'.join(native_cmake_text))
 
@@ -1384,10 +1305,8 @@ def build_runtimes(toolchain, args=None):
         build_libomp(toolchain, version)
         build_libomp(toolchain, version, ndk_cxx=True)
         build_libomp(toolchain, version, ndk_cxx=True, is_shared=True)
-    if not BuilderRegistry.should_build('lldb-server'):
-        logger().info('Skip lldb-server')
-    else:
-        build_lldb_server(toolchain, version, ndk_cxx=True)
+    if BUILD_LLDB:
+        LldbServerBuilder().build()
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(toolchain, version)
