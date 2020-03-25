@@ -829,6 +829,14 @@ def build_crts_host_i686(toolchain, clang_version):
     crt_defines['CMAKE_CXX_COMPILER'] = os.path.join(toolchain, 'bin',
                                                      'clang++')
 
+    # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
+    # Add __STDC_FORMAT_MACROS so their definition gets included from
+    # inttypes.h.  This explicit flag is only needed here.  64-bit host runtimes
+    # are built in stage1/stage2 and get it from the LLVM CMake configuration.
+    # These are defined unconditionaly in bionic and newer glibc
+    # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
+    cflags.append('-D__STDC_FORMAT_MACROS')
+
     # Due to CMake and Clang oddities, we need to explicitly set
     # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
     # relying on auto-detection from the Compiler-rt CMake files.
