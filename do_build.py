@@ -1894,8 +1894,8 @@ def parse_args():
 def main():
     args = parse_args()
     do_build = not args.skip_build
-    do_stage1 = not args.skip_stage1
-    do_stage2 = not args.skip_stage2
+    do_stage1 = do_build and not args.skip_stage1
+    do_stage2 = do_build and not args.skip_stage2
     do_runtimes = not args.skip_runtimes
     do_package = not args.skip_package
     do_strip = not args.no_strip
@@ -1939,7 +1939,7 @@ def main():
         stage1.build()
     stage1_install = str(stage1.install_dir)
 
-    if do_build and need_host:
+    if need_host:
         profdata_filename = pgo_profdata_filename()
         profdata = pgo_profdata_file(profdata_filename)
         # Do not use PGO profiles if profdata file doesn't exist unless failure
@@ -1967,7 +1967,7 @@ def main():
                 runtimes_toolchain = stage1_install
             build_runtimes(runtimes_toolchain, args)
 
-    if do_build and need_windows:
+    if need_windows:
         windows64_install = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
             build_name=args.build_name)
