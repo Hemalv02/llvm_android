@@ -17,6 +17,7 @@
 
 from pathlib import Path
 import os
+import shutil
 from typing import Dict, List, Optional, Set
 
 import android_version
@@ -44,6 +45,7 @@ class CMakeBuilder(Builder):
     config: configs.Config
     src_dir: Path
     remove_cmake_cache: bool = False
+    remove_install_dir: bool = False
     ninja_target: Optional[str] = None
     install: bool = True
     install_dir: Path
@@ -62,8 +64,10 @@ class CMakeBuilder(Builder):
     def cmake_defines(self) -> Dict[str, str]:
         """CMake defines."""
         cflags = self.config.cflags + self.cflags
+        cxxflags = self.config.cxxflags + self.cxxflags
         ldflags = self.config.ldflags + self.ldflags
         cflags_str = ' '.join(cflags)
+        cxxflags_str = ' '.join(cxxflags)
         ldflags_str = ' '.join(ldflags)
         defines: Dict[str, str] = {
             'CMAKE_C_COMPILER': str(self.toolchain.cc),
@@ -71,7 +75,7 @@ class CMakeBuilder(Builder):
 
             'CMAKE_ASM_FLAGS':  cflags_str,
             'CMAKE_C_FLAGS': cflags_str,
-            'CMAKE_CXX_FLAGS': cflags_str,
+            'CMAKE_CXX_FLAGS': cxxflags_str,
 
             'CMAKE_EXE_LINKER_FLAGS': ldflags_str,
             'CMAKE_SHARED_LINKER_FLAGS': ldflags_str,
@@ -89,7 +93,17 @@ class CMakeBuilder(Builder):
         }
         if self.config.sysroot:
             defines['CMAKE_SYSROOT'] = str(self.config.sysroot)
+        if self._is_cross_compiling():
+            # Cross compiling
+            defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
+            defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
         return defines
+
+    def _get_cmake_system_name(self) -> str:
+        return self.config.target_os.value.capitalize()
+
+    def _is_cross_compiling(self) -> bool:
+        return self.config.target_os != hosts.build_host()
 
     @property
     def cflags(self) -> List[str]:
@@ -97,9 +111,18 @@ class CMakeBuilder(Builder):
         return []
 
     @property
+    def cxxflags(self) -> List[str]:
+        """Additional cxxflags to use."""
+        return self.cflags
+
+    @property
     def ldflags(self) -> List[str]:
         """Additional ldflags to use."""
-        return [f'-L{self.toolchain.lib_dir}']
+        ldflags = []
+        # When cross compiling, toolchain libs won't work on target arch.
+        if not self._is_cross_compiling():
+            ldflags.append(f'-L{self.toolchain.lib_dir}')
+        return ldflags
 
     @property
     def env(self) -> Dict[str, str]:
@@ -118,12 +141,15 @@ class CMakeBuilder(Builder):
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_path)
 
+        if self.remove_install_dir and self.install_dir.exists():
+            shutil.rmtree(self.install_dir)
+
         cmake_cmd: List[str] = [str(paths.CMAKE_BIN_PATH), '-G', 'Ninja']
 
         cmake_cmd.extend(f'-D{key}={val}' for key, val in self.cmake_defines.items())
         cmake_cmd.append(str(self.src_dir))
 
-        os.makedirs(self.output_path, exist_ok=True)
+        self.output_path.mkdir(parents=True, exist_ok=True)
 
         utils.check_call(cmake_cmd, cwd=self.output_path, env=self.env)
 
@@ -144,6 +170,7 @@ class LLVMBuilder(CMakeBuilder):
     config: configs.Config
     build_name: str
     svn_revision: str
+    enable_assertions: bool = False
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -191,7 +218,11 @@ class LLVMBuilder(CMakeBuilder):
 
         defines['LLVM_ENABLE_PROJECTS'] = ';'.join(self.llvm_projects)
 
-        defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
+        if self.enable_assertions:
+            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
+        else:
+            defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
+
         # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
         defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
         defines['LLVM_ENABLE_THREADS'] = 'ON'
@@ -223,7 +254,7 @@ class LLVMBuilder(CMakeBuilder):
         defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
-        if not self.target_os.is_darwin:
+        if self.target_os.is_linux:
             defines['LLVM_ENABLE_LLD'] = 'ON'
 
         if self._enable_lldb:
