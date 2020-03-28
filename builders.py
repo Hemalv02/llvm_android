@@ -16,11 +16,13 @@
 """Builders for different targets."""
 
 from pathlib import Path
+import logging
 import os
 import shutil
 from typing import Dict, List, Optional, Set
 
 import android_version
+from builder_registry import BuilderRegistry
 import configs
 import constants
 import hosts
@@ -29,6 +31,11 @@ import toolchains
 import utils
 
 ORIG_ENV = dict(os.environ)
+
+def logger():
+    """Returns the module level logger."""
+    return logging.getLogger(__name__)
+
 
 class Builder:  # pylint: disable=too-few-public-methods
     """Base builder type."""
@@ -41,7 +48,7 @@ class Builder:  # pylint: disable=too-few-public-methods
 
 class CMakeBuilder(Builder):
     """Builder for cmake targets."""
-    toolchain: toolchains.Toolchain
+    toolchain_name: str
     config: configs.Config
     src_dir: Path
     remove_cmake_cache: bool = False
@@ -49,6 +56,11 @@ class CMakeBuilder(Builder):
     ninja_target: Optional[str] = None
     install: bool = True
     install_dir: Path
+
+    @property
+    def toolchain(self) -> toolchains.Toolchain:
+        """Returns the toolchain used for this target."""
+        return toolchains.get_toolchain_by_name(self.toolchain_name)
 
     @property
     def target_os(self) -> hosts.Host:
@@ -137,6 +149,7 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
 
+    @BuilderRegistry.register_and_build
     def build(self) -> None:
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_path)

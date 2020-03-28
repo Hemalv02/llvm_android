@@ -17,6 +17,7 @@
 
 from pathlib import Path
 
+from builder_registry import BuilderRegistry
 import constants
 import hosts
 import paths
@@ -95,3 +96,10 @@ def build_toolchain_for_path(path: Path) -> Toolchain:
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
     return build_toolchain_for_path(_clang_prebuilt_path(hosts.build_host()))
+
+
+def get_toolchain_by_name(name: str) -> Toolchain:
+    """Tet a toolchain by name."""
+    if name == 'prebuilt':
+        return get_prebuilt_toolchain()
+    return BuilderRegistry.get(name).built_toolchain()

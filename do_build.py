@@ -28,6 +28,7 @@ from typing import Dict, List, Optional, Set
 
 import android_version
 import builders
+from builder_registry import BuilderRegistry
 import configs
 import constants
 import hosts
@@ -980,10 +981,10 @@ def get_shared_extra_defines():
 
 class Stage1Builder(builders.LLVMBuilder):
     name: str = 'stage1'
+    toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
     build_all_targets: bool = False
-    toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
     config: configs.Config = configs.host_config()
 
     @property
@@ -1068,8 +1069,8 @@ def install_lldb_deps(install_dir: Path, host: hosts.Host):
 
 class Stage2Builder(builders.LLVMBuilder):
     name: str = 'stage2'
+    toolchain_name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
-    toolchain: toolchains.Toolchain = Stage1Builder.built_toolchain()
     config: configs.Config = configs.host_config()
     remove_install_dir: bool = True
     build_lldb: bool = True
@@ -1173,7 +1174,7 @@ class Stage2Builder(builders.LLVMBuilder):
 
 
 class LibCxxBaseBuilder(builders.CMakeBuilder):
-    toolchain: toolchains.Toolchain = Stage1Builder.built_toolchain()
+    toolchain_name: str = 'stage1'
     config: configs.Config = configs.WindowsConfig()
     install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
     remove_cmake_cache: bool = True
@@ -1235,7 +1236,7 @@ class LibCxxBuilder(LibCxxBaseBuilder):
         # into install_dir only during libcxx's install step.  But use the
         # library from install_dir.
         defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = str(paths.LLVM_PATH / 'libcxxabi' / 'include')
-        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(LibCxxAbiBuilder.install_dir / 'lib64')
+        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(BuilderRegistry.get('libcxxabi').install_dir / 'lib64')
         return defines
 
     @property
@@ -1250,7 +1251,7 @@ class LibCxxBuilder(LibCxxBaseBuilder):
 class WindowsToolchainBuilder(builders.LLVMBuilder):
     name: str = 'windows-x86-64'
     install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
-    toolchain: toolchains.Toolchain = Stage1Builder.built_toolchain()
+    toolchain_name: str = 'stage1'
     config: configs.Config = configs.WindowsConfig()
     build_lldb: bool = True
 
@@ -1327,7 +1328,7 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
         # pthread is needed by libgcc_eh.
         ldflags.append('-pthread')
         # Add path to libc++, libc++abi.
-        libcxx_lib = LibCxxBuilder.install_dir / 'lib64'
+        libcxx_lib = BuilderRegistry.get('libcxx').install_dir / 'lib64'
         ldflags.append(f'-L{libcxx_lib}')
         ldflags.append('-Wl,--high-entropy-va')
         ldflags.append(f'-L{paths.WIN_ZLIB_LIB_PATH}')
@@ -1352,7 +1353,7 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
         # options like visibility annotations, win32 threads etc. because the
         # __generated_config header in the patch captures all the options used when
         # building libc++.
-        cxx_headers = LibCxxBuilder.install_dir / 'include' / 'c++' / 'v1'
+        cxx_headers = BuilderRegistry.get('libcxx').install_dir / 'include' / 'c++' / 'v1'
         cxxflags.append(f'-I{cxx_headers}')
 
         return cxxflags
