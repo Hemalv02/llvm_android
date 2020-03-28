@@ -28,9 +28,6 @@ import sys
 import utils
 
 
-BRANCH = 'aosp-llvm-toolchain'
-
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -48,6 +45,12 @@ def check_call(cmd, *args, **kwargs):
     subprocess.check_call(cmd, *args, **kwargs)
 
 
+def check_output(cmd, *args, **kwargs):
+    """subprocess.check_output with logging."""
+    logger().info('check_output: %s', subprocess.list2cmdline(cmd))
+    return subprocess.check_output(cmd, *args, **kwargs)
+
+
 class ArgParser(argparse.ArgumentParser):
     def __init__(self):
         super(ArgParser, self).__init__(
@@ -59,6 +62,9 @@ class ArgParser(argparse.ArgumentParser):
 
         self.add_argument(
             '-b', '--bug', help='Bug to reference in commit message.')
+
+        self.add_argument(
+            '-br', '--branch', help='Branch to fetch from (or automatic).')
 
         self.add_argument(
             '--use-current-branch', action='store_true',
@@ -109,12 +115,14 @@ def symlink_to_linux_resource_dir(install_dir):
     # Assume we're in a Darwin (non-linux) prebuilt dir.  Find the Clang version
     # string.  Pick the longest string, if there's more than one.
     version_dirs = os.listdir(os.path.join(install_dir, 'lib64', 'clang'))
-    if len(version_dirs) != 0:
+    if version_dirs:
         version_dirs.sort(key=len)
     version_dir = version_dirs[-1]
 
-    symlink_dir = os.path.join(install_dir, 'lib64', 'clang', version_dir, 'lib')
-    link_src = os.path.join('/'.join(['..'] * 6), 'linux-x86', symlink_dir, 'linux')
+    symlink_dir = os.path.join(install_dir, 'lib64', 'clang', version_dir,
+                               'lib')
+    link_src = os.path.join('/'.join(['..'] * 6), 'linux-x86', symlink_dir,
+                            'linux')
     link_dst = 'linux'
 
     # 'cd' to symlink_dir and create a symlink from link_dst to link_src
@@ -151,6 +159,11 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
 
     package = '{}/clang-{}-{}.tar.bz2'.format(
         download_dir, build_number, host)
+
+    # Handle legacy versions of packages (like those from aosp/llvm-r365631).
+    if not os.path.exists(package) and host == 'windows-x86':
+        package = '{}/clang-{}-{}.tar.bz2'.format(
+            download_dir, build_number, 'windows-x86-64')
     manifest_file = '{}/{}'.format(download_dir, manifest)
 
     extract_package(package, prebuilt_dir)
@@ -163,10 +176,12 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     install_subdir = 'clang-' + svn_revision
     if os.path.exists(install_subdir):
         if overwrite:
-            logger().info('Removing/overwriting existing path: ' + install_subdir)
+            logger().info('Removing/overwriting existing path: %s',
+                          install_subdir)
             shutil.rmtree(install_subdir)
         else:
-            logger().info('Cannot remove/overwrite existing path: ' + install_subdir)
+            logger().info('Cannot remove/overwrite existing path: %s',
+                          install_subdir)
             sys.exit(1)
     os.rename(extract_subdir, install_subdir)
 
@@ -220,7 +235,13 @@ def main():
     hosts = ['darwin-x86', 'linux-x86', 'windows-x86']
     clang_pattern = 'clang-*.tar.bz2'
     manifest = 'manifest_{}.xml'.format(args.build)
-    branch = BRANCH
+
+    branch = args.branch
+    if args.branch is None:
+        o = check_output(['git', 'branch', '-av'])
+        branch = o.split(' ')[-1].strip().replace('/', '-')
+
+    logger().info('Using branch: %s', branch)
 
     try:
         if do_fetch:
