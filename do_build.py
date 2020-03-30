@@ -982,13 +982,13 @@ class Stage1Builder(builders.LLVMBuilder):
     name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
-    debug_stage2: bool = False
+    build_all_targets: bool = False
     toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
     config: configs.Config = configs.host_config()
 
     @property
     def llvm_targets(self) -> Set[str]:
-        if self.debug_stage2:
+        if self.build_all_targets:
             return set(ANDROID_TARGETS.split(';'))
         else:
             return set(BASE_TARGETS.split(';'))
@@ -1128,11 +1128,8 @@ class Stage2Builder(builders.LLVMBuilder):
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
 
-        # lld, lto and pgo instrumentation doesn't work together
-        # http://b/79419131
         if (self.lto and
                 not self.target_os.is_darwin and
-                not self.build_instrumented and
                 not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
@@ -1154,11 +1151,7 @@ class Stage2Builder(builders.LLVMBuilder):
             # build
             llvm_profdata = self.toolchain.path / 'bin' / 'llvm-profdata'
             defines['LLVM_PROFDATA'] = str(llvm_profdata)
-
-        if self.profdata_file:
-            if self.build_instrumented:
-                raise RuntimeError(
-                    'Cannot simultaneously instrument and use profiles')
+        elif self.profdata_file:
             defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
         # Make libc++.so a symlink to libc++.so.x instead of a linker script that
@@ -1934,7 +1927,7 @@ def main():
     stage1.build_name = args.build_name
     stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
     stage1.build_llvm_tools = stage1_build_llvm_tools
-    stage1.debug_stage2 = args.debug
+    stage1.build_all_targets = args.debug or instrumented
     if do_stage1:
         stage1.build()
     stage1_install = str(stage1.install_dir)
@@ -1963,7 +1956,7 @@ def main():
 
         if hosts.build_host().is_linux and do_runtimes:
             runtimes_toolchain = stage2_install
-            if args.debug:
+            if args.debug or instrumented:
                 runtimes_toolchain = stage1_install
             build_runtimes(runtimes_toolchain, args)
 
