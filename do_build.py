@@ -1961,7 +1961,7 @@ def main():
                 runtimes_toolchain = stage1_install
             build_runtimes(runtimes_toolchain, args)
 
-    if need_windows:
+    if need_windows and do_build:
         windows64_install = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
             build_name=args.build_name)
