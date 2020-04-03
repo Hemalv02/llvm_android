@@ -270,6 +270,12 @@
         "end_version": 383698
     },
     {
+        "comment": "[UPSTREAM] Revert \"[ARM] Improve codegen of volatile load/store of i64\"",
+        "rel_patch_path": "cherry/af2a38458197e07cbd03ea9446714008488826d8.patch",
+        "start_version": 383902,
+        "end_version": 383972
+    },
+    {
         "comment": "[UPSTREAM] [SimplifyLibCalls] Add __strlen_chk.",
         "rel_patch_path": "cherry/f8c9ceb1ce9c71574d413a6391812d46d9f9edb3.patch",
         "start_version": 377782,
@@ -282,16 +288,70 @@
         "end_version": 383901
     },
     {
+        "comment": "[UPSTREAM] Revert \"[InstCombine][DebugInfo] Fold constants wrapped in metadata\"",
+        "rel_patch_path": "cherry/982944525c7706c4dee00042d5b7cf2f0d87804f.patch",
+        "start_version": 383902,
+        "end_version": 384124
+    },
+    {
+        "comment": "[UPSTREAM] Fix type-dependency of bitfields in templates",
+        "rel_patch_path": "cherry/a58017e5cae5be948fd1913b68d46553e87aa622.patch",
+        "start_version": 383902,
+        "end_version": 384466
+    },
+    {
+        "comment": "[UPSTREAM] [ARM] Fix infinite loop when lowering STRICT_FP_EXTEND",
+        "rel_patch_path": "cherry/0ec57972967dfb43fc022c2e3788be041d1db730.patch",
+        "start_version": 383902,
+        "end_version": 384546
+    },
+    {
+        "comment": "[UPSTREAM] [JumpThreading] Skip unconditional PredBB when threading jumps through two basic blocks",
+        "rel_patch_path": "cherry/13a97305ba77f44eccba16087320c8aa016ac6da.patch",
+        "start_version": 383902,
+        "end_version": 385016
+    },
+    {
         "comment": "[UPSTREAM] Allow customized relative PYTHONHOME",
         "rel_patch_path": "cherry/3ec3f62f0a0b1ac13230922c91ffc988c1b1e8d5v2.patch",
         "start_version": 383902,
         "end_version": 385429
     },
     {
+        "comment": "[UPSTREAM] Revert \"[LICM] Support hosting of dynamic allocas out of loops\"",
+        "rel_patch_path": "cherry/14845b2c459021e3dbf2ead52d707d4a7db40cbb.patch",
+        "start_version": 383902,
+        "end_version": 385655
+    },
+    {
         "comment": "[UPSTREAM] [DAGCombine] Fix alias analysis for unaligned accesses",
         "rel_patch_path": "cherry/1de10705594c7a2c9b8fde901c391bd84062ae04.patch",
         "start_version": 377782,
         "end_version": 385989
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[clang] detect switch fallthrough marked by a comment (PR43465)\"",
+        "rel_patch_path": "cherry/c61401b89742f230b7e6a2cc0548fbf7442e906d.patch",
+        "start_version": 383902,
+        "end_version": 386178
+    },
+    {
+        "comment": "[UPSTREAM] [cmake] By default do not build compiler-rt with PGO",
+        "rel_patch_path": "cherry/20dfcf189d224e637377970318a021c81d2fbde0.patch",
+        "start_version": 383902,
+        "end_version": 386784
+    },
+    {
+        "comment": "[UPSTREAM] [cmake] Strip quotes in compiler-rt/lib/crt; error if checks fail",
+        "rel_patch_path": "cherry/cfc3e7f458f8798782c01a0dadf872c60340c23e.patch",
+        "start_version": 383902,
+        "end_version": 386785
+    },
+    {
+        "comment": "[UPSTREAM] [CUDA] Warn about unsupported CUDA SDK version only if it's used.",
+        "rel_patch_path": "cherry/eb2ba2ea953b5ea73cdbb598f77470bde1c6a011.patch",
+        "start_version": 383902,
+        "end_version": 387062
     },
     {
         "comment": "[UPSTREAM] [DAGCombiner] Do not fold truncate(build_vector(..)) if it creates an illegal type",
