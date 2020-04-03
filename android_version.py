@@ -15,13 +15,12 @@
 # limitations under the License.
 #
 
-patch_level = '5'
-_svn_revision = 'r377782c'
+patch_level = '6'
+_svn_revision = 'r377782d'
 # svn_revision_next will be newer than the official svn_revision in the future.
 _svn_revision_next = 'r383902'
 
 def get_svn_revision(build_llvm_next):
     if build_llvm_next:
         return _svn_revision_next
-    else:
-        return _svn_revision
+    return _svn_revision

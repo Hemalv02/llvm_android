@@ -306,6 +306,12 @@
         "end_version": 387824
     },
     {
+        "comment": "[UPSTREAM] [ELF] Fix a null pointer dereference when --emit-relocs and --strip-debug are used together",
+        "rel_patch_path": "cherry/6c73246179376442705b3a545f4e1f1478777a04.patch",
+        "start_version": 377782,
+        "end_version": 384549
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
