@@ -1725,11 +1725,13 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
                             'clang.real\n'
                             'clang++.real\n'
                             '../lib64/libc++.so.1\n'
+                            'lld\n'
+                            'ld64.lld\n'
+                            'ld.lld\n'
                            )
-            blacklist_dir = os.path.join('lib64', 'clang', version.long_version(), 'share')
-            blacklist_files = os.listdir(os.path.join(install_dir, blacklist_dir))
-            for f in blacklist_files:
-                dependencies += ('../' + blacklist_dir + '/' + f + '\n')
+            blacklist_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'share\n')
+            libs_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'lib', 'linux\n')
+            dependencies += (blacklist_dir + libs_dir)
             inputs_file.write(dependencies)
 
     # Package up the resulting trimmed install/ directory.
