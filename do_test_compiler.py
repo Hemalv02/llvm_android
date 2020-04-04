@@ -57,6 +57,12 @@ DISABLED_WARNINGS = [
     "-Wno-error=sizeof-array-div",
     "-Wno-error=tautological-bitwise-compare",
     "-Wno-error=tautological-overlap-compare",
+    "-Wno-error=deprecated-copy",
+    "-Wno-error=range-loop-construct",
+    "-Wno-error=misleading-indentation",
+    "-Wno-error=zero-as-null-pointer-constant",
+    "-Wno-error=deprecated-anon-enum-enum-conversion",
+    "-Wno-error=deprecated-enum-enum-conversion"
 ]
 
 
