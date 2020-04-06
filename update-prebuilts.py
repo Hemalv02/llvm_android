@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# pylint: disable=not-callable, relative-import
+# pylint: disable=not-callable
 
 """Update the prebuilt clang from the build server."""
 
@@ -237,9 +237,13 @@ def main():
     manifest = 'manifest_{}.xml'.format(args.build)
 
     branch = args.branch
-    if args.branch is None:
+    if branch is None:
         o = check_output(['git', 'branch', '-av'])
         branch = o.split(' ')[-1].strip().replace('/', '-')
+        # aosp/llvm-toolchain uses the branch 'aosp-master', but we really only
+        # pull prebuilts from 'aosp-llvm-toolchain' or other release branches.
+        if branch == 'aosp-master':
+            branch = 'aosp-llvm-toolchain'
 
     logger().info('Using branch: %s', branch)
 
