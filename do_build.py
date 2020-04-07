@@ -1360,12 +1360,12 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
 
 
 def build_runtimes(toolchain, args=None):
-    if args is not None and args.skip_sysroots:
+    if not BuilderRegistry.should_build('sysroot'):
         logger().info('Skip libcxxabi and other sysroot libraries')
     else:
         create_sysroots()
     version = extract_clang_version(toolchain)
-    if args is not None and args.skip_compiler_rt:
+    if not BuilderRegistry.should_build('compiler-rt'):
         logger().info('Skip compiler-rt')
     else:
         build_crts(toolchain, version)
@@ -1373,25 +1373,25 @@ def build_runtimes(toolchain, args=None):
         # 32-bit host crts are not needed for Darwin
         if hosts.build_host().is_linux:
             build_crts_host_i686(toolchain, version)
-    if args is not None and args.skip_libfuzzers:
+    if not BuilderRegistry.should_build('libfuzzers'):
         logger().info('Skip libfuzzers')
     else:
         build_libfuzzers(toolchain, version)
         build_libfuzzers(toolchain, version, ndk_cxx=True)
-    if args is not None and args.skip_libomp:
+    if not BuilderRegistry.should_build('libomp'):
         logger().info('Skip libomp')
     else:
         build_libomp(toolchain, version)
         build_libomp(toolchain, version, ndk_cxx=True)
         build_libomp(toolchain, version, ndk_cxx=True, is_shared=True)
-    if BUILD_LLDB:
-        build_lldb_server(toolchain, version, ndk_cxx=True)
+    if not BuilderRegistry.should_build('lldb-server'):
+        logger().info('Skip lldb-server')
     else:
-        logger().info('Skip lldb server')
+        build_lldb_server(toolchain, version, ndk_cxx=True)
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(toolchain, version)
-    if args is not None and args.skip_asan:
+    if not BuilderRegistry.should_build('asan'):
         logger().info('Skip asan test, map, symlink')
     else:
         build_asan_test(toolchain)
@@ -1817,19 +1817,15 @@ def parse_args():
         default=False,
         help='Don\'t strip binaries/libraries')
 
-    # skip_stage1 is set to quickly reproduce stage2 failures
-    parser.add_argument(
-        '--skip-stage1',
-        action='store_true',
-        default=False,
-        help='Skip the stage1 build')
-
-    # skip_stage2 is set to quickly reproduce runtime failures
-    parser.add_argument(
-        '--skip-stage2',
-        action='store_true',
-        default=False,
-        help='Skip the stage2 build')
+    build_group = parser.add_mutually_exclusive_group()
+    build_group.add_argument(
+        '--build',
+        nargs='+',
+        help='A list of builders to build. All builders not listed will be skipped.')
+    build_group.add_argument(
+        '--skip',
+        nargs='+',
+        help='A list of builders to skip. All builders not listed will be built.')
 
     # skip_runtimes is set to skip recompilation of libraries
     parser.add_argument(
@@ -1837,33 +1833,6 @@ def parse_args():
         action='store_true',
         default=False,
         help='Skip the runtime libraries')
-
-    # Finer controls to skip only some runtime libraries
-    parser.add_argument(
-        '--skip-sysroots',
-        action='store_true',
-        default=False,
-        help='Skip the sysroot libraries')
-    parser.add_argument(
-        '--skip-compiler-rt',
-        action='store_true',
-        default=False,
-        help='Skip the compiler-rt libraries, including libcxxabi')
-    parser.add_argument(
-        '--skip-libfuzzers',
-        action='store_true',
-        default=False,
-        help='Skip the libfuzzer libraries')
-    parser.add_argument(
-        '--skip-libomp',
-        action='store_true',
-        default=False,
-        help='Skip the libomp libraries')
-    parser.add_argument(
-        '--skip-asan',
-        action='store_true',
-        default=False,
-        help='Skip the sanitizer libraries')
 
     parser.add_argument(
         '--no-build',
@@ -1889,9 +1858,13 @@ def parse_args():
 
 def main():
     args = parse_args()
-    do_build = not args.skip_build
-    do_stage1 = do_build and not args.skip_stage1
-    do_stage2 = do_build and not args.skip_stage2
+    if args.skip_build:
+        # Skips all builds
+        BuilderRegistry.add_filter(lambda name: False)
+    elif args.skip:
+        BuilderRegistry.add_skips(args.skip)
+    elif args.build:
+        BuilderRegistry.add_builds(args.build)
     do_runtimes = not args.skip_runtimes
     do_package = not args.skip_package
     do_strip = not args.no_strip
@@ -1903,8 +1876,7 @@ def main():
     BUILD_LLVM_NEXT = args.build_llvm_next
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
-    need_windows = hosts.build_host().is_linux and \
-        ('windows' not in args.no_build)
+    need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
 
     log_levels = [logging.INFO, logging.DEBUG]
     verbosity = min(args.verbose, len(log_levels) - 1)
@@ -1912,7 +1884,8 @@ def main():
     logging.basicConfig(level=log_level)
 
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r' %
-                  (do_build, do_stage1, do_stage2, do_runtimes, do_package, need_windows))
+                  (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
+                  do_runtimes, do_package, need_windows))
 
     # Clone sources to be built and apply patches.
     source_manager.setup_sources(source_dir=utils.llvm_path(),
@@ -1923,7 +1896,7 @@ def main():
 
     # Windows libs are built with stage1 toolchain. llvm-config is required.
     stage1_build_llvm_tools = instrumented or \
-                              (do_build and need_windows) or \
+                              need_windows or \
                               args.debug
 
     stage1 = Stage1Builder()
@@ -1931,8 +1904,7 @@ def main():
     stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
     stage1.build_llvm_tools = stage1_build_llvm_tools
     stage1.build_all_targets = args.debug or instrumented
-    if do_stage1:
-        stage1.build()
+    stage1.build()
     stage1_install = str(stage1.install_dir)
 
     if need_host:
@@ -1953,8 +1925,7 @@ def main():
         stage2.lto = not args.no_lto
         stage2.build_instrumented = instrumented
         stage2.profdata_file = Path(profdata) if profdata else None
-        if do_stage2:
-            stage2.build()
+        stage2.build()
         stage2_install = str(stage2.install_dir)
 
         if hosts.build_host().is_linux and do_runtimes:
@@ -1963,7 +1934,7 @@ def main():
                 runtimes_toolchain = stage1_install
             build_runtimes(runtimes_toolchain, args)
 
-    if need_windows and do_build:
+    if need_windows:
         windows64_install = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
             build_name=args.build_name)
