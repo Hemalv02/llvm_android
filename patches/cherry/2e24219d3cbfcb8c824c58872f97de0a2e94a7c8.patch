@@ -1,0 +1,165 @@
+From 2e24219d3cbfcb8c824c58872f97de0a2e94a7c8 Mon Sep 17 00:00:00 2001
+From: Hans Wennborg <hans@chromium.org>
+Date: Thu, 27 Feb 2020 12:35:10 +0100
+Subject: [PATCH] [MC][ARM] Resolve some pcrel fixups at assembly time
+ (PR44929)
+
+MC currently does not emit these relocation types, and lld does not
+handle them. Add FKF_Constant as a work-around of some ARM code after
+D72197. Eventually we probably should implement these relocation types.
+
+By Fangrui Song!
+
+Differential revision: https://reviews.llvm.org/D72892
+---
+ llvm/include/llvm/MC/MCFixupKindInfo.h        |  7 +++++-
+ llvm/lib/MC/MCAssembler.cpp                   |  6 +++--
+ .../Target/ARM/MCTargetDesc/ARMAsmBackend.cpp | 22 +++++++++----------
+ llvm/test/MC/ARM/Windows/invalid-relocation.s |  1 -
+ llvm/test/MC/ARM/pcrel-global.s               | 21 ++++++++++++++++++
+ llvm/test/MC/MachO/ARM/bad-darwin-ARM-reloc.s |  1 -
+ 6 files changed, 41 insertions(+), 17 deletions(-)
+ create mode 100644 llvm/test/MC/ARM/pcrel-global.s
+
+diff --git a/llvm/include/llvm/MC/MCFixupKindInfo.h b/llvm/include/llvm/MC/MCFixupKindInfo.h
+index 0d57441ce0d..ecf85fa5693 100644
+--- a/llvm/include/llvm/MC/MCFixupKindInfo.h
++++ b/llvm/include/llvm/MC/MCFixupKindInfo.h
+@@ -22,7 +22,12 @@ struct MCFixupKindInfo {
+     FKF_IsAlignedDownTo32Bits = (1 << 1),
+ 
+     /// Should this fixup be evaluated in a target dependent manner?
+-    FKF_IsTarget = (1 << 2)
++    FKF_IsTarget = (1 << 2),
++
++    /// This fixup kind should be resolved if defined.
++    /// FIXME This is a workaround because we don't support certain ARM
++    /// relocation types. This flag should eventually be removed.
++    FKF_Constant = 1 << 3,
+   };
+ 
+   /// A target specific name for the fixup kind. The names will be unique for
+diff --git a/llvm/lib/MC/MCAssembler.cpp b/llvm/lib/MC/MCAssembler.cpp
+index b3adaea5a95..bcfda261d3e 100644
+--- a/llvm/lib/MC/MCAssembler.cpp
++++ b/llvm/lib/MC/MCAssembler.cpp
+@@ -224,6 +224,7 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
+     return getBackend().evaluateTargetFixup(*this, Layout, Fixup, DF, Target,
+                                             Value, WasForced);
+ 
++  unsigned FixupFlags = getBackendPtr()->getFixupKindInfo(Fixup.getKind()).Flags;
+   bool IsPCRel = getBackendPtr()->getFixupKindInfo(Fixup.getKind()).Flags &
+                  MCFixupKindInfo::FKF_IsPCRel;
+ 
+@@ -239,8 +240,9 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
+       if (A->getKind() != MCSymbolRefExpr::VK_None || SA.isUndefined()) {
+         IsResolved = false;
+       } else if (auto *Writer = getWriterPtr()) {
+-        IsResolved = Writer->isSymbolRefDifferenceFullyResolvedImpl(
+-            *this, SA, *DF, false, true);
++        IsResolved = (FixupFlags & MCFixupKindInfo::FKF_Constant) ||
++                     Writer->isSymbolRefDifferenceFullyResolvedImpl(
++                         *this, SA, *DF, false, true);
+       }
+     }
+   } else {
+diff --git a/llvm/lib/Target/ARM/MCTargetDesc/ARMAsmBackend.cpp b/llvm/lib/Target/ARM/MCTargetDesc/ARMAsmBackend.cpp
+index 0480a0d414d..66ac2760a36 100644
+--- a/llvm/lib/Target/ARM/MCTargetDesc/ARMAsmBackend.cpp
++++ b/llvm/lib/Target/ARM/MCTargetDesc/ARMAsmBackend.cpp
+@@ -55,31 +55,29 @@ Optional<MCFixupKind> ARMAsmBackend::getFixupKind(StringRef Name) const {
+ }
+ 
+ const MCFixupKindInfo &ARMAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
++  unsigned IsPCRelConstant =
++      MCFixupKindInfo::FKF_IsPCRel | MCFixupKindInfo::FKF_Constant;
+   const static MCFixupKindInfo InfosLE[ARM::NumTargetFixupKinds] = {
+       // This table *must* be in the order that the fixup_* kinds are defined in
+       // ARMFixupKinds.h.
+       //
+       // Name                      Offset (bits) Size (bits)     Flags
+-      {"fixup_arm_ldst_pcrel_12", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
++      {"fixup_arm_ldst_pcrel_12", 0, 32, IsPCRelConstant},
+       {"fixup_t2_ldst_pcrel_12", 0, 32,
+-       MCFixupKindInfo::FKF_IsPCRel |
+-           MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
+-      {"fixup_arm_pcrel_10_unscaled", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+-      {"fixup_arm_pcrel_10", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
++       IsPCRelConstant | MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
++      {"fixup_arm_pcrel_10_unscaled", 0, 32, IsPCRelConstant},
++      {"fixup_arm_pcrel_10", 0, 32, IsPCRelConstant},
+       {"fixup_t2_pcrel_10", 0, 32,
+        MCFixupKindInfo::FKF_IsPCRel |
+            MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
+       {"fixup_arm_pcrel_9", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+       {"fixup_t2_pcrel_9", 0, 32,
+-       MCFixupKindInfo::FKF_IsPCRel |
+-           MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
++       IsPCRelConstant | MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
+       {"fixup_thumb_adr_pcrel_10", 0, 8,
+-       MCFixupKindInfo::FKF_IsPCRel |
+-           MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
+-      {"fixup_arm_adr_pcrel_12", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
++       IsPCRelConstant | MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
++      {"fixup_arm_adr_pcrel_12", 0, 32, IsPCRelConstant},
+       {"fixup_t2_adr_pcrel_12", 0, 32,
+-       MCFixupKindInfo::FKF_IsPCRel |
+-           MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
++       IsPCRelConstant | MCFixupKindInfo::FKF_IsAlignedDownTo32Bits},
+       {"fixup_arm_condbranch", 0, 24, MCFixupKindInfo::FKF_IsPCRel},
+       {"fixup_arm_uncondbranch", 0, 24, MCFixupKindInfo::FKF_IsPCRel},
+       {"fixup_t2_condbranch", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+diff --git a/llvm/test/MC/ARM/Windows/invalid-relocation.s b/llvm/test/MC/ARM/Windows/invalid-relocation.s
+index 61d11fb6a6b..db41570b062 100644
+--- a/llvm/test/MC/ARM/Windows/invalid-relocation.s
++++ b/llvm/test/MC/ARM/Windows/invalid-relocation.s
+@@ -7,7 +7,6 @@
+ 	.endef
+ 	.global invalid_relocation
+ 	.thumb_func
+-invalid_relocation:
+ 	adr r0, invalid_relocation+1
+ 
+ # CHECK: LLVM ERROR: unsupported relocation type: fixup_t2_adr_pcrel_12
+diff --git a/llvm/test/MC/ARM/pcrel-global.s b/llvm/test/MC/ARM/pcrel-global.s
+new file mode 100644
+index 00000000000..cec6c1cb52f
+--- /dev/null
++++ b/llvm/test/MC/ARM/pcrel-global.s
+@@ -0,0 +1,21 @@
++@ RUN: llvm-mc -filetype=obj -triple=armv7 %s -o %t
++@ RUN: llvm-readelf -r %t | FileCheck %s
++
++@ CHECK: There are no relocations in this file.
++.syntax unified
++
++.globl foo
++foo:
++ldrd r0, r1, foo @ arm_pcrel_10_unscaled
++vldr d0, foo     @ arm_pcrel_10
++adr r2, foo      @ arm_adr_pcrel_12
++ldr r0, foo      @ arm_ldst_pcrel_12
++
++.thumb
++.thumb_func
++
++.globl bar
++bar:
++adr r0, bar      @ thumb_adr_pcrel_10
++adr.w r0, bar    @ t2_adr_pcrel_12
++ldr.w pc, bar    @ t2_ldst_pcrel_12
+diff --git a/llvm/test/MC/MachO/ARM/bad-darwin-ARM-reloc.s b/llvm/test/MC/MachO/ARM/bad-darwin-ARM-reloc.s
+index ae4bc225dc5..c60f8a853b6 100644
+--- a/llvm/test/MC/MachO/ARM/bad-darwin-ARM-reloc.s
++++ b/llvm/test/MC/MachO/ARM/bad-darwin-ARM-reloc.s
+@@ -6,7 +6,6 @@
+ .section myseg, mysect
+ L___fcommon: 
+     .word 0
+-@ CHECK-ERROR: unsupported relocation on symbol
+ 
+ c:
+   .word a - b
+-- 
+2.26.0.292.g33ef6b2f38-goog
+

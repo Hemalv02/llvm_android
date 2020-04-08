@@ -324,6 +324,12 @@
         "end_version": 385655
     },
     {
+        "comment": "[UPSTREAM] [MC][ARM] Resolve some pcrel fixups at assembly time (PR44929)",
+        "rel_patch_path": "cherry/2e24219d3cbfcb8c824c58872f97de0a2e94a7c8.patch",
+        "start_version": 383902,
+        "end_version": 385846
+    },
+    {
         "comment": "[UPSTREAM] [DAGCombine] Fix alias analysis for unaligned accesses",
         "rel_patch_path": "cherry/1de10705594c7a2c9b8fde901c391bd84062ae04.patch",
         "start_version": 377782,
