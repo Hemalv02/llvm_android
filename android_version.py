@@ -15,8 +15,8 @@
 # limitations under the License.
 #
 
-patch_level = '6'
-_svn_revision = 'r377782d'
+patch_level = '1'
+_svn_revision = 'r383902'
 # svn_revision_next will be newer than the official svn_revision in the future.
 _svn_revision_next = 'r383902'
 
