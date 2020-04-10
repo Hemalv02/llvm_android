@@ -267,7 +267,7 @@ class LLVMBuilder(CMakeBuilder):
         defines['LLVM_ENABLE_LIBCXX'] = 'ON'
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
-        if self.target_os.is_linux:
+        if not self.target_os.is_darwin:
             defines['LLVM_ENABLE_LLD'] = 'ON'
 
         if self._enable_lldb:
