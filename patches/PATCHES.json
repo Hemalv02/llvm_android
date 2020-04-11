@@ -378,6 +378,24 @@
         "end_version": 384549
     },
     {
+        "comment": "[UPSTREAM] [ASTMatchers] Adds a matcher called `hasAnyOperatorName`",
+        "rel_patch_path": "cherry/6a0c066c6102cd463e8ad48881e91e596547507a.patch",
+        "start_version": 383902,
+        "end_version": 385583
+    },
+    {
+        "comment": "[UPSTREAM] [ASTMatchers] Add hasAnyOverloadedOperatorName matcher",
+        "rel_patch_path": "cherry/77eec38626cb9e796f6cbb108ea9be5ee6e0ce81.patch",
+        "start_version": 383902,
+        "end_version": 386793
+    },
+    {
+        "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
+        "rel_patch_path": "cherry/0f9e1e3ae750df483b7fff905a8bc89262e3179e.patch",
+        "start_version": 383902,
+        "end_version": 389251
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,

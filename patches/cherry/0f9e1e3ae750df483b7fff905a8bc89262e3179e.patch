@@ -1,0 +1,94 @@
+From 0f9e1e3ae750df483b7fff905a8bc89262e3179e Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Tam=C3=A1s=20Zolnai?= <tamas.zolnai@collabora.com>
+Date: Sat, 4 Apr 2020 17:17:52 +0200
+Subject: [PATCH] [clang-tidy]: fix false positive of cert-oop54-cpp check.
+
+Summary:
+It seems we need a different matcher for binary operator
+in a template context.
+
+Fixes this issue:
+https://bugs.llvm.org/show_bug.cgi?id=44499
+
+Reviewers: aaron.ballman, alexfh, hokein, njames93
+
+Reviewed By: aaron.ballman
+
+Subscribers: xazax.hun, cfe-commits
+
+Tags: #clang, #clang-tools-extra
+
+Differential Revision: https://reviews.llvm.org/D76990
+---
+ .../bugprone/UnhandledSelfAssignmentCheck.cpp |  7 +++--
+ .../bugprone-unhandled-self-assignment.cpp    | 30 +++++++++++++++++++
+ 2 files changed, 35 insertions(+), 2 deletions(-)
+
+diff --git a/clang-tools-extra/clang-tidy/bugprone/UnhandledSelfAssignmentCheck.cpp b/clang-tools-extra/clang-tidy/bugprone/UnhandledSelfAssignmentCheck.cpp
+index 14f5e153247..5ec40877001 100644
+--- a/clang-tools-extra/clang-tidy/bugprone/UnhandledSelfAssignmentCheck.cpp
++++ b/clang-tools-extra/clang-tidy/bugprone/UnhandledSelfAssignmentCheck.cpp
+@@ -43,9 +43,12 @@ void UnhandledSelfAssignmentCheck::registerMatchers(MatchFinder *Finder) {
+ 
+   // Self-check: Code compares something with 'this' pointer. We don't check
+   // whether it is actually the parameter what we compare.
+-  const auto HasNoSelfCheck = cxxMethodDecl(unless(hasDescendant(
+-      binaryOperator(anyOf(hasOperatorName("=="), hasOperatorName("!=")),
+-                     has(ignoringParenCasts(cxxThisExpr()))))));
++  const auto HasNoSelfCheck = cxxMethodDecl(unless(anyOf(
++      hasDescendant(binaryOperator(hasAnyOperatorName("==", "!="),
++                                   has(ignoringParenCasts(cxxThisExpr())))),
++      hasDescendant(cxxOperatorCallExpr(
++          hasAnyOverloadedOperatorName("==", "!="), argumentCountIs(2),
++          has(ignoringParenCasts(cxxThisExpr())))))));
+ 
+   // Both copy-and-swap and copy-and-move method creates a copy first and
+   // assign it to 'this' with swap or move.
+diff --git a/clang-tools-extra/test/clang-tidy/checkers/bugprone-unhandled-self-assignment.cpp b/clang-tools-extra/test/clang-tidy/checkers/bugprone-unhandled-self-assignment.cpp
+index 49bb5314f9e..fb7c089ae8c 100644
+--- a/clang-tools-extra/test/clang-tidy/checkers/bugprone-unhandled-self-assignment.cpp
++++ b/clang-tools-extra/test/clang-tidy/checkers/bugprone-unhandled-self-assignment.cpp
+@@ -212,6 +212,21 @@ private:
+   T *p;
+ };
+ 
++// https://bugs.llvm.org/show_bug.cgi?id=44499
++class Foo2;
++template <int a>
++bool operator!=(Foo2 &, Foo2 &) {
++  class Bar2 {
++    Bar2 &operator=(const Bar2 &other) {
++      // CHECK-MESSAGES: [[@LINE-1]]:11: warning: operator=() does not handle self-assignment properly [bugprone-unhandled-self-assignment]
++      p = other.p;
++      return *this;
++    }
++
++    int *p;
++  };
++}
++
+ ///////////////////////////////////////////////////////////////////
+ /// Test cases correctly ignored by the check.
+ 
+@@ -283,6 +298,21 @@ private:
+   T *p;
+ };
+ 
++// https://bugs.llvm.org/show_bug.cgi?id=44499
++class Foo;
++template <int a>
++bool operator!=(Foo &, Foo &) {
++  class Bar {
++    Bar &operator=(const Bar &other) {
++      if (this != &other) {
++      }
++      return *this;
++    }
++
++    int *p;
++  };
++}
++
+ // There is no warning if the copy assignment operator gets the object by value.
+ class PassedByValue {
+ public:

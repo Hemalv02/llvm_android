@@ -1,0 +1,218 @@
+From 77eec38626cb9e796f6cbb108ea9be5ee6e0ce81 Mon Sep 17 00:00:00 2001
+From: Nathan James <n.james93@hotmail.co.uk>
+Date: Mon, 9 Mar 2020 11:16:50 +0000
+Subject: [PATCH] [ASTMatchers] Add hasAnyOverloadedOperatorName matcher
+
+Reviewers: aaron.ballman
+
+Reviewed By: aaron.ballman
+
+Subscribers: cfe-commits
+
+Tags: #clang
+
+Differential Revision: https://reviews.llvm.org/D75841
+---
+ clang/docs/LibASTMatchersReference.html       | 24 +++++++++++++++++++
+ clang/include/clang/ASTMatchers/ASTMatchers.h | 22 ++++++++++++++---
+ .../clang/ASTMatchers/ASTMatchersInternal.h   | 22 +++++++++++------
+ clang/lib/ASTMatchers/ASTMatchersInternal.cpp |  8 +++++++
+ clang/lib/ASTMatchers/Dynamic/Registry.cpp    |  1 +
+ .../ASTMatchers/ASTMatchersNarrowingTest.cpp  |  6 +++++
+ 6 files changed, 73 insertions(+), 10 deletions(-)
+
+diff --git a/clang/docs/LibASTMatchersReference.html b/clang/docs/LibASTMatchersReference.html
+index f0faed7f0f8..f5208abf44b 100644
+--- a/clang/docs/LibASTMatchersReference.html
++++ b/clang/docs/LibASTMatchersReference.html
+@@ -2599,6 +2599,18 @@ cxxNewExpr(isArray())
+ </pre></td></tr>
+ 
+ 
++<tr><td>Matcher&lt;<a href="https://clang.llvm.org/doxygen/classclang_1_1CXXOperatorCallExpr.html">CXXOperatorCallExpr</a>&gt;</td><td class="name" onclick="toggle('hasAnyOverloadedOperatorName0')"><a name="hasAnyOverloadedOperatorName0Anchor">hasAnyOverloadedOperatorName</a></td><td>StringRef, ..., StringRef</td></tr>
++<tr><td colspan="4" class="doc" id="hasAnyOverloadedOperatorName0"><pre>Matches overloaded operator names.
++
++Matches overloaded operator names specified in strings without the
++"operator" prefix: e.g. "&lt;&lt;".
++
++  hasAnyOverloadesOperatorName("+", "-")
++Is equivalent to
++  anyOf(hasOverloadedOperatorName("+"), hasOverloadedOperatorName("-"))
++</pre></td></tr>
++
++
+ <tr><td>Matcher&lt;<a href="https://clang.llvm.org/doxygen/classclang_1_1CXXOperatorCallExpr.html">CXXOperatorCallExpr</a>&gt;</td><td class="name" onclick="toggle('hasOverloadedOperatorName1')"><a name="hasOverloadedOperatorName1Anchor">hasOverloadedOperatorName</a></td><td>StringRef Name</td></tr>
+ <tr><td colspan="4" class="doc" id="hasOverloadedOperatorName1"><pre>Matches overloaded operator names.
+ 
+@@ -3178,6 +3190,18 @@ Usable as: Matcher&lt;<a href="https://clang.llvm.org/doxygen/classclang_1_1Char
+ <tr><td colspan="4" class="doc" id="equals12"><pre></pre></td></tr>
+ 
+ 
++<tr><td>Matcher&lt;<a href="https://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html">FunctionDecl</a>&gt;</td><td class="name" onclick="toggle('hasAnyOverloadedOperatorName1')"><a name="hasAnyOverloadedOperatorName1Anchor">hasAnyOverloadedOperatorName</a></td><td>StringRef, ..., StringRef</td></tr>
++<tr><td colspan="4" class="doc" id="hasAnyOverloadedOperatorName1"><pre>Matches overloaded operator names.
++
++Matches overloaded operator names specified in strings without the
++"operator" prefix: e.g. "&lt;&lt;".
++
++  hasAnyOverloadesOperatorName("+", "-")
++Is equivalent to
++  anyOf(hasOverloadedOperatorName("+"), hasOverloadedOperatorName("-"))
++</pre></td></tr>
++
++
+ <tr><td>Matcher&lt;<a href="https://clang.llvm.org/doxygen/classclang_1_1FunctionDecl.html">FunctionDecl</a>&gt;</td><td class="name" onclick="toggle('hasDynamicExceptionSpec0')"><a name="hasDynamicExceptionSpec0Anchor">hasDynamicExceptionSpec</a></td><td></td></tr>
+ <tr><td colspan="4" class="doc" id="hasDynamicExceptionSpec0"><pre>Matches functions that have a dynamic exception specification.
+ 
+diff --git a/clang/include/clang/ASTMatchers/ASTMatchers.h b/clang/include/clang/ASTMatchers/ASTMatchers.h
+index 31138e47750..989932b9c11 100644
+--- a/clang/include/clang/ASTMatchers/ASTMatchers.h
++++ b/clang/include/clang/ASTMatchers/ASTMatchers.h
+@@ -2749,14 +2749,30 @@ AST_MATCHER_P(NamedDecl, matchesName, std::string, RegExp) {
+ ///
+ /// Usable as: Matcher<CXXOperatorCallExpr>, Matcher<FunctionDecl>
+ inline internal::PolymorphicMatcherWithParam1<
+-    internal::HasOverloadedOperatorNameMatcher, StringRef,
++    internal::HasOverloadedOperatorNameMatcher, std::vector<std::string>,
+     AST_POLYMORPHIC_SUPPORTED_TYPES(CXXOperatorCallExpr, FunctionDecl)>
+ hasOverloadedOperatorName(StringRef Name) {
+   return internal::PolymorphicMatcherWithParam1<
+-      internal::HasOverloadedOperatorNameMatcher, StringRef,
+-      AST_POLYMORPHIC_SUPPORTED_TYPES(CXXOperatorCallExpr, FunctionDecl)>(Name);
++      internal::HasOverloadedOperatorNameMatcher, std::vector<std::string>,
++      AST_POLYMORPHIC_SUPPORTED_TYPES(CXXOperatorCallExpr, FunctionDecl)>(
++      {std::string(Name)});
+ }
+ 
++/// Matches overloaded operator names.
++///
++/// Matches overloaded operator names specified in strings without the
++/// "operator" prefix: e.g. "<<".
++///
++///   hasAnyOverloadesOperatorName("+", "-")
++/// Is equivalent to
++///   anyOf(hasOverloadedOperatorName("+"), hasOverloadedOperatorName("-"))
++extern const internal::VariadicFunction<
++    internal::PolymorphicMatcherWithParam1<
++        internal::HasOverloadedOperatorNameMatcher, std::vector<std::string>,
++        AST_POLYMORPHIC_SUPPORTED_TYPES(CXXOperatorCallExpr, FunctionDecl)>,
++    StringRef, internal::hasAnyOverloadedOperatorNameFunc>
++    hasAnyOverloadedOperatorName;
++
+ /// Matches C++ classes that are directly or indirectly derived from a class
+ /// matching \c Base, or Objective-C classes that directly or indirectly
+ /// subclass a class matching \c Base.
+diff --git a/clang/include/clang/ASTMatchers/ASTMatchersInternal.h b/clang/include/clang/ASTMatchers/ASTMatchersInternal.h
+index 6e4310fa0ee..e363bdd9ae9 100644
+--- a/clang/include/clang/ASTMatchers/ASTMatchersInternal.h
++++ b/clang/include/clang/ASTMatchers/ASTMatchersInternal.h
+@@ -670,12 +670,12 @@ class HasOverloadedOperatorNameMatcher : public SingleNodeMatcherInterface<T> {
+   static_assert(std::is_same<T, CXXOperatorCallExpr>::value ||
+                 std::is_base_of<FunctionDecl, T>::value,
+                 "unsupported class for matcher");
+-  static_assert(std::is_same<ArgT, StringRef>::value,
+-                "argument type must be StringRef");
++  static_assert(std::is_same<ArgT, std::vector<std::string>>::value,
++                "argument type must be std::vector<std::string>");
+ 
+ public:
+-  explicit HasOverloadedOperatorNameMatcher(const StringRef Name)
+-      : SingleNodeMatcherInterface<T>(), Name(Name) {}
++  explicit HasOverloadedOperatorNameMatcher(std::vector<std::string> Names)
++      : SingleNodeMatcherInterface<T>(), Names(std::move(Names)) {}
+ 
+   bool matchesNode(const T &Node) const override {
+     return matchesSpecialized(Node);
+@@ -687,17 +687,18 @@ private:
+   /// so this function returns true if the call is to an operator of the given
+   /// name.
+   bool matchesSpecialized(const CXXOperatorCallExpr &Node) const {
+-    return getOperatorSpelling(Node.getOperator()) == Name;
++    return llvm::is_contained(Names, getOperatorSpelling(Node.getOperator()));
+   }
+ 
+   /// Returns true only if CXXMethodDecl represents an overloaded
+   /// operator and has the given operator name.
+   bool matchesSpecialized(const FunctionDecl &Node) const {
+     return Node.isOverloadedOperator() &&
+-           getOperatorSpelling(Node.getOverloadedOperator()) == Name;
++           llvm::is_contained(
++               Names, getOperatorSpelling(Node.getOverloadedOperator()));
+   }
+ 
+-  std::string Name;
++  const std::vector<std::string> Names;
+ };
+ 
+ /// Matches named declarations with a specific name.
+@@ -1899,6 +1900,13 @@ using HasOpNameMatcher =
+ 
+ HasOpNameMatcher hasAnyOperatorNameFunc(ArrayRef<const StringRef *> NameRefs);
+ 
++using HasOverloadOpNameMatcher = PolymorphicMatcherWithParam1<
++    HasOverloadedOperatorNameMatcher, std::vector<std::string>,
++    void(TypeList<CXXOperatorCallExpr, FunctionDecl>)>;
++
++HasOverloadOpNameMatcher
++hasAnyOverloadedOperatorNameFunc(ArrayRef<const StringRef *> NameRefs);
++
+ } // namespace internal
+ 
+ } // namespace ast_matchers
+diff --git a/clang/lib/ASTMatchers/ASTMatchersInternal.cpp b/clang/lib/ASTMatchers/ASTMatchersInternal.cpp
+index 033a5f19fd8..c20e8422be4 100644
+--- a/clang/lib/ASTMatchers/ASTMatchersInternal.cpp
++++ b/clang/lib/ASTMatchers/ASTMatchersInternal.cpp
+@@ -378,6 +378,11 @@ HasOpNameMatcher hasAnyOperatorNameFunc(ArrayRef<const StringRef *> NameRefs) {
+   return HasOpNameMatcher(vectorFromRefs(NameRefs));
+ }
+ 
++HasOverloadOpNameMatcher
++hasAnyOverloadedOperatorNameFunc(ArrayRef<const StringRef *> NameRefs) {
++  return HasOverloadOpNameMatcher(vectorFromRefs(NameRefs));
++}
++
+ HasNameMatcher::HasNameMatcher(std::vector<std::string> N)
+     : UseUnqualifiedMatch(llvm::all_of(
+           N, [](StringRef Name) { return Name.find("::") == Name.npos; })),
+@@ -861,6 +866,9 @@ const internal::VariadicFunction<internal::Matcher<NamedDecl>, StringRef,
+ const internal::VariadicFunction<internal::HasOpNameMatcher, StringRef,
+                                  internal::hasAnyOperatorNameFunc>
+     hasAnyOperatorName = {};
++const internal::VariadicFunction<internal::HasOverloadOpNameMatcher, StringRef,
++                                 internal::hasAnyOverloadedOperatorNameFunc>
++    hasAnyOverloadedOperatorName = {};
+ const internal::VariadicFunction<internal::Matcher<ObjCMessageExpr>, StringRef,
+                                  internal::hasAnySelectorFunc>
+     hasAnySelector = {};
+diff --git a/clang/lib/ASTMatchers/Dynamic/Registry.cpp b/clang/lib/ASTMatchers/Dynamic/Registry.cpp
+index fd2b6b253c5..8ff70a4f78c 100644
+--- a/clang/lib/ASTMatchers/Dynamic/Registry.cpp
++++ b/clang/lib/ASTMatchers/Dynamic/Registry.cpp
+@@ -244,6 +244,7 @@ RegistryMaps::RegistryMaps() {
+   REGISTER_MATCHER(hasAnyDeclaration);
+   REGISTER_MATCHER(hasAnyName);
+   REGISTER_MATCHER(hasAnyOperatorName);
++  REGISTER_MATCHER(hasAnyOverloadedOperatorName);
+   REGISTER_MATCHER(hasAnyParameter);
+   REGISTER_MATCHER(hasAnyPlacementArg);
+   REGISTER_MATCHER(hasAnySelector);
+diff --git a/clang/unittests/ASTMatchers/ASTMatchersNarrowingTest.cpp b/clang/unittests/ASTMatchers/ASTMatchersNarrowingTest.cpp
+index 2816e216e8c..88c55e1cb4f 100644
+--- a/clang/unittests/ASTMatchers/ASTMatchersNarrowingTest.cpp
++++ b/clang/unittests/ASTMatchers/ASTMatchersNarrowingTest.cpp
+@@ -898,6 +898,12 @@ TEST(Matcher, HasOperatorNameForOverloadedOperatorCall) {
+   DeclarationMatcher AnyOpStar = functionDecl(hasOverloadedOperatorName("*"));
+   EXPECT_TRUE(matches("class Y; int operator*(Y &);", AnyOpStar));
+   EXPECT_TRUE(matches("class Y { int operator*(); };", AnyOpStar));
++  DeclarationMatcher AnyAndOp =
++      functionDecl(hasAnyOverloadedOperatorName("&", "&&"));
++  EXPECT_TRUE(matches("class Y; Y operator&(Y &, Y &);", AnyAndOp));
++  EXPECT_TRUE(matches("class Y; Y operator&&(Y &, Y &);", AnyAndOp));
++  EXPECT_TRUE(matches("class Y { Y operator&(Y &); };", AnyAndOp));
++  EXPECT_TRUE(matches("class Y { Y operator&&(Y &); };", AnyAndOp));
+ }
+ 
+ 
+-- 
+2.26.0.110.g2183baf09c-goog
+
