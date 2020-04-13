@@ -797,7 +797,7 @@ def build_llvm_for_windows(enable_assertions,
                            build_name):
     win_builder = WindowsToolchainBuilder()
     if win_builder.install_dir.exists():
-        shutil.rmtree(WindowsToolchainBuilder.install_dir)
+        shutil.rmtree(win_builder.install_dir)
 
     # Build and install libcxxabi and libcxx and use them to build Clang.
     libcxxabi_builder = LibCxxAbiBuilder()
@@ -882,7 +882,12 @@ class Stage1Builder(builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        return {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        if self.build_llvm_tools:
+            # For lldb-tblgen. It will be used to build lldb-server and
+            # windows lldb.
+            proj.add('lldb')
+        return proj
 
     @property
     def ldflags(self) -> List[str]:
@@ -1078,10 +1083,9 @@ class LldbServerBuilder(builders.LLVMRuntimeBuilder):
         defines = super().cmake_defines
         # lldb depends on support libraries.
         defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
-        toolchain_build_path = toolchains.get_runtime_toolchain_builder().output_dir
-        defines['LLVM_TABLEGEN'] = str(toolchain_build_path / 'bin' / 'llvm-tblgen')
-        defines['CLANG_TABLEGEN'] = str(toolchain_build_path / 'bin' / 'clang-tblgen')
-        defines['LLDB_TABLEGEN'] = str(toolchain_build_path / 'bin' / 'lldb-tblgen')
+        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
+        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
+        defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
         return defines
 
     def install(self) -> None:
@@ -1187,34 +1191,6 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
             proj.add('lldb')
         return proj
 
-    def _create_native_cmake_file(self) -> Path:
-        # Write a NATIVE.cmake in windows_path that contains the compilers used
-        # to build native tools such as llvm-tblgen and llvm-config.  This is
-        # used below via the CMake variable CROSS_TOOLCHAIN_FLAGS_NATIVE.
-        native_projects = 'clang' if not self.build_lldb else 'clang;lldb'
-        native_cmake_text: List[str] = [
-            f'set(CMAKE_C_COMPILER {self.toolchain.cc})',
-            f'set(CMAKE_CXX_COMPILER {self.toolchain.cxx})',
-            f'set(LLVM_ENABLE_PROJECTS "{native_projects}" CACHE STRING "" FORCE)',
-        ]
-        if self.build_lldb:
-            native_cmake_text.extend([
-                'set(LLDB_ENABLE_PYTHON "OFF" CACHE STRING "" FORCE)',
-                'set(LLDB_ENABLE_CURSES "OFF" CACHE STRING "" FORCE)',
-                'set(LLDB_ENABLE_LIBEDIT "OFF" CACHE STRING "" FORCE)',
-                # TODO: Remove the following on or after r380035.
-                'set(LLDB_DISABLE_PYTHON "ON" CACHE STRING "" FORCE)',
-                'set(LLDB_DISABLE_CURSES "ON" CACHE STRING "" FORCE)',
-                'set(LLDB_DISABLE_LIBEDIT "ON" CACHE STRING "" FORCE)'])
-
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-
-        native_cmake_file_path = self.output_dir / 'NATIVE.cmake'
-        with native_cmake_file_path.open('w') as native_cmake_file:
-            native_cmake_file.write('\n'.join(native_cmake_text))
-
-        return native_cmake_file_path
-
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
@@ -1226,17 +1202,11 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
         # Don't build tests for Windows.
         defines['LLVM_INCLUDE_TESTS'] = 'OFF'
 
-        # Set CMake path, toolchain file for native compilation (to build tablegen
-        # etc).  Also disable libfuzzer build during native compilation.
-        native_flags = [
-            f'-DCMAKE_MAKE_PROGRAM={paths.NINJA_BIN_PATH}',
-            '-DCOMPILER_RT_BUILD_LIBFUZZER=OFF',
-            f'-DCMAKE_TOOLCHAIN_FILE={self._create_native_cmake_file()}',
-            '-DLLVM_ENABLE_LIBCXX=ON',
-            '-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE',
-            f'-DCMAKE_INSTALL_RPATH={self.toolchain.lib_dir}',
-        ]
-        defines['CROSS_TOOLCHAIN_FLAGS_NATIVE'] = ';'.join(native_flags)
+        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.build_path / 'bin' / 'llvm-config')
+        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
+        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
+        if self.build_lldb:
+            defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
         return defines
 
     @property
