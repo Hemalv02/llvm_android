@@ -1252,6 +1252,7 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
         libcxx_lib = BuilderRegistry.get('libcxx').install_dir / 'lib64'
         ldflags.append(f'-L{libcxx_lib}')
         ldflags.append('-Wl,--high-entropy-va')
+        ldflags.append('-Wl,--Xlink=-Brepro')
         ldflags.append(f'-L{paths.WIN_ZLIB_LIB_PATH}')
         return ldflags
 
