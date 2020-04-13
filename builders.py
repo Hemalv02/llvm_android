@@ -19,7 +19,7 @@ from pathlib import Path
 import logging
 import os
 import shutil
-from typing import Dict, List, Optional, Set
+from typing import cast, Dict, List, Optional, Set
 
 import android_version
 from builder_registry import BuilderRegistry
@@ -50,9 +50,13 @@ class Builder:  # pylint: disable=too-few-public-methods
         for config in self.config_list:
             self._config = config
             self._build_config()
+        self.install()
 
     def _build_config(self) -> None:
         raise NotImplementedError()
+
+    def install(self) -> None:
+        """Installs built artifacts."""
 
 
 class CMakeBuilder(Builder):
@@ -116,18 +120,21 @@ class CMakeBuilder(Builder):
         }
         if self._config.sysroot:
             defines['CMAKE_SYSROOT'] = str(self._config.sysroot)
-        if self._is_cross_compiling():
-            # Cross compiling
-            defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
-            defines['CMAKE_SYSTEM_PROCESSOR'] = 'x86_64'
         if self._config.target_os == hosts.Host.Android:
             defines['ANDROID'] = '1'
             # Inhibit all of CMake's own NDK handling code.
             defines['CMAKE_SYSTEM_VERSION'] = '1'
+        if self._is_cross_compiling():
+            # Cross compiling
+            defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
+            defines['CMAKE_SYSTEM_PROCESSOR'] = self._get_cmake_system_arch()
         return defines
 
     def _get_cmake_system_name(self) -> str:
         return self._config.target_os.value.capitalize()
+
+    def _get_cmake_system_arch(self) -> str:
+        return self._config.target_arch.value
 
     def _is_cross_compiling(self) -> bool:
         return self._config.target_os != hosts.build_host()
@@ -187,10 +194,10 @@ class CMakeBuilder(Builder):
             ninja_cmd.append(self.ninja_target)
         utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
 
-        self.install()
+        self.install_config()
 
-    def install(self) -> None:
-        """Installs built artifacts to install_dir."""
+    def install_config(self) -> None:
+        """Installs built artifacts for current config."""
         utils.check_call([paths.NINJA_BIN_PATH, 'install'],
                          cwd=self.output_dir, env=self.env)
 
@@ -240,16 +247,24 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     """Base builder for llvm runtime libs."""
 
+    remove_cmake_cache: bool = True
+    _config: configs.AndroidConfig
+
     @property
     def toolchain(self) -> toolchains.Toolchain:
         """Returns the toolchain used for this target."""
         return toolchains.get_runtime_toolchain()
 
     @property
+    def install_dir(self) -> Path:
+        arch = self._config.target_arch
+        if self._config.platform:
+            return self.toolchain.resource_dir / arch.value
+        return self.toolchain.path / 'runtimes_ndk_cxx' / arch.value
+
+    @property
     def output_dir(self) -> Path:
-        if self._config.target_os == hosts.Host.Android:
-            return paths.OUT_DIR / 'lib' / (f'{self.name}-{self._config.target_arch.value}')
-        return paths.OUT_DIR / 'lib' / (f'{self.name}-{self._config.target_os.value}')
+        return paths.OUT_DIR / 'lib' / (f'{self.name}{self._config.output_suffix}')
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
