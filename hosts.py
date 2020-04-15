@@ -91,6 +91,11 @@ class Arch(enum.Enum):
             Arch.X86_64: 'x86_64',
         }[self]
 
+    @property
+    def ndk_triple(self) -> str:
+        if self == Arch.ARM:
+            return 'arm-linux-androideabi'
+        return self.llvm_triple
 
 def _get_default_host() -> Host:
     """Returns the Host matching the current machine."""
