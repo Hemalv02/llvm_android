@@ -408,35 +408,37 @@ def cross_compile_configs(toolchain, platform=False, static=False):
         yield (arch, llvm_triple, defines, cflags)
 
 
-def build_asan_test(toolchain):
-    # We can not build asan_test using current CMake building system. Since
-    # those files are not used to build AOSP, we just simply touch them so that
-    # we can pass the build checks.
-    for arch in ('aarch64', 'arm', 'i686'):
-        asan_test_path = os.path.join(toolchain, 'test', arch, 'bin')
-        check_create_path(asan_test_path)
-        asan_test_bin_path = os.path.join(asan_test_path, 'asan_test')
-        open(asan_test_bin_path, 'w+').close()
+class AsanMapFileBuilder(builders.Builder):
+    name: str = 'asan-mapfile'
+    config_list: List[configs.Config] = configs.android_configs()
 
-def build_sanitizer_map_file(san, arch, lib_dir):
-    lib_file = os.path.join(lib_dir, 'libclang_rt.{}-{}-android.so'.format(san, arch))
-    map_file = os.path.join(lib_dir, 'libclang_rt.{}-{}-android.map.txt'.format(san, arch))
-    mapfile.create_map_file(lib_file, map_file)
+    @property
+    def toolchain(self) -> toolchains.Toolchain:
+        return toolchains.get_runtime_toolchain()
 
-def build_sanitizer_map_files(toolchain, clang_version):
-    lib_dir = os.path.join(toolchain,
-                           clang_resource_dir(clang_version.long_version()))
-    for arch in ('aarch64', 'arm', 'i686', 'x86_64'):
-        build_sanitizer_map_file('asan', arch, lib_dir)
-        build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
-    build_sanitizer_map_file('hwasan', 'aarch64', lib_dir)
+    def _build_config(self) -> None:
+        arch = self._config.target_arch
+        # We can not build asan_test using current CMake building system. Since
+        # those files are not used to build AOSP, we just simply touch them so that
+        # we can pass the build checks.
+        asan_test_path = self.toolchain.path / 'test' / arch.llvm_arch / 'bin'
+        asan_test_path.mkdir(parents=True, exist_ok=True)
+        asan_test_bin_path = asan_test_path / 'asan_test'
+        asan_test_bin_path.touch(exist_ok=True)
 
-def create_hwasan_symlink(toolchain, clang_version):
-    lib_dir = os.path.join(toolchain,
-                           clang_resource_dir(clang_version.long_version()))
-    symlink_path = lib_dir + 'libclang_rt.hwasan_static-aarch64-android.a'
-    utils.remove(symlink_path)
-    os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
+        lib_dir = self.toolchain.resource_dir
+        self._build_sanitizer_map_file('asan', arch, lib_dir)
+        self._build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
+
+        if arch == hosts.Arch.AARCH64:
+            self._build_sanitizer_map_file('hwasan', arch, lib_dir)
+
+    @staticmethod
+    def _build_sanitizer_map_file(san: str, arch: hosts.Arch, lib_dir: Path) -> None:
+        lib_file = lib_dir / f'libclang_rt.{san}-{arch.llvm_arch}-android.so'
+        map_file = lib_dir / f'libclang_rt.{san}-{arch.llvm_arch}-android.map.txt'
+        mapfile.create_map_file(lib_file, map_file)
+
 
 def build_libcxx(toolchain, clang_version):
     for (arch, llvm_triple, libcxx_defines,
@@ -850,6 +852,10 @@ class CompilerRTBuilder(builders.LLVMRuntimeBuilder):
             if f.suffix in ('.h', '.def'):
                 shutil.copy2(f, header_dst)
 
+        symlink_path = self.toolchain.resource_dir / 'libclang_rt.hwasan_static-aarch64-android.a'
+        symlink_path.unlink(missing_ok=True)
+        os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
+
 
 class CompilerRTHostI386Builder(builders.LLVMRuntimeBuilder):
     name: str = 'compiler-rt-i386-host'
@@ -1163,7 +1169,6 @@ def build_runtimes(toolchain, args=None):
         logger().info('Skip libcxxabi and other sysroot libraries')
     else:
         create_sysroots()
-    version = extract_clang_version(toolchain)
 
     CompilerRTBuilder().build()
     # 32-bit host crts are not needed for Darwin
@@ -1175,12 +1180,8 @@ def build_runtimes(toolchain, args=None):
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
     # build_libcxx(toolchain, version)
-    if not BuilderRegistry.should_build('asan'):
-        logger().info('Skip asan test, map, symlink')
-    else:
-        build_asan_test(toolchain)
-        build_sanitizer_map_files(toolchain, version)
-        create_hwasan_symlink(toolchain, version)
+    AsanMapFileBuilder().build()
+
 
 def install_wrappers(llvm_install_path):
     wrapper_path = utils.out_path('llvm_android_wrapper')
