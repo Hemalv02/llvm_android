@@ -1090,7 +1090,7 @@ class LldbServerBuilder(builders.LLVMRuntimeBuilder):
 
     def install(self) -> None:
         src_path = self.output_dir / 'bin' / 'lldb-server'
-        install_dir = self.install_dir / self._config.target_arch.value
+        install_dir = self.install_dir
         install_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, install_dir)
 
