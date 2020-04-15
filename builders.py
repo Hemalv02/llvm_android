@@ -51,6 +51,8 @@ class Builder:  # pylint: disable=too-few-public-methods
         """Builds all configs."""
         for config in self.config_list:
             self._config = config
+
+            logger().info('Building %s for %s', self.name, self._config)
             self._build_config()
         self.install()
 
@@ -261,8 +263,6 @@ class CMakeBuilder(Builder):
                 utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
 
     def _build_config(self) -> None:
-        logger().info('Building %s for %s', self.name, self._config)
-
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_dir)
 

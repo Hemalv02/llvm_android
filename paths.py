@@ -23,6 +23,7 @@ import hosts
 
 ANDROID_DIR: Path = Path(__file__).resolve().parents[2]
 OUT_DIR: Path = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
+SYSROOTS: Path = OUT_DIR / 'sysroots'
 LLVM_PATH: Path = OUT_DIR / 'llvm-project'
 PREBUILTS_DIR: Path = ANDROID_DIR / 'prebuilts'
 EXTERNAL_DIR: Path = ANDROID_DIR / 'external'
