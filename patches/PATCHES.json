@@ -396,6 +396,18 @@
         "end_version": 389251
     },
     {
+        "comment": "[CodeGen] only add nobuiltin to inline builtins if we'll emit them",
+        "rel_patch_path": "cherry/2dd17ff08165e6118e70f00e22b2c36d2d4e0a9a.patch",
+        "start_version": 383902,
+        "end_version": 390396
+    },
+    {
+        "comment": "[CodeGen] fix inline builtin-related breakage from D78162",
+        "rel_patch_path": "cherry/94908088a831141cfbdd15fc5837dccf30cfeeb6.patch",
+        "start_version": 383902,
+        "end_version": 390556
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
