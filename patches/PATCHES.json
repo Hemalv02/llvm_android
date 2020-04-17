@@ -408,6 +408,12 @@
         "end_version": 390556
     },
     {
+        "comment": "[ubsan] Link shared runtime library with a version script.",
+        "rel_patch_path": "cherry/77e3a2e0fe02e8bdeb8276c08c95290d9e78feba.patch",
+        "start_version": 383902,
+        "end_version": 390596
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
