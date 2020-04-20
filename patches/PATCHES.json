@@ -414,6 +414,12 @@
         "end_version": 390596
     },
     {
+        "comment": "[CMake] Set UBSAN_LINK_FLAGS for ubsan",
+        "rel_patch_path": "cherry/6919b708a180b8791d8d21b289958f1f061c71e3.patch",
+        "start_version": 383902,
+        "end_version": 390723
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,
