@@ -420,6 +420,18 @@
         "end_version": 390723
     },
     {
+        "comment": "[llvm-objcopy] Enable --discard-all for MachO",
+        "rel_patch_path": "cherry/f79b81fbe2870ff631ad72a75f7e077b15b52a22.patch",
+        "start_version": 383902,
+        "end_version": 385798
+    },
+    {
+        "comment": "Reland D76675 [llvm-objcopy] Match GNU behaviour regarding file symbols",
+        "rel_patch_path": "cherry/b14e9e3c0cab6fb4c53e5814b6a2454d4688a49e.patch",
+        "start_version": 383902,
+        "end_version": 390947
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.patch",
         "start_version": 370808,

@@ -1,0 +1,216 @@
+From b14e9e3c0cab6fb4c53e5814b6a2454d4688a49e Mon Sep 17 00:00:00 2001
+From: Fangrui Song <maskray@google.com>
+Date: Tue, 24 Mar 2020 15:38:48 +0800
+Subject: [PATCH] Reland D76675 [llvm-objcopy] Match GNU behaviour regarding
+ file symbols
+
+Don't error on Config.KeepFileSymbols for COFF and Mach-O.
+
+Original description:
+
+GNU objcopy removes STT_FILE symbols for strip-debug operations, and
+keeps them for --discard-all operation. Match their behaviour for
+llvm-objcopy.
+
+Bug: https://github.com/android/ndk/issues/1212
+
+Differential Revision: https://reviews.llvm.org/D76675
+---
+ .../llvm-objcopy/ELF/keep-file-symbols.test   | 55 +++++++++++++++++++
+ .../tools/llvm-objcopy/ELF/strip-debug.test   |  4 +-
+ llvm/tools/llvm-objcopy/COFF/COFFObjcopy.cpp  |  6 +-
+ llvm/tools/llvm-objcopy/CopyConfig.cpp        |  8 ++-
+ llvm/tools/llvm-objcopy/ELF/ELFObjcopy.cpp    |  3 +
+ .../tools/llvm-objcopy/MachO/MachOObjcopy.cpp |  9 ++-
+ 6 files changed, 74 insertions(+), 11 deletions(-)
+
+diff --git a/llvm/test/tools/llvm-objcopy/ELF/keep-file-symbols.test b/llvm/test/tools/llvm-objcopy/ELF/keep-file-symbols.test
+index 30e4aae225c..8471c1831ae 100644
+--- a/llvm/test/tools/llvm-objcopy/ELF/keep-file-symbols.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/keep-file-symbols.test
+@@ -9,6 +9,16 @@
+ # RUN: llvm-strip --keep-file-symbols --strip-symbol foo %t -o %t4
+ # RUN: llvm-readobj --symbols %t4 | FileCheck %s --check-prefix=STRIP
+ 
++# RUN: llvm-objcopy --keep-file-symbols --strip-debug %t %t5
++# RUN: llvm-readobj --symbols %t5 | FileCheck %s --check-prefix=STRIPDEBUG
++# RUN: llvm-objcopy --keep-file-symbols --strip-unneeded %t %t6
++# RUN: llvm-readobj --symbols %t6 | FileCheck %s --check-prefix=STRIPDEBUG
++
++# RUN: llvm-strip --keep-file-symbols --strip-debug %t -o %t7
++# RUN: llvm-readobj --symbols %t7 | FileCheck %s --check-prefix=STRIPDEBUG
++# RUN: llvm-strip --keep-file-symbols --strip-unneeded %t -o %t8
++# RUN: llvm-readobj --symbols %t8 | FileCheck %s --check-prefix=STRIPDEBUG
++
+ !ELF
+ FileHeader:
+   Class:           ELFCLASS64
+@@ -16,6 +26,9 @@ FileHeader:
+   Type:            ET_REL
+   Machine:         EM_X86_64
+ Sections:
++  - Name:            .debugfoo
++    Type:            SHT_PROGBITS
++    Content:         "00000000"
+   - Name:            .text
+     Type:            SHT_PROGBITS
+     Flags:           [ SHF_ALLOC, SHF_EXECINSTR ]
+@@ -30,6 +43,9 @@ Symbols:
+     Type:     STT_FUNC
+     Section:  .text
+     Binding:  STB_GLOBAL
++  - Name:     debugfoo
++    Section:  .debugfoo
++    Binding:  STB_GLOBAL
+ 
+ #STRIPALL: Symbols [
+ #STRIPALL-NEXT:  Symbol {
+@@ -80,4 +96,43 @@ Symbols:
+ #STRIP-NEXT:    Other: 0
+ #STRIP-NEXT:    Section: .text
+ #STRIP-NEXT:  }
++#STRIP-NEXT:  Symbol {
++#STRIP-NEXT:    Name: debugfoo
++#STRIP-NEXT:    Value: 0x0
++#STRIP-NEXT:    Size: 0
++#STRIP-NEXT:    Binding: Global
++#STRIP-NEXT:    Type: None
++#STRIP-NEXT:    Other: 0
++#STRIP-NEXT:    Section: .debugfoo
++#STRIP-NEXT:  }
+ #STRIP-NEXT:]
++
++#STRIPDEBUG: Symbols [
++#STRIPDEBUG-NEXT:  Symbol {
++#STRIPDEBUG-NEXT:    Name:
++#STRIPDEBUG-NEXT:    Value: 0x0
++#STRIPDEBUG-NEXT:    Size: 0
++#STRIPDEBUG-NEXT:    Binding: Local
++#STRIPDEBUG-NEXT:    Type: None
++#STRIPDEBUG-NEXT:    Other: 0
++#STRIPDEBUG-NEXT:    Section: Undefined
++#STRIPDEBUG-NEXT:  }
++#STRIPDEBUG-NEXT:  Symbol {
++#STRIPDEBUG-NEXT:    Name: foo
++#STRIPDEBUG-NEXT:    Value: 0x0
++#STRIPDEBUG-NEXT:    Size: 0
++#STRIPDEBUG-NEXT:    Binding: Local
++#STRIPDEBUG-NEXT:    Type: File
++#STRIPDEBUG-NEXT:    Other: 0
++#STRIPDEBUG-NEXT:    Section: .text
++#STRIPDEBUG-NEXT:  }
++#STRIPDEBUG-NEXT:  Symbol {
++#STRIPDEBUG-NEXT:    Name: bar
++#STRIPDEBUG-NEXT:    Value: 0x0
++#STRIPDEBUG-NEXT:    Size: 0
++#STRIPDEBUG-NEXT:    Binding: Global
++#STRIPDEBUG-NEXT:    Type: Function
++#STRIPDEBUG-NEXT:    Other: 0
++#STRIPDEBUG-NEXT:    Section: .text
++#STRIPDEBUG-NEXT:  }
++#STRIPDEBUG-NEXT:]
+\ No newline at end of file
+diff --git a/llvm/test/tools/llvm-objcopy/ELF/strip-debug.test b/llvm/test/tools/llvm-objcopy/ELF/strip-debug.test
+index 711f9d3b6d8..4d7cb173c34 100644
+--- a/llvm/test/tools/llvm-objcopy/ELF/strip-debug.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/strip-debug.test
+@@ -116,6 +116,8 @@ Symbols:
+   - Name:    debugfoo
+     Section: .debugfoo
+     Binding:  STB_GLOBAL
++  - Name:    filesymbol
++    Type:    STT_FILE
+ 
+ # CHECK: SectionHeaderCount: 5
+ 
+@@ -124,7 +126,7 @@ Symbols:
+ # CHECK: Name: .strtab
+ # CHECK: Name: .shstrtab
+ 
+-# Check that *only* foo is copied and not debugfoo
++# Check that *only* foo is copied and not debugfoo or filesymbol.
+ # CHECK:      Symbols [
+ # CHECK-NEXT:   Symbol {
+ # CHECK-NEXT:     Name:
+diff --git a/llvm/tools/llvm-objcopy/COFF/COFFObjcopy.cpp b/llvm/tools/llvm-objcopy/COFF/COFFObjcopy.cpp
+index 0a3c4087425..2e363f26eac 100644
+--- a/llvm/tools/llvm-objcopy/COFF/COFFObjcopy.cpp
++++ b/llvm/tools/llvm-objcopy/COFF/COFFObjcopy.cpp
+@@ -250,9 +250,9 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
+       !Config.SymbolsToLocalize.empty() || !Config.SymbolsToWeaken.empty() ||
+       !Config.SymbolsToKeepGlobal.empty() || !Config.SectionsToRename.empty() ||
+       !Config.SetSectionAlignment.empty() || Config.ExtractDWO ||
+-      Config.KeepFileSymbols || Config.LocalizeHidden || Config.PreserveDates ||
+-      Config.StripDWO || Config.StripNonAlloc || Config.StripSections ||
+-      Config.Weaken || Config.DecompressDebugSections ||
++      Config.LocalizeHidden || Config.PreserveDates || Config.StripDWO ||
++      Config.StripNonAlloc || Config.StripSections || Config.Weaken ||
++      Config.DecompressDebugSections ||
+       Config.DiscardMode == DiscardType::Locals ||
+       !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
+     return createStringError(llvm::errc::invalid_argument,
+diff --git a/llvm/tools/llvm-objcopy/CopyConfig.cpp b/llvm/tools/llvm-objcopy/CopyConfig.cpp
+index df2fbbb05a8..ff12e4bd89f 100644
+--- a/llvm/tools/llvm-objcopy/CopyConfig.cpp
++++ b/llvm/tools/llvm-objcopy/CopyConfig.cpp
+@@ -667,8 +667,10 @@ parseObjcopyOptions(ArrayRef<const char *> ArgsArr,
+   Config.KeepFileSymbols = InputArgs.hasArg(OBJCOPY_keep_file_symbols);
+   Config.DecompressDebugSections =
+       InputArgs.hasArg(OBJCOPY_decompress_debug_sections);
+-  if (Config.DiscardMode == DiscardType::All)
++  if (Config.DiscardMode == DiscardType::All) {
+     Config.StripDebug = true;
++    Config.KeepFileSymbols = true;
++  }
+   for (auto Arg : InputArgs.filtered(OBJCOPY_localize_symbol))
+     if (Error E = Config.SymbolsToLocalize.addMatcher(NameOrPattern::create(
+             Arg->getValue(), SymbolMatchStyle, ErrorCallback)))
+@@ -938,8 +940,10 @@ parseStripOptions(ArrayRef<const char *> ArgsArr,
+       !Config.StripAllGNU && Config.SymbolsToRemove.empty())
+     Config.StripAll = true;
+ 
+-  if (Config.DiscardMode == DiscardType::All)
++  if (Config.DiscardMode == DiscardType::All) {
+     Config.StripDebug = true;
++    Config.KeepFileSymbols = true;
++  }
+ 
+   Config.DeterministicArchives =
+       InputArgs.hasFlag(STRIP_enable_deterministic_archives,
+diff --git a/llvm/tools/llvm-objcopy/ELF/ELFObjcopy.cpp b/llvm/tools/llvm-objcopy/ELF/ELFObjcopy.cpp
+index d12eff718f5..c1d8c1fa979 100644
+--- a/llvm/tools/llvm-objcopy/ELF/ELFObjcopy.cpp
++++ b/llvm/tools/llvm-objcopy/ELF/ELFObjcopy.cpp
+@@ -420,6 +420,9 @@ static Error updateAndRemoveSymbols(const CopyConfig &Config, Object &Obj) {
+     if (Config.StripAll || Config.StripAllGNU)
+       return true;
+ 
++    if (Config.StripDebug && Sym.Type == STT_FILE)
++      return true;
++
+     if (Config.SymbolsToRemove.matches(Sym.Name))
+       return true;
+ 
+diff --git a/llvm/tools/llvm-objcopy/MachO/MachOObjcopy.cpp b/llvm/tools/llvm-objcopy/MachO/MachOObjcopy.cpp
+index 8f159ca1163..040a3710b92 100644
+--- a/llvm/tools/llvm-objcopy/MachO/MachOObjcopy.cpp
++++ b/llvm/tools/llvm-objcopy/MachO/MachOObjcopy.cpp
+@@ -171,11 +171,10 @@ static Error handleArgs(const CopyConfig &Config, Object &Obj) {
+       !Config.SectionsToRename.empty() ||
+       !Config.UnneededSymbolsToRemove.empty() ||
+       !Config.SetSectionAlignment.empty() || !Config.SetSectionFlags.empty() ||
+-      Config.ExtractDWO || Config.KeepFileSymbols || Config.LocalizeHidden ||
+-      Config.PreserveDates || Config.StripAllGNU || Config.StripDWO ||
+-      Config.StripNonAlloc || Config.StripSections || Config.Weaken ||
+-      Config.DecompressDebugSections || Config.StripNonAlloc ||
+-      Config.StripSections || Config.StripUnneeded ||
++      Config.ExtractDWO || Config.LocalizeHidden || Config.PreserveDates ||
++      Config.StripAllGNU || Config.StripDWO || Config.StripNonAlloc ||
++      Config.StripSections || Config.Weaken || Config.DecompressDebugSections ||
++      Config.StripNonAlloc || Config.StripSections || Config.StripUnneeded ||
+       Config.DiscardMode == DiscardType::Locals ||
+       !Config.SymbolsToAdd.empty() || Config.EntryExpr) {
+     return createStringError(llvm::errc::invalid_argument,
+-- 
+2.26.1.301.g55bc3eb7cb9-goog
+
