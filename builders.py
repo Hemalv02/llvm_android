@@ -303,6 +303,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         """Sets cmake defines for lldb."""
         defines['SWIG_EXECUTABLE'] = str(paths.SWIG_EXECUTABLE)
         py_prefix = 'Python3' if target.is_windows else 'PYTHON'
+        defines['LLDB_ENABLE_PYTHON'] = 'ON'
         defines[f'{py_prefix}_LIBRARY'] = str(paths.get_python_lib(target))
         defines[f'{py_prefix}_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
         defines[f'{py_prefix}_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
@@ -314,8 +315,9 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['LLDB_NO_DEBUGSERVER'] = 'ON'
 
         if target.is_linux:
-            defines['libedit_INCLUDE_DIRS'] = str(paths.get_libedit_include_dir(target))
-            defines['libedit_LIBRARIES'] = str(paths.get_libedit_lib(target))
+            defines['LLDB_ENABLE_LIBEDIT'] = 'ON'
+            defines['LibEdit_INCLUDE_DIRS'] = str(paths.get_libedit_include_dir(target))
+            defines['LibEdit_LIBRARIES'] = str(paths.get_libedit_lib(target))
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
