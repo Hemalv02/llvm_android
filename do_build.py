@@ -697,6 +697,11 @@ class Stage1Builder(builders.LLVMBuilder):
         ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
         return ldflags
 
+    def set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:
+        # Disable dependencies because we only need lldb-tblgen to be built.
+        defines['LLDB_ENABLE_PYTHON'] = 'OFF'
+        defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
+
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
@@ -749,8 +754,9 @@ def install_lldb_deps(install_dir: Path, host: hosts.Host):
     dest_py_lib = python_dest_dir / py_lib
     py_lib_rel = os.path.relpath(dest_py_lib, lib_dir)
     os.symlink(py_lib_rel, lib_dir / py_lib.name)
-    if host.is_linux:
-        shutil.copy2(paths.get_libedit_lib(host), lib_dir)
+    if not host.is_windows:
+        libedit_root = BuilderRegistry.get('libedit').install_dir
+        shutil.copy2(paths.get_libedit_lib(libedit_root, host), lib_dir)
 
 
 class Stage2Builder(builders.LLVMBuilder):
@@ -973,6 +979,31 @@ class LibOMPBuilder(builders.LLVMRuntimeBuilder):
         dst_dir = self.install_dir
         dst_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_lib, dst_dir / libname)
+
+
+class LibEditBuilder(builders.AutoconfBuilder):
+    name: str = 'libedit'
+    src_dir: Path = paths.LIBEDIT_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+
+class SwigBuilder(builders.AutoconfBuilder):
+    name: str = 'swig'
+    src_dir: Path = paths.SWIG_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+    @property
+    def config_flags(self) -> List[str]:
+        flags = super().config_flags
+        flags.append('--without-pcre')
+        return flags
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        # Point to the libc++.so from the toolchain.
+        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        return ldflags
 
 
 class LldbServerBuilder(builders.LLVMRuntimeBuilder):
@@ -1692,6 +1723,12 @@ def main():
     stage1_toolchain = toolchains.get_toolchain_from_builder(stage1)
     toolchains.set_runtime_toolchain(stage1_toolchain)
     stage1_install = str(stage1.install_dir)
+
+    if BUILD_LLDB:
+        SwigBuilder().build()
+        if BuilderRegistry.should_build('stage2'):
+            # libedit is not needed for windows lldb.
+            LibEditBuilder().build()
 
     if need_host:
         profdata_filename = pgo_profdata_filename()
