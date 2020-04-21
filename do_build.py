@@ -1816,6 +1816,11 @@ def main():
         stage2.lto = not args.no_lto
         stage2.build_instrumented = instrumented
         stage2.profdata_file = Path(profdata) if profdata else None
+
+        # Annotate the version string if there is no profdata.
+        if profdata is None:
+            stage2.build_name += ', NO PGO PROFILE, '
+
         stage2.build()
         stage2_install = str(stage2.install_dir)
 

@@ -88,6 +88,10 @@ class ArgParser(argparse.ArgumentParser):
             '--overwrite', action='store_true',
             help='Remove/overwrite any existing prebuilt directories.')
 
+        self.add_argument(
+            '--no-sanity-check', action='store_true',
+            help='Skip sanity checks on the prebuilt binaries.')
+
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
@@ -132,6 +136,18 @@ def symlink_to_linux_resource_dir(install_dir):
     os.chdir(prebuilt_dir)
 
 
+def sanity_check(host, install_dir, clang_version_major):
+    # Make sure the binary has correct PGO profile.
+    if host == 'linux-x86':
+      realClangPath = os.path.join(install_dir, 'bin', 'clang-' + clang_version_major)
+      strings = check_output(['strings', realClangPath])
+      if strings.find('NO PGO PROFILE') != -1:
+          logger().error('The Clang binary is not built with profiles.')
+          return False
+
+    return True
+
+
 def format_bug(bug):
     """Formats a bug for use in a commit message.
 
@@ -146,7 +162,7 @@ def format_bug(bug):
 
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
-                 manifest, overwrite):
+                 manifest, overwrite, do_sanity_check):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
     os.chdir(prebuilt_dir)
 
@@ -192,6 +208,10 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     # driver.
     if host == 'darwin-x86':
         symlink_to_linux_resource_dir(install_subdir)
+
+    if do_sanity_check:
+        if not sanity_check(host, install_subdir, clang_version.split('.')[0]):
+            sys.exit(1)
 
     shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
 
@@ -255,7 +275,8 @@ def main():
 
         for host in hosts:
             update_clang(host, args.build, args.use_current_branch,
-                         download_dir, args.bug, manifest, args.overwrite)
+                         download_dir, args.bug, manifest, args.overwrite,
+                         not args.no_sanity_check)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
