@@ -15,10 +15,12 @@
 #
 """APIs for accessing toolchains."""
 
+import functools
 from pathlib import Path
 from typing import Optional
 
 from builder_registry import BuilderRegistry
+import hosts
 import paths
 import version
 
@@ -26,31 +28,9 @@ class Toolchain:
     """Base toolchain."""
 
     path: Path
+    build_path: Path
 
-    @property
-    def cc(self) -> Path:  # pylint: disable=invalid-name
-        """Returns the path to c compiler."""
-        raise NotImplementedError()
-
-    @property
-    def cxx(self) -> Path:
-        """Returns the path to c++ compiler."""
-        raise NotImplementedError()
-
-    @property
-    def lib_dir(self) -> Path:
-        """Returns the path to lib dir."""
-        raise NotImplementedError()
-
-    def get_resource_dir(self, arch: str = '') -> Path:
-        """Returns resource dir path for an arch."""
-        raise NotImplementedError()
-
-
-class _HostToolchain(Toolchain):
-    """Base toolchain that compiles host binary."""
-
-    def __init__(self, path: Path, build_path: Optional[Path] = None) -> None:
+    def __init__(self, path: Path, build_path: Path) -> None:
         self.path = path
         self.build_path = build_path
 
@@ -72,28 +52,33 @@ class _HostToolchain(Toolchain):
     def _version_file(self) -> Path:
         return self.path / 'include' / 'clang' / 'Basic'/ 'Version.inc'
 
-    @property
+    @functools.cached_property
     def _version(self) -> version.Version:
         return version.Version(self._version_file)
 
-    def get_resource_dir(self, arch: str = '') -> Path:
-        """Returns the path to resource dir."""
-        return (self.lib_dir / 'clang' / self._version.long_version() /
-                'lib' / 'linux' / arch)
+    @property
+    def clang_lib_dir(self) -> Path:
+        return self.lib_dir / 'clang' / self._version.long_version()
+
+    @property
+    def resource_dir(self) -> Path:
+        return self.clang_lib_dir / 'lib' / 'linux'
 
 
-def build_toolchain_for_path(path: Path, build_path: Optional[Path] = None) -> Toolchain:
+@functools.lru_cache
+def _build_toolchain_for_path(path: Path, build_path: Path) -> Toolchain:
     """Returns a toolchain object for a given path."""
-    return _HostToolchain(path, build_path)
+    return Toolchain(path, build_path)
 
 
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
-    return build_toolchain_for_path(paths.CLANG_PREBUILT_DIR)
+    # Prebuilt toolchain doesn't have a build path. Use a dummy path instead.
+    return _build_toolchain_for_path(paths.CLANG_PREBUILT_DIR, Path('.'))
 
 
 def _get_toolchain_from_builder(builder) -> Toolchain:
-    return build_toolchain_for_path(builder.install_dir, builder.output_dir)
+    return _build_toolchain_for_path(builder.install_dir, builder.output_dir)
 
 
 def get_toolchain_by_name(name: str) -> Toolchain:
