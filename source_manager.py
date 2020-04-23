@@ -25,6 +25,7 @@ import subprocess
 import sys
 
 import android_version
+import hosts
 import utils
 
 
@@ -76,7 +77,13 @@ def setup_sources(source_dir, build_llvm_next):
     # changed files into source_dir.  Using 'cp' will ensure all changed files
     # get a newer timestamp than files in $source_dir.
     # Note: Darwin builds don't copy symlinks with -r.  Use -R instead.
-    subprocess.check_call(['cp', '-Rf', copy_from, tmp_source_dir])
+    reflink = '--reflink=auto' if hosts.build_host().is_linux else '-c'
+    cmd = ['cp', '-Rf', copy_from, tmp_source_dir]
+    try:
+      subprocess.check_call(cmd + [reflink])
+    except subprocess.CalledProcessError:
+      # Fallback to normal copy.
+      subprocess.check_call(cmd)
 
     # patch source tree
     patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
