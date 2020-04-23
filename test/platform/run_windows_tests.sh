@@ -122,7 +122,7 @@ run_smoke_tests() {
     "out/soong/.intermediates/external/protobuf/aprotoc/windows_x86/aprotoc.exe;0"
     "out/soong/.intermediates/frameworks/compile/libbcc/tools/bcc_compat/bcc_compat/windows_x86/bcc_compat.exe;0"
     "out/soong/.intermediates/build/soong/cc/libbuildversion/tests/build_version_test/windows_x86/build_version_test.exe;0"
-    "out/soong/.intermediates/dalvik/dexdump/dexdump/windows_x86/dexdump.exe;2"
+    "out/soong/.intermediates/art/dexdump/dexdump/windows_x86/dexdump.exe;2"
     "out/soong/.intermediates/art/tools/dmtracedump/dmtracedump/windows_x86/dmtracedump.exe;2"
     "out/soong/.intermediates/development/tools/etc1tool/etc1tool/windows_x86/etc1tool.exe;1"
     "out/soong/.intermediates/system/core/fastboot/fastboot/windows_x86/fastboot.exe;0"
