@@ -1689,6 +1689,8 @@ def main():
     stage1.build_llvm_tools = stage1_build_llvm_tools
     stage1.build_all_targets = args.debug or instrumented
     stage1.build()
+    stage1_toolchain = toolchains.get_toolchain_from_builder(stage1)
+    toolchains.set_runtime_toolchain(stage1_toolchain)
     stage1_install = str(stage1.install_dir)
 
     if need_host:
@@ -1715,6 +1717,9 @@ def main():
             stage2.build_name += ', NO PGO PROFILE, '
 
         stage2.build()
+        if not (stage2.build_instrumented or stage2.debug_build):
+            stage2_toolchain = toolchains.get_toolchain_from_builder(stage2)
+            toolchains.set_runtime_toolchain(stage2_toolchain)
         stage2_install = str(stage2.install_dir)
 
         if hosts.build_host().is_linux and do_runtimes:

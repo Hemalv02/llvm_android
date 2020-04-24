@@ -17,10 +17,8 @@
 
 import functools
 from pathlib import Path
-from typing import Optional
 
 from builder_registry import BuilderRegistry
-import hosts
 import paths
 import version
 
@@ -77,7 +75,8 @@ def get_prebuilt_toolchain() -> Toolchain:
     return _build_toolchain_for_path(paths.CLANG_PREBUILT_DIR, Path('.'))
 
 
-def _get_toolchain_from_builder(builder) -> Toolchain:
+def get_toolchain_from_builder(builder) -> Toolchain:
+    """Gets the toolchain from a toolchain builder."""
     return _build_toolchain_for_path(builder.install_dir, builder.output_dir)
 
 
@@ -85,12 +84,17 @@ def get_toolchain_by_name(name: str) -> Toolchain:
     """Tet a toolchain by name."""
     if name == 'prebuilt':
         return get_prebuilt_toolchain()
-    return _get_toolchain_from_builder(BuilderRegistry.get(name))
+    return get_toolchain_from_builder(BuilderRegistry.get(name))
+
+
+_RUNTIME_TOOLCHAIN: Toolchain = get_prebuilt_toolchain()
+def set_runtime_toolchain(toolchain: Toolchain) -> None:
+    """Sets the toolchain used to build runtime."""
+    global _RUNTIME_TOOLCHAIN  # pylint: disable=global-statement
+    _RUNTIME_TOOLCHAIN = toolchain
 
 
 def get_runtime_toolchain() -> Toolchain:
     """Gets the toolchain used to build runtime."""
-    builder = BuilderRegistry.get('stage2')
-    if not builder or builder.build_instrumented or builder.debug_build:
-        builder = BuilderRegistry.get('stage1')
-    return _get_toolchain_from_builder(builder)
+    global _RUNTIME_TOOLCHAIN  # pylint: disable=global-statement
+    return _RUNTIME_TOOLCHAIN

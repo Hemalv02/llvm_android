@@ -337,6 +337,8 @@ def build_clang(instrumented=False, pgo=True):
     stage2.build_instrumented = instrumented
     stage2.profdata_file = Path(profdata) if profdata else None
     stage2.build()
+    stage2_toolchain = toolchains.get_toolchain_from_builder(stage2)
+    toolchains.set_runtime_toolchain(stage2_toolchain)
     stage2_install = str(stage2.install_dir)
 
     build.build_runtimes(stage2_install)
