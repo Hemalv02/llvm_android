@@ -25,6 +25,7 @@ import subprocess
 import do_build as build
 import hosts
 import source_manager
+import toolchains
 import utils
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
