@@ -63,7 +63,7 @@ class CMakeBuilder(Builder):
     """Builder for cmake targets."""
     config: configs.Config
     src_dir: Path
-    remove_cmake_cache: bool = False
+    remove_cmake_cache: bool = True
     remove_install_dir: bool = False
     ninja_target: Optional[str] = None
 
@@ -247,7 +247,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     """Base builder for llvm runtime libs."""
 
-    remove_cmake_cache: bool = True
     _config: configs.AndroidConfig
 
     @property
