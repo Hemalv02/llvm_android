@@ -25,6 +25,7 @@ ANDROID_DIR: Path = Path(__file__).resolve().parents[2]
 OUT_DIR: Path = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
 LLVM_PATH: Path = OUT_DIR / 'llvm-project'
 PREBUILTS_DIR: Path = ANDROID_DIR / 'prebuilts'
+EXTERNAL_DIR: Path = ANDROID_DIR / 'external'
 
 CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host().os_tag
                             / constants.CLANG_PREBUILT_VERSION)
@@ -34,9 +35,8 @@ BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
 NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'ninja' / hosts.build_host().os_tag / 'ninja'
 
-SWIG_ROOT: Path = PREBUILTS_DIR / 'swig' / hosts.build_host().os_tag
-SWIG_LIB: Path = SWIG_ROOT / 'share' / 'swig' / '3.0.12'
-SWIG_EXECUTABLE: Path = SWIG_ROOT / 'bin' / 'swig'
+LIBEDIT_SRC_DIR: Path = EXTERNAL_DIR / 'libedit'
+SWIG_SRC_DIR: Path = EXTERNAL_DIR / 'swig'
 
 NDK_BASE: Path = ANDROID_DIR / 'toolchain' / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'
@@ -90,13 +90,14 @@ def get_python_dynamic_lib(host: hosts.Host) -> Path:
         hosts.Host.Windows: python_root / 'python38.dll',
     }[host]
 
-def _get_libedit_dir(host: hosts.Host) -> Path:
-    return PREBUILTS_DIR / 'libedit' / host.os_tag
-
-def get_libedit_include_dir(host: hosts.Host) -> Path:
+def get_libedit_include_dir(libedit_root: Path) -> Path:
     """Returns the path to libedit include for a host."""
-    return _get_libedit_dir(host) / 'include'
+    return libedit_root / 'include'
 
-def get_libedit_lib(host: hosts.Host) -> Path:
+def get_libedit_lib(libedit_root: Path, host: hosts.Host) -> Path:
     """Returns the path to libedit lib for a host."""
-    return _get_libedit_dir(host) / 'lib' / 'libedit.so.0'
+    if host.is_darwin:
+        return libedit_root / 'lib' / 'libedit.dylib'
+    if host.is_linux:
+        return libedit_root / 'lib' / 'libedit.so.0'
+    raise NotImplementedError(f"Unsupported host {host.name}")
