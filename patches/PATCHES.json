@@ -472,5 +472,11 @@
         "rel_patch_path": "Revert-two-zlib-changes.patch",
         "start_version": 380415,
         "end_version": 386220
+    },
+    {
+        "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
+        "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av.patch",
+        "start_version": 383902,
+        "end_version": null
     }
 ]
