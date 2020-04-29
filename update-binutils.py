@@ -50,6 +50,7 @@ def update_binutils_symlink(host, prebuilt_dir, version):
         'llvm-as',
         'llvm-cov',
         'llvm-dis',
+        'llvm-dwarfdump',
         'llvm-link',
         'llvm-modextract',
         'llvm-nm',
