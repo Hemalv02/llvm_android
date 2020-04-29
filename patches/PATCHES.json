@@ -390,6 +390,12 @@
         "end_version": 386793
     },
     {
+        "comment": "[UPSTREAM] Revert \"[GISel]: Fix incorrect IRTranslation while translating null pointer types\"",
+        "rel_patch_path": "cherry/b8fc192d42af56b17b7d940e6c226f4969e0d851.patch",
+        "start_version": 383902,
+        "end_version": 388672
+    },
+    {
         "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
         "rel_patch_path": "cherry/0f9e1e3ae750df483b7fff905a8bc89262e3179e.patch",
         "start_version": 383902,
