@@ -145,6 +145,18 @@ def sanity_check(host, install_dir, clang_version_major):
           logger().error('The Clang binary is not built with profiles.')
           return False
 
+    # Check that all the files listed in remote_toolchain_inputs are valid
+    if host == 'linux-x86':
+      with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs')) as inputs_file:
+        files = [line.strip() for line in inputs_file.readlines()]
+        fail = False
+        for f in files:
+          if not os.path.exists(os.path.join(install_dir, 'bin', f)):
+            logger().error('remote_toolchain_inputs malformed, ' + f + ' does not exist')
+            fail = True
+        if fail:
+          return False
+
     return True
 
 
