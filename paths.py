@@ -97,7 +97,7 @@ def get_libedit_include_dir(libedit_root: Path) -> Path:
 def get_libedit_lib(libedit_root: Path, host: hosts.Host) -> Path:
     """Returns the path to libedit lib for a host."""
     if host.is_darwin:
-        return libedit_root / 'lib' / 'libedit.dylib'
+        return libedit_root / 'lib' / 'libedit.0.dylib'
     if host.is_linux:
         return libedit_root / 'lib' / 'libedit.so.0'
     raise NotImplementedError(f"Unsupported host {host.name}")

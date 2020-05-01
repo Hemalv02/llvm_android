@@ -986,6 +986,17 @@ class LibEditBuilder(builders.AutoconfBuilder):
     src_dir: Path = paths.LIBEDIT_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
 
+    def install(self) -> None:
+        super().install()
+        if self._config.target_os.is_darwin:
+            # Updates LC_ID_DYLIB so that users of libedit won't link with absolute path.
+            libedit_path = paths.get_libedit_lib(self.install_dir,
+                                                 self._config.target_os)
+            cmd = ['install_name_tool',
+                   '-id', f'@rpath/{libedit_path.name}',
+                   str(libedit_path)]
+            utils.check_call(cmd)
+
 
 class SwigBuilder(builders.AutoconfBuilder):
     name: str = 'swig'
