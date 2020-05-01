@@ -18,10 +18,10 @@
 import datetime
 import logging
 import os
+import shlex
 import shutil
 import stat
 import subprocess
-import sys
 from typing import List
 
 import constants
@@ -86,7 +86,7 @@ def check_call(cmd, *args, **kwargs):
     """subprocess.check_call with logging."""
     logger().info('check_call:%s %s',
                   datetime.datetime.now().strftime("%H:%M:%S"),
-                  subprocess.list2cmdline(cmd))
+                  list2cmdline(cmd))
     subprocess.check_call(cmd, *args, **kwargs)
 
 
@@ -95,14 +95,14 @@ def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
         return subprocess.check_call(args, stdout=stdout, stderr=stderr,
                                      cwd=cwd)
     else:
-        print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
+        print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
 
 def check_output_d(args, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
         return subprocess.check_output(args, stderr=stderr, cwd=cwd,
                                        universal_newlines=True)
     else:
-        print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
+        print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
 
 
 def parse_version(ver: str) -> List[int]:
@@ -114,3 +114,15 @@ def is_available_mac_ver(ver: str) -> bool:
     """Returns whether a version string is equal to or under MAC_MIN_VERSION."""
     return parse_version(ver) <= parse_version(constants.MAC_MIN_VERSION)
 
+
+def list2cmdline(args):
+    """Joins arguments into a Bourne-shell cmdline.
+
+    Like shlex.join from Python 3.8, but is flexible about the argument type.
+    Each argument can be a str, a bytes, or a path-like object. (subprocess.call
+    is similarly flexible.)
+
+    Similar to the undocumented subprocess.list2cmdline, but does Bourne-style
+    escaping rather than MSVCRT escaping.
+    """
+    return ' '.join([shlex.quote(os.fsdecode(arg)) for arg in args])
