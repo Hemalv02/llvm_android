@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -48,7 +48,7 @@ def check_call(cmd, *args, **kwargs):
 def check_output(cmd, *args, **kwargs):
     """subprocess.check_output with logging."""
     logger().info('check_output: %s', subprocess.list2cmdline(cmd))
-    return subprocess.check_output(cmd, *args, **kwargs)
+    return subprocess.check_output(cmd, *args, **kwargs, text=True)
 
 
 class ArgParser(argparse.ArgumentParser):
@@ -95,8 +95,8 @@ class ArgParser(argparse.ArgumentParser):
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
-    cmd = [fetch_artifact_path, '--branch={}'.format(branch),
-           '--target={}'.format(target), '--bid={}'.format(build), pattern]
+    cmd = [fetch_artifact_path, f'--branch={branch}',
+           f'--target={target}', f'--bid={build}', pattern]
     check_call(cmd)
 
 
@@ -152,7 +152,7 @@ def sanity_check(host, install_dir, clang_version_major):
         fail = False
         for f in files:
           if not os.path.exists(os.path.join(install_dir, 'bin', f)):
-            logger().error('remote_toolchain_inputs malformed, ' + f + ' does not exist')
+            logger().error(f'remote_toolchain_inputs malformed, {f} does not exist')
             fail = True
         if fail:
           return False
@@ -168,7 +168,7 @@ def format_bug(bug):
     the string as-is.
     """
     try:
-        return 'http://b/{}'.format(int(bug))
+        return f'http://b/{bug}'
     except ValueError:
         return bug
 
@@ -179,20 +179,18 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     os.chdir(prebuilt_dir)
 
     if not use_current_branch:
-        branch_name = 'update-clang-{}'.format(build_number)
+        branch_name = f'update-clang-{build_number}'
         unchecked_call(
             ['repo', 'abandon', branch_name, '.'])
         check_call(
             ['repo', 'start', branch_name, '.'])
 
-    package = '{}/clang-{}-{}.tar.bz2'.format(
-        download_dir, build_number, host)
+    package = f'{download_dir}/clang-{build_number}-{host}.tar.bz2'
 
     # Handle legacy versions of packages (like those from aosp/llvm-r365631).
     if not os.path.exists(package) and host == 'windows-x86':
-        package = '{}/clang-{}-{}.tar.bz2'.format(
-            download_dir, build_number, 'windows-x86-64')
-    manifest_file = '{}/{}'.format(download_dir, manifest)
+        package = f'{download_dir}/clang-{build_number}-windows-x86-64.tar.bz2'
+    manifest_file = f'{download_dir}/{manifest}'
 
     extract_package(package, prebuilt_dir)
 
@@ -236,13 +234,13 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         return
 
     message_lines = [
-        'Update prebuilt Clang to {}.'.format(svn_revision),
-        '', 'clang {} (based on {}) from build {}.'.format(
-            clang_version, svn_revision, build_number)
+        f'Update prebuilt Clang to {svn_revision}.',
+        '',
+        f'clang {clang_version} (based on {svn_revision}) from build {build_number}.'
     ]
     if bug is not None:
         message_lines.append('')
-        message_lines.append('Bug: {}'.format(format_bug(bug)))
+        message_lines.append(f'Bug: {format_bug(bug)}')
     message_lines.append('Test: N/A')
     message = '\n'.join(message_lines)
     check_call(['git', 'commit', '-m', message])
@@ -266,7 +264,7 @@ def main():
     targets = ['darwin_mac', 'linux', 'windows_x86_64']
     hosts = ['darwin-x86', 'linux-x86', 'windows-x86']
     clang_pattern = 'clang-*.tar.bz2'
-    manifest = 'manifest_{}.xml'.format(args.build)
+    manifest = f'manifest_{args.build}.xml'
 
     branch = args.branch
     if branch is None:
