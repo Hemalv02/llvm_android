@@ -189,7 +189,7 @@ class CMakeBuilder(Builder):
     """Builder for cmake targets."""
     config: configs.Config
     src_dir: Path
-    remove_cmake_cache: bool = True
+    remove_cmake_cache: bool = False
     remove_install_dir: bool = False
     ninja_target: Optional[str] = None
 
