@@ -23,6 +23,9 @@ import shutil
 import stat
 import subprocess
 import sys
+from typing import List
+
+import constants
 
 THIS_DIR = os.path.realpath(os.path.dirname(__file__))
 
@@ -101,3 +104,14 @@ def check_output_d(args, stderr=None, cwd=None, dry_run=False):
                                        universal_newlines=True)
     else:
         print("Project " + os.path.basename(cwd) + ": " + ' '.join(args))
+
+
+def parse_version(ver: str) -> List[int]:
+    """Parses a dot separated version string to int list."""
+    return list(int(v) for v in ver.split('.'))
+
+
+def is_available_mac_ver(ver: str) -> bool:
+    """Returns whether a version string is equal to or under MAC_MIN_VERSION."""
+    return parse_version(ver) <= parse_version(constants.MAC_MIN_VERSION)
+

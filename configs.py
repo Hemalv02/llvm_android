@@ -101,6 +101,13 @@ class DarwinConfig(_BaseConfig):
     target_os: hosts.Host = hosts.Host.Darwin
     use_lld: bool = False
 
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        # Fails if an API used is newer than what specified in -mmacosx-version-min.
+        cflags.append('-Werror=unguarded-availability')
+        return cflags
+
 
 class _GccConfig(_BaseConfig):  # pylint: disable=abstract-method
     """Base config to use gcc libs."""

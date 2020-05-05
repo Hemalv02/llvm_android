@@ -15,8 +15,8 @@
 #
 """Configs for the build."""
 
-# We were using 10.8, but we need 10.9 to use ~type_info() from libcxx.
-MAC_MIN_VERSION: str = '10.9'
+# Minimum macOS version to support.
+MAC_MIN_VERSION: str = '10.10'
 
 # This is the baseline stable version of Clang to start our stage-1 build.
 CLANG_PREBUILT_VERSION: str = 'clang-r383902'

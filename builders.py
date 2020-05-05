@@ -407,7 +407,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLDB_PYTHON_HOME'] = '../python3'
 
         if target.is_darwin:
-            defines['LLDB_NO_DEBUGSERVER'] = 'ON'
+            # Avoids the build of debug server. It is only used in testing.
+            defines['LLDB_USE_SYSTEM_DEBUGSERVER'] = 'ON'
 
         if not target.is_windows:
             libedit_root = BuilderRegistry.get('libedit').install_dir
