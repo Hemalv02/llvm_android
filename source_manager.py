@@ -78,11 +78,12 @@ def setup_sources(source_dir, build_llvm_next):
     # get a newer timestamp than files in $source_dir.
     # Note: Darwin builds don't copy symlinks with -r.  Use -R instead.
     reflink = '--reflink=auto' if hosts.build_host().is_linux else '-c'
-    cmd = ['cp', '-Rf', copy_from, tmp_source_dir]
     try:
-      subprocess.check_call(cmd + [reflink])
+      cmd = ['cp', '-Rf', reflink, copy_from, tmp_source_dir]
+      subprocess.check_call(cmd)
     except subprocess.CalledProcessError:
       # Fallback to normal copy.
+      cmd = ['cp', '-Rf', copy_from, tmp_source_dir]
       subprocess.check_call(cmd)
 
     # patch source tree
