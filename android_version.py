@@ -19,7 +19,7 @@ _svn_revision = 'r383902'
 # svn_revision_next will be newer than the official svn_revision in the future.
 _svn_revision_next = 'r383902'
 
-def get_svn_revision(build_llvm_next):
+def get_svn_revision(build_llvm_next=False):
     if build_llvm_next:
         return _svn_revision_next
     return _svn_revision

@@ -28,7 +28,8 @@ import hosts
 import utils
 
 
-def apply_patches(source_dir, svn_version, patch_json, patch_dir):
+def apply_patches(source_dir, svn_version, patch_json, patch_dir,
+                  failure_mode='fail'):
     """Apply patches in $patch_dir/$patch_json to $source_dir.
 
     Invokes external/toolchain-utils/llvm_tools/patch_manager.py to apply the
@@ -44,10 +45,10 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir):
         '--filesdir_path', patch_dir,
         '--src_path', source_dir,
         '--use_src_head',
-        '--failure_mode', 'fail'
+        '--failure_mode', failure_mode
     ]
 
-    subprocess.check_call(patch_manager_cmd)
+    return utils.check_output(patch_manager_cmd)
 
 
 def setup_sources(source_dir, build_llvm_next):
@@ -92,7 +93,9 @@ def setup_sources(source_dir, build_llvm_next):
     # strip the leading 'r' and letter suffix, e.g., r377782b => 377782
     svn_version = svn_version[1:].rstrip(string.ascii_lowercase)
 
-    apply_patches(tmp_source_dir, svn_version, patch_json, patch_dir)
+    patch_output = apply_patches(tmp_source_dir, svn_version, patch_json,
+                                 patch_dir)
+    print(patch_output)
 
     # Copy tmp_source_dir to source_dir if they are different.  This avoids
     # invalidating prior build outputs.
