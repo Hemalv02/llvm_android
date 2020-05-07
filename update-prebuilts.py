@@ -35,19 +35,19 @@ def logger():
 
 def unchecked_call(cmd, *args, **kwargs):
     """subprocess.call with logging."""
-    logger().info('unchecked_call: %s', subprocess.list2cmdline(cmd))
+    logger().info('unchecked_call: %s', utils.list2cmdline(cmd))
     return subprocess.call(cmd, *args, **kwargs)
 
 
 def check_call(cmd, *args, **kwargs):
     """subprocess.check_call with logging."""
-    logger().info('check_call: %s', subprocess.list2cmdline(cmd))
+    logger().info('check_call: %s', utils.list2cmdline(cmd))
     subprocess.check_call(cmd, *args, **kwargs)
 
 
 def check_output(cmd, *args, **kwargs):
     """subprocess.check_output with logging."""
-    logger().info('check_output: %s', subprocess.list2cmdline(cmd))
+    logger().info('check_output: %s', utils.list2cmdline(cmd))
     return subprocess.check_output(cmd, *args, **kwargs, text=True)
 
 
