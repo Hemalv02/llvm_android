@@ -33,24 +33,6 @@ def logger():
     return logging.getLogger(__name__)
 
 
-def unchecked_call(cmd, *args, **kwargs):
-    """subprocess.call with logging."""
-    logger().info('unchecked_call: %s', utils.list2cmdline(cmd))
-    return subprocess.call(cmd, *args, **kwargs)
-
-
-def check_call(cmd, *args, **kwargs):
-    """subprocess.check_call with logging."""
-    logger().info('check_call: %s', utils.list2cmdline(cmd))
-    subprocess.check_call(cmd, *args, **kwargs)
-
-
-def check_output(cmd, *args, **kwargs):
-    """subprocess.check_output with logging."""
-    logger().info('check_output: %s', utils.list2cmdline(cmd))
-    return subprocess.check_output(cmd, *args, **kwargs, text=True)
-
-
 class ArgParser(argparse.ArgumentParser):
     def __init__(self):
         super(ArgParser, self).__init__(
@@ -97,12 +79,12 @@ def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
     cmd = [fetch_artifact_path, f'--branch={branch}',
            f'--target={target}', f'--bid={build}', pattern]
-    check_call(cmd)
+    utils.check_call(cmd)
 
 
 def extract_package(package, install_dir):
     cmd = ['tar', 'xf', package, '-C', install_dir]
-    check_call(cmd)
+    utils.check_call(cmd)
 
 
 def extract_clang_info(clang_dir):
@@ -140,7 +122,7 @@ def sanity_check(host, install_dir, clang_version_major):
     # Make sure the binary has correct PGO profile.
     if host == 'linux-x86':
       realClangPath = os.path.join(install_dir, 'bin', 'clang-' + clang_version_major)
-      strings = check_output(['strings', realClangPath])
+      strings = utils.check_output(['strings', realClangPath])
       if strings.find('NO PGO PROFILE') != -1:
           logger().error('The Clang binary is not built with profiles.')
           return False
@@ -180,9 +162,9 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
 
     if not use_current_branch:
         branch_name = f'update-clang-{build_number}'
-        unchecked_call(
+        utils.unchecked_call(
             ['repo', 'abandon', branch_name, '.'])
-        check_call(
+        utils.check_call(
             ['repo', 'start', branch_name, '.'])
 
     package = f'{download_dir}/clang-{build_number}-{host}.tar.bz2'
@@ -225,10 +207,10 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
 
     shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
 
-    check_call(['git', 'add', install_subdir])
+    utils.check_call(['git', 'add', install_subdir])
 
     # If there is no difference with the new files, we are already done.
-    diff = unchecked_call(['git', 'diff', '--cached', '--quiet'])
+    diff = utils.unchecked_call(['git', 'diff', '--cached', '--quiet'])
     if diff == 0:
         logger().info('Bypassed commit with no diff')
         return
@@ -243,7 +225,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         message_lines.append(f'Bug: {format_bug(bug)}')
     message_lines.append('Test: N/A')
     message = '\n'.join(message_lines)
-    check_call(['git', 'commit', '-m', message])
+    utils.check_call(['git', 'commit', '-m', message])
 
 
 def main():
@@ -268,7 +250,8 @@ def main():
 
     branch = args.branch
     if branch is None:
-        o = check_output(['git', 'branch', '-av'])
+        git_dir = utils.android_path('toolchain', 'llvm_android', '.git')
+        o = utils.check_output(['git', '--git-dir=' + git_dir, 'branch', '-av'])
         branch = o.split(' ')[-1].strip().replace('/', '-')
         # aosp/llvm-toolchain uses the branch 'aosp-master', but we really only
         # pull prebuilts from 'aosp-llvm-toolchain' or other release branches.
