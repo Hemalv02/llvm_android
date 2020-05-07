@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2018 The Android Open Source Project
 #
@@ -30,18 +30,6 @@ import utils
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
-
-
-def unchecked_call(cmd, *args, **kwargs):
-    """subprocess.call with logging."""
-    logger().info('unchecked_call: %s', utils.list2cmdline(cmd))
-    return subprocess.call(cmd, *args, **kwargs)
-
-
-def check_call(cmd, *args, **kwargs):
-    """subprocess.check_call with logging."""
-    logger().info('check_call: %s', utils.list2cmdline(cmd))
-    subprocess.check_call(cmd, *args, **kwargs)
 
 
 class ArgParser(argparse.ArgumentParser):
@@ -78,26 +66,26 @@ class ArgParser(argparse.ArgumentParser):
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
-    cmd = [fetch_artifact_path, '--branch={}'.format(branch),
-           '--target={}'.format(target), '--bid={}'.format(build), pattern]
-    check_call(cmd)
+    cmd = [fetch_artifact_path, f'--branch={branch}',
+           f'--target={target}', f'--bid={build}', pattern]
+    utils.check_call(cmd)
 
 
 def get_lldb_package(target, build_number):
-    return 'lldb-{}-{}.zip'.format(target[1], build_number)
+    return f'lldb-{target[1]}-{build_number}.zip'
 
 
 def get_android_package(build_number):
-    return 'lldb-android-{}.zip'.format(build_number)
+    return f'lldb-android-{build_number}.zip'
 
 
 def get_manifest(build_number):
-    return 'manifest_{}.xml'.format(build_number)
+    return f'manifest_{build_number}.xml'
 
 
 def extract_package(package, install_dir):
     cmd = ['unzip', package, '-d', install_dir]
-    check_call(cmd)
+    utils.check_call(cmd)
 
 
 def update_lldb(target, build_number, use_current_branch, download_dir, bug):
@@ -107,10 +95,10 @@ def update_lldb(target, build_number, use_current_branch, download_dir, bug):
     install_subdir = os.path.join(prebuilt_dir, 'lldb')
 
     if not use_current_branch:
-        branch_name = 'update-lldb-{}'.format(build_number)
-        unchecked_call(
+        branch_name = f'update-lldb-{build_number}'
+        utils.unchecked_call(
             ['repo', 'abandon', branch_name, '.'])
-        check_call(
+        utils.check_call(
             ['repo', 'start', branch_name, '.'])
 
     package = os.path.join(download_dir, get_lldb_package(target, build_number))
@@ -128,23 +116,23 @@ def update_lldb(target, build_number, use_current_branch, download_dir, bug):
     manifest = os.path.join(download_dir, get_manifest(build_number))
     shutil.copy(manifest, install_subdir)
 
-    check_call(['git', 'add', install_subdir])
+    utils.check_call(['git', 'add', install_subdir])
 
     # If there is no difference with the new files, we are already done.
-    diff = unchecked_call(['git', 'diff', '--cached', '--quiet'])
+    diff = utils.unchecked_call(['git', 'diff', '--cached', '--quiet'])
     if diff == 0:
         logger().info('Bypassed commit with no diff')
         return
 
     message_lines = [
-        'Update prebuilt LLDB to build {}.'.format(build_number),
+        f'Update prebuilt LLDB to build {build_number}.'
     ]
     if bug is not None:
         message_lines.append('')
-        message_lines.append('Bug: http://b/{}'.format(bug))
+        message_lines.append(f'Bug: http://b/{bug}')
     message_lines.append('Test: N/A')
     message = '\n'.join(message_lines)
-    check_call(['git', 'commit', '-m', message])
+    utils.check_call(['git', 'commit', '-m', message])
 
 
 def fetch(targets, build_number):
