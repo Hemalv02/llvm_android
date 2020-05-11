@@ -123,6 +123,12 @@
         "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
         "rel_patch_path": "cherry/0f9e1e3ae750df483b7fff905a8bc89262e3179e.patch",
         "start_version": 383902,
+        "end_version": 386795
+    },
+    {
+        "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
+        "rel_patch_path": "cherry/0f9e1e3ae750df483b7fff905a8bc89262e3179ev2.patch",
+        "start_version": 386795,
         "end_version": 389251
     },
     {
