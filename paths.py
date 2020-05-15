@@ -34,7 +34,7 @@ CLANG_PREBUILT_LIBCXX_HEADERS: Path = CLANG_PREBUILT_DIR / 'include' / 'c++' / '
 BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
-NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'ninja' / hosts.build_host().os_tag / 'ninja'
+NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'ninja'
 
 LIBEDIT_SRC_DIR: Path = EXTERNAL_DIR / 'libedit'
 SWIG_SRC_DIR: Path = EXTERNAL_DIR / 'swig'
