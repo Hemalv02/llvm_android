@@ -163,14 +163,6 @@ def libcxx_header_dirs(ndk_cxx):
         ]
 
 
-def cmake_bin_path():
-    return utils.android_path('prebuilts/cmake', hosts.build_host().os_tag, 'bin/cmake')
-
-
-def ninja_bin_path():
-    return utils.android_path('prebuilts/ninja', hosts.build_host().os_tag, 'ninja')
-
-
 def check_create_path(path):
     if not os.path.exists(path):
         os.makedirs(path)
@@ -209,7 +201,7 @@ def rm_cmake_cache(cacheDir):
 def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
     flags = ['-G', 'Ninja']
 
-    flags += ['-DCMAKE_MAKE_PROGRAM=' + ninja_bin_path()]
+    flags += ['-DCMAKE_MAKE_PROGRAM=' + str(paths.NINJA_BIN_PATH)]
 
     for key in defines:
         newdef = '-D' + key + '=' + defines[key]
@@ -226,10 +218,10 @@ def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
     else:
         ninja_target = []
 
-    utils.check_call([cmake_bin_path()] + flags, cwd=out_path, env=env)
-    utils.check_call([ninja_bin_path()] + ninja_target, cwd=out_path, env=env)
+    utils.check_call([paths.CMAKE_BIN_PATH] + flags, cwd=out_path, env=env)
+    utils.check_call([paths.NINJA_BIN_PATH] + ninja_target, cwd=out_path, env=env)
     if install:
-        utils.check_call([ninja_bin_path(), 'install'], cwd=out_path, env=env)
+        utils.check_call([paths.NINJA_BIN_PATH, 'install'], cwd=out_path, env=env)
 
 
 def cross_compile_configs(toolchain, platform=False, static=False):
