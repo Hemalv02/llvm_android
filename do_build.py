@@ -726,6 +726,7 @@ class Stage2Builder(builders.LLVMBuilder):
         defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+        defines['CLANG_PYTHON_BINDINGS_VERSIONS'] = '3'
 
         if (self.lto and
                 not self._config.target_os.is_darwin and
