@@ -395,6 +395,13 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:  # pylint: disable=no-self-use
         """Sets cmake defines for lldb."""
+        # By default all these are auto-detected. Disable them explicitly to avoid unexpected dependency.
+        # They may be enabled again below if necessary.
+        defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
+        defines['LLDB_ENABLE_LZMA'] = 'OFF'
+        defines['LLDB_ENABLE_LIBXML2'] = 'OFF'
+        defines['LLDB_ENABLE_LUA'] = 'OFF'
+
         swig_executable = BuilderRegistry.get('swig').install_dir / 'bin' / 'swig'
         defines['SWIG_EXECUTABLE'] = str(swig_executable)
         py_prefix = 'Python3' if target.is_windows else 'PYTHON'
