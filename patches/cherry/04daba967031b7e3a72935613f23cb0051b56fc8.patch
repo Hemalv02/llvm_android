@@ -1,0 +1,89 @@
+From 3e4b96f066479f90ccc40d8c703ce7cc7263900d Mon Sep 17 00:00:00 2001
+From: Haibo Huang <hhb@google.com>
+Date: Tue, 19 May 2020 15:23:35 -0700
+Subject: [PATCH 2/2] [lldb] Cleans up system_libs
+
+Summary:
+Long long ago system_libs was appended to LLDB_SYSTEM_LIBS in
+cmake/LLDBDependencies.cmake. After that file was removed, system_libs
+is orphaned.
+
+Currently the only user is source/Utility. Move the logic there and
+remove system_libs.
+
+Subscribers: mgorny, lldb-commits
+
+Tags: #lldb
+
+Differential Revision: https://reviews.llvm.org/D80253
+---
+ lldb/cmake/modules/LLDBConfig.cmake | 11 +----------
+ lldb/source/Utility/CMakeLists.txt  | 15 ++++++++++++++-
+ 2 files changed, 15 insertions(+), 11 deletions(-)
+
+diff --git a/lldb/cmake/modules/LLDBConfig.cmake b/lldb/cmake/modules/LLDBConfig.cmake
+index e8edcb4fd04..dcb28609beb 100644
+--- a/lldb/cmake/modules/LLDBConfig.cmake
++++ b/lldb/cmake/modules/LLDBConfig.cmake
+@@ -225,7 +225,6 @@ if (LLDB_ENABLE_LZMA)
+ endif()
+ 
+ if (LLDB_ENABLE_LIBXML2)
+-  list(APPEND system_libs ${LIBXML2_LIBRARIES})
+   include_directories(${LIBXML2_INCLUDE_DIR})
+ endif()
+ 
+@@ -271,12 +270,7 @@ if (APPLE)
+   find_library(FOUNDATION_LIBRARY Foundation)
+   find_library(CORE_FOUNDATION_LIBRARY CoreFoundation)
+   find_library(SECURITY_LIBRARY Security)
+-  list(APPEND system_libs
+-       ${FOUNDATION_LIBRARY}
+-       ${CORE_FOUNDATION_LIBRARY}
+-       ${CORE_SERVICES_LIBRARY}
+-       ${SECURITY_LIBRARY}
+-       ${DEBUG_SYMBOLS_LIBRARY})
++  include_directories(${LIBXML2_INCLUDE_DIR})
+ endif()
+ 
+ if( WIN32 AND NOT CYGWIN )
+@@ -286,11 +280,8 @@ endif()
+ if(NOT PURE_WINDOWS)
+   set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+   find_package(Threads REQUIRED)
+-  list(APPEND system_libs ${CMAKE_THREAD_LIBS_INIT})
+ endif()
+ 
+-list(APPEND system_libs ${CMAKE_DL_LIBS})
+-
+ # Figure out if lldb could use lldb-server.  If so, then we'll
+ # ensure we build lldb-server when an lldb target is being built.
+ if (CMAKE_SYSTEM_NAME MATCHES "Android|Darwin|FreeBSD|Linux|NetBSD|Windows")
+diff --git a/lldb/source/Utility/CMakeLists.txt b/lldb/source/Utility/CMakeLists.txt
+index df486e2c0a4..58c7ba6bcea 100644
+--- a/lldb/source/Utility/CMakeLists.txt
++++ b/lldb/source/Utility/CMakeLists.txt
+@@ -1,6 +1,19 @@
+ set(LLDB_SYSTEM_LIBS)
+ 
+-list(APPEND LLDB_SYSTEM_LIBS ${system_libs})
++if (APPLE)
++  list(APPEND LLDB_SYSTEM_LIBS
++       ${FOUNDATION_LIBRARY}
++       ${CORE_FOUNDATION_LIBRARY}
++       ${CORE_SERVICES_LIBRARY}
++       ${SECURITY_LIBRARY}
++       ${DEBUG_SYMBOLS_LIBRARY})
++endif()
++
++if(NOT PURE_WINDOWS)
++  list(APPEND LLDB_SYSTEM_LIBS ${CMAKE_THREAD_LIBS_INIT})
++endif()
++
++list(APPEND LLDB_SYSTEM_LIBS ${CMAKE_DL_LIBS})
+ 
+ if (CMAKE_SYSTEM_NAME MATCHES "Windows")
+   list(APPEND LLDB_SYSTEM_LIBS ws2_32 rpcrt4)
+-- 
+2.26.2.761.g0e0b3e54be-goog
+

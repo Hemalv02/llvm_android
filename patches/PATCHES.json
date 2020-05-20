@@ -168,6 +168,18 @@
         "end_version": 390947
     },
     {
+        "comment": "[lldb] Allows customizing libxml2 for darwin",
+        "rel_patch_path": "cherry/780d7d77327c3537cc2c2aa9314aa2ad92cfe070.patch",
+        "start_version": 383902,
+        "end_version": 393829
+    },
+    {
+        "comment": "[lldb] Cleans up system_libs",
+        "rel_patch_path": "cherry/04daba967031b7e3a72935613f23cb0051b56fc8.patch",
+        "start_version": 383902,
+        "end_version": 393830
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,

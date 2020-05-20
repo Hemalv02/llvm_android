@@ -1,0 +1,117 @@
+From b282036201356dae88f1585b8d941dae912a02a0 Mon Sep 17 00:00:00 2001
+From: Haibo Huang <hhb@google.com>
+Date: Tue, 19 May 2020 16:00:54 -0700
+Subject: [PATCH 1/2] [lldb] Allows customizing libxml2 for darwin
+
+Summary:
+This changes allows to disable or use customized libxml2 for lldb.
+
+1. Removes redundant include_directories. The one in LLDBConfig.cmake should be enough.
+
+2. Link to ${LIBXML2_LIBRARIES} if xml2 is enabled.
+
+Subscribers: mgorny, lldb-commits
+
+Tags: #lldb
+
+Differential Revision: https://reviews.llvm.org/D80257
+---
+ lldb/cmake/modules/LLDBConfig.cmake               |  1 -
+ lldb/source/Host/CMakeLists.txt                   | 15 +++++----------
+ .../source/Plugins/Platform/MacOSX/CMakeLists.txt |  1 -
+ .../Plugins/Process/gdb-remote/CMakeLists.txt     |  4 ----
+ .../Plugins/SymbolVendor/MacOSX/CMakeLists.txt    |  2 --
+ 5 files changed, 5 insertions(+), 18 deletions(-)
+
+diff --git a/lldb/cmake/modules/LLDBConfig.cmake b/lldb/cmake/modules/LLDBConfig.cmake
+index fb4512a8799..e8edcb4fd04 100644
+--- a/lldb/cmake/modules/LLDBConfig.cmake
++++ b/lldb/cmake/modules/LLDBConfig.cmake
+@@ -277,7 +277,6 @@ if (APPLE)
+        ${CORE_SERVICES_LIBRARY}
+        ${SECURITY_LIBRARY}
+        ${DEBUG_SYMBOLS_LIBRARY})
+-  include_directories(${LIBXML2_INCLUDE_DIR})
+ endif()
+ 
+ if( WIN32 AND NOT CYGWIN )
+diff --git a/lldb/source/Host/CMakeLists.txt b/lldb/source/Host/CMakeLists.txt
+index a15c34fdbb6..502abde4b03 100644
+--- a/lldb/source/Host/CMakeLists.txt
++++ b/lldb/source/Host/CMakeLists.txt
+@@ -90,7 +90,6 @@ else()
+     )
+ 
+   if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+-    include_directories(SYSTEM ${LIBXML2_INCLUDE_DIR})
+     add_subdirectory(macosx/objcxx)
+     set(LLDBObjCLibs lldbHostMacOSXObjCXX)
+     add_host_subdirectory(macosx
+@@ -144,14 +143,10 @@ endif()
+ set(EXTRA_LIBS)
+ if (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+   list(APPEND EXTRA_LIBS kvm)
+-endif ()
+-if (APPLE)
+-  list(APPEND EXTRA_LIBS xml2)
+-else ()
+-  if (LIBXML2_FOUND)
+-    list(APPEND EXTRA_LIBS ${LIBXML2_LIBRARIES})
+-  endif()
+-endif ()
++endif()
++if (LLDB_ENABLE_LIBXML2)
++  list(APPEND EXTRA_LIBS ${LIBXML2_LIBRARIES})
++endif()
+ if (HAVE_LIBDL)
+   list(APPEND EXTRA_LIBS ${CMAKE_DL_LIBS})
+ endif()
+@@ -163,7 +158,7 @@ if (LLDB_ENABLE_LZMA)
+ endif()
+ if (WIN32)
+   list(APPEND LLDB_SYSTEM_LIBS psapi)
+-endif ()
++endif()
+ 
+ if (LLDB_ENABLE_LIBEDIT)
+   list(APPEND LLDB_LIBEDIT_LIBS ${LibEdit_LIBRARIES})
+diff --git a/lldb/source/Plugins/Platform/MacOSX/CMakeLists.txt b/lldb/source/Plugins/Platform/MacOSX/CMakeLists.txt
+index d5a84d87fcd..44707971205 100644
+--- a/lldb/source/Plugins/Platform/MacOSX/CMakeLists.txt
++++ b/lldb/source/Plugins/Platform/MacOSX/CMakeLists.txt
+@@ -25,7 +25,6 @@ list(APPEND PLUGIN_PLATFORM_MACOSX_DARWIN_ONLY_SOURCES
+   )
+ 
+ if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+-  include_directories(${LIBXML2_INCLUDE_DIR})
+   add_subdirectory(objcxx)
+   set(OBJC_LIBS "lldbPluginPlatformMacOSXObjCXX")
+   list(APPEND PLUGIN_PLATFORM_MACOSX_SOURCES
+diff --git a/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt b/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt
+index 477f224b940..448d032b381 100644
+--- a/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt
++++ b/lldb/source/Plugins/Process/gdb-remote/CMakeLists.txt
+@@ -6,10 +6,6 @@ lldb_tablegen(ProcessGDBRemotePropertiesEnum.inc -gen-lldb-property-enum-defs
+   SOURCE ProcessGDBRemoteProperties.td
+   TARGET LLDBPluginProcessGDBRemotePropertiesEnumGen)
+ 
+-if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+-  include_directories(${LIBXML2_INCLUDE_DIR})
+-endif()
+-
+ set(LLDB_PLUGINS
+   lldbPluginProcessUtility
+   lldbPluginPlatformMacOSX
+diff --git a/lldb/source/Plugins/SymbolVendor/MacOSX/CMakeLists.txt b/lldb/source/Plugins/SymbolVendor/MacOSX/CMakeLists.txt
+index 8e82eae1513..2cf18513123 100644
+--- a/lldb/source/Plugins/SymbolVendor/MacOSX/CMakeLists.txt
++++ b/lldb/source/Plugins/SymbolVendor/MacOSX/CMakeLists.txt
+@@ -1,5 +1,3 @@
+-include_directories(${LIBXML2_INCLUDE_DIR})
+-
+ add_lldb_library(lldbPluginSymbolVendorMacOSX PLUGIN
+   SymbolVendorMacOSX.cpp
+ 
+-- 
+2.26.2.761.g0e0b3e54be-goog
+
