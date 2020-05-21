@@ -168,6 +168,12 @@
         "end_version": 390947
     },
     {
+        "comment": "Use IPv4 for Android connections",
+        "rel_patch_path": "cherry/a9d7b458c094d62a8c11ada11e39bf0d4da596c8.patch",
+        "start_version":383902,
+        "end_version": 393766
+    },
+    {
         "comment": "[lldb] Allows customizing libxml2 for darwin",
         "rel_patch_path": "cherry/780d7d77327c3537cc2c2aa9314aa2ad92cfe070.patch",
         "start_version": 383902,
