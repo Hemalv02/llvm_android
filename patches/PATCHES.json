@@ -168,6 +168,12 @@
         "end_version": 390947
     },
     {
+        "comment": "Reland D78837 [lld] Remove special cases from default ld driver mode.",
+        "rel_patch_path": "cherry/53ff95254df4be3365a0bf4da2677e75ccbf32ba.patch",
+        "start_version": 383902,
+        "end_version": 391926
+    },
+    {
         "comment": "Use IPv4 for Android connections",
         "rel_patch_path": "cherry/a9d7b458c094d62a8c11ada11e39bf0d4da596c8.patch",
         "start_version":383902,
