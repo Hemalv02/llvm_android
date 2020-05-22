@@ -1094,6 +1094,23 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
             proj.add('lldb')
         return proj
 
+    def _create_dlltool_wrapper(self) -> Path:
+        """Creates a wrapper for dlltool, so that cmake can use it like 'lib' on windows."""
+        dlltool_wrapper = paths.OUT_DIR / 'dlltool-adapter.sh'
+        with dlltool_wrapper.open('w') as output:
+            output.write(textwrap.dedent(f"""#!/bin/bash
+
+                for i in "$@"
+                do
+                    p="${{i:1}}"
+                    eval "${{p/:/=}}"
+                done
+
+                {self.toolchain.path / 'bin' / 'llvm-dlltool'} -d "${{def}}" -l "${{out}}" -m i386:x86-64 -D "${{name}}.dll"
+            """))
+        dlltool_wrapper.chmod(0o744)
+        return dlltool_wrapper
+
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
@@ -1105,6 +1122,8 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
         # Don't build tests for Windows.
         defines['LLVM_INCLUDE_TESTS'] = 'OFF'
 
+        defines['CMAKE_GNUtoMS'] = 'ON'
+        defines['CMAKE_GNUtoMS_LIB'] = str(self._create_dlltool_wrapper())
         defines['LLVM_CONFIG_PATH'] = str(self.toolchain.build_path / 'bin' / 'llvm-config')
         defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
         defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
