@@ -1,5 +1,11 @@
 [
     {
+        "comment": "[UPSTREAM] [BFI] Use CallbackVH to notify BFI about deletion of basic blocks",
+        "rel_patch_path": "cherry/b313897b3e9bc049bb7cada11c237ead77c30e2f.patch",
+        "start_version": 383902,
+        "end_version": 386572
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[ARM] Improve codegen of volatile load/store of i64\"",
         "rel_patch_path": "cherry/af2a38458197e07cbd03ea9446714008488826d8.patch",
         "start_version": 383902,
