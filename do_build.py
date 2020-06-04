@@ -460,9 +460,6 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
                                      'host/x86_64-linux-glibc2.17-4.8')
         gccTriple = 'x86_64-linux'
         gccVersion = '4.8.3'
-
-        # gcc-toolchain is only needed for Linux
-        cflags.append(f'--gcc-toolchain={gccRoot}')
     elif host.is_windows:
         gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
                                      'host/x86_64-w64-mingw32-4.8')
