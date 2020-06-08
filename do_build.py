@@ -50,9 +50,6 @@ if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
     USE_GOMA_FOR_STAGE1 = True
     del ORIG_ENV['USE_GOMA']
 
-BASE_TARGETS = 'X86'
-ANDROID_TARGETS = 'AArch64;ARM;BPF;X86'
-
 # TODO (Pirama): Put all the build options in a global so it's easy to refer to
 # them instead of plumbing flags through function parameters.
 BUILD_LLDB = False
@@ -484,15 +481,15 @@ class Stage1Builder(builders.LLVMBuilder):
     toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_llvm_tools: bool = False
-    build_all_targets: bool = False
+    build_android_targets: bool = False
     config_list: List[configs.Config] = [configs.host_config()]
 
     @property
     def llvm_targets(self) -> Set[str]:
-        if self.build_all_targets:
-            return set(ANDROID_TARGETS.split(';'))
+        if self.build_android_targets:
+            return constants.HOST_TARGETS | constants.ANDROID_TARGETS
         else:
-            return set(BASE_TARGETS.split(';'))
+            return constants.HOST_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -587,7 +584,7 @@ class Stage2Builder(builders.LLVMBuilder):
 
     @property
     def llvm_targets(self) -> Set[str]:
-        return set(ANDROID_TARGETS.split(';'))
+        return constants.ANDROID_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -984,10 +981,20 @@ class LldbServerBuilder(builders.LLVMRuntimeBuilder):
         return cflags
 
     @property
+    def _llvm_target(self) -> str:
+        return {
+            hosts.Arch.ARM: 'ARM',
+            hosts.Arch.AARCH64: 'AArch64',
+            hosts.Arch.I386: 'X86',
+            hosts.Arch.X86_64: 'X86',
+        }[self._config.target_arch]
+
+    @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         # lldb depends on support libraries.
         defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
+        defines['LLVM_TARGETS_TO_BUILD'] = self._llvm_target
         defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
         defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
         defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
@@ -1085,7 +1092,7 @@ class WindowsToolchainBuilder(builders.LLVMBuilder):
 
     @property
     def llvm_targets(self) -> Set[str]:
-        return set(ANDROID_TARGETS.split(';'))
+        return constants.ANDROID_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -1672,7 +1679,7 @@ def main():
     stage1.build_name = args.build_name
     stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
     stage1.build_llvm_tools = stage1_build_llvm_tools
-    stage1.build_all_targets = args.debug or instrumented
+    stage1.build_android_targets = args.debug or instrumented
     stage1.build()
     stage1_toolchain = toolchains.get_toolchain_from_builder(stage1)
     toolchains.set_runtime_toolchain(stage1_toolchain)

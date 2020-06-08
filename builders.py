@@ -427,9 +427,9 @@ class LLVMBuilder(LLVMBaseBuilder):
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
 
-        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(self.llvm_projects)
+        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
 
-        defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(self.llvm_targets)
+        defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
 
         defines['CLANG_VENDOR'] = 'Android ({} based on {})'.format(
