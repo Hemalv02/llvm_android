@@ -1,0 +1,58 @@
+From d1a6e4d2db493c0ce27ccba7f287acfeac1776a6 Mon Sep 17 00:00:00 2001
+From: Evgenii Stepanov <eugenis@google.com>
+Date: Fri, 5 Jun 2020 10:57:44 -0700
+Subject: [PATCH] [hwasan] Disable malloc-fill by default.
+
+Summary: Non-zero malloc fill is causing way too many hard to debug issues.
+
+Reviewers: kcc, pcc, hctim
+
+Subscribers: #sanitizers, llvm-commits
+
+Tags: #sanitizers
+
+Differential Revision: https://reviews.llvm.org/D81284
+---
+ compiler-rt/lib/hwasan/hwasan_flags.inc           | 2 +-
+ compiler-rt/test/hwasan/TestCases/malloc_fill.cpp | 7 +++++--
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_flags.inc b/compiler-rt/lib/hwasan/hwasan_flags.inc
+index dffbf56cb15..8e431d9c4ff 100644
+--- a/compiler-rt/lib/hwasan/hwasan_flags.inc
++++ b/compiler-rt/lib/hwasan/hwasan_flags.inc
+@@ -33,7 +33,7 @@ HWASAN_FLAG(bool, disable_allocator_tagging, false, "")
+ HWASAN_FLAG(bool, random_tags, true, "")
+ 
+ HWASAN_FLAG(
+-    int, max_malloc_fill_size, 0x1000,  // By default, fill only the first 4K.
++    int, max_malloc_fill_size, 0,
+     "HWASan allocator flag. max_malloc_fill_size is the maximal amount of "
+     "bytes that will be filled with malloc_fill_byte on malloc.")
+ 
+diff --git a/compiler-rt/test/hwasan/TestCases/malloc_fill.cpp b/compiler-rt/test/hwasan/TestCases/malloc_fill.cpp
+index 96033ef38f9..27e28c70007 100644
+--- a/compiler-rt/test/hwasan/TestCases/malloc_fill.cpp
++++ b/compiler-rt/test/hwasan/TestCases/malloc_fill.cpp
+@@ -1,6 +1,8 @@
+ // Check that we fill malloc-ed memory correctly.
+ // RUN: %clangxx_hwasan %s -o %t
+-// RUN: %run %t | FileCheck %s
++// RUN: %run %t | FileCheck %s --check-prefix=CHECK-0
++// RUN: %env_hwasan_opts=max_malloc_fill_size=20 %run %t | FileCheck %s --check-prefix=CHECK-20-be
++// RUN: %env_hwasan_opts=max_malloc_fill_size=0:malloc_fill_byte=8 %run %t | FileCheck %s --check-prefix=CHECK-0
+ // RUN: %env_hwasan_opts=max_malloc_fill_size=10:malloc_fill_byte=8 %run %t | FileCheck %s --check-prefix=CHECK-10-8
+ // RUN: %env_hwasan_opts=max_malloc_fill_size=20:malloc_fill_byte=171 %run %t | FileCheck %s --check-prefix=CHECK-20-ab
+ 
+@@ -20,6 +22,7 @@ int main(int argc, char **argv) {
+   delete [] x;
+ }
+ 
+-// CHECK: -bebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebebe-
++// CHECK-0: -000000000000000000000000000000000000000000000000000000000000000000-
++// CHECK-20-be: -bebebebebebebebebebebebebebebebebebebebe00000000000000000000000000-
+ // CHECK-10-8: -080808080808080808080000000000000000000000000000000000000000000000-
+ // CHECK-20-ab: -abababababababababababababababababababab00000000000000000000000000-
+-- 
+2.27.0.278.ge193c7cf3a9-goog
+
