@@ -198,6 +198,12 @@
         "end_version": 393830
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Disable malloc-fill by default.",
+        "rel_patch_path": "cherry/d1a6e4d2db493c0ce27ccba7f287acfeac1776a6.patch",
+        "start_version": 383902,
+        "end_version": 395394
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
