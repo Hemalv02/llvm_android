@@ -15,6 +15,8 @@
 #
 """Configs for the build."""
 
+from typing import Set
+
 # Minimum macOS version to support.
 MAC_MIN_VERSION: str = '10.10'
 
@@ -23,3 +25,9 @@ CLANG_PREBUILT_VERSION: str = 'clang-r383902'
 
 # This is the ndk version used to build runtimes.
 NDK_VERSION: str = 'r20'
+
+# Targets for host.
+HOST_TARGETS: Set[str] = set(['X86'])
+
+# Targets for Android.
+ANDROID_TARGETS: Set[str] = set(['AArch64', 'ARM', 'BPF', 'X86'])
