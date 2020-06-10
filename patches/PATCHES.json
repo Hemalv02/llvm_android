@@ -204,6 +204,12 @@
         "end_version": 395394
     },
     {
+        "comment": "[CMake] Fix building with -DBUILD_SHARED_LIBS=ON on mingw",
+        "rel_patch_path": "cherry/609ef948387ba40e3693c2bd693d82ca34dcdc02.patch",
+        "start_version": 391452,
+        "end_version": 392981
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
