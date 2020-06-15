@@ -90,6 +90,12 @@
         "end_version": 387062
     },
     {
+        "comment": "[UPSTREAM] [clang] Fix crash on visiting null nestedNameSpecifier.",
+        "rel_patch_path": "cherry/bd763e2cf7c1d84bab95064cc5cbe542b227b025.patch",
+        "start_version": 383902,
+        "end_version": 387531
+    },
+    {
         "comment": "[UPSTREAM] [DAGCombiner] Do not fold truncate(build_vector(..)) if it creates an illegal type",
         "rel_patch_path": "cherry/edcfb47ff6d5562e22207f364c65f84302aa346b.patch",
         "start_version": 357161,
