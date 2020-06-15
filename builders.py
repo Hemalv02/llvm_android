@@ -84,7 +84,7 @@ class Builder:  # pylint: disable=too-few-public-methods
     @property
     def env(self) -> Dict[str, str]:
         """Environment variables used when building."""
-        return ORIG_ENV
+        return dict(ORIG_ENV)
 
     @property
     def toolchain(self) -> toolchains.Toolchain:
@@ -262,6 +262,14 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
 
+    def _record_cmake_command(self, cmake_cmd: List[str],
+                              env: Dict[str, str]) -> None:
+        with open(self.output_dir / 'cmake_invocation.sh', 'w') as outf:
+            for k, v in env.items():
+                if v != ORIG_ENV.get(k):
+                    outf.write(f'{k}={v}\n')
+            outf.write(utils.list2cmdline(cmake_cmd) + '\n')
+
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_dir)
@@ -276,6 +284,7 @@ class CMakeBuilder(Builder):
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        self._record_cmake_command(cmake_cmd, self.env)
         utils.check_call(cmake_cmd, cwd=self.output_dir, env=self.env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
