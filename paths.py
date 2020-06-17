@@ -51,6 +51,12 @@ _WIN_ZLIB_PATH: Path = (PREBUILTS_DIR / 'clang' / 'host' / 'windows-x86' /
 WIN_ZLIB_INCLUDE_PATH: Path = _WIN_ZLIB_PATH / 'include'
 WIN_ZLIB_LIB_PATH: Path = _WIN_ZLIB_PATH / 'lib'
 
+KYTHE_RUN_EXTRACTOR = (PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' /
+                       'runextractor')
+KYTHE_CXX_EXTRACTOR = (PREBUILTS_DIR / 'clang-tools' / hosts.build_host().os_tag / 'bin' /
+                       'cxx_extractor')
+KYTHE_OUTPUT_DIR = OUT_DIR / 'kythe-files'
+
 def get_python_dir(host: hosts.Host) -> Path:
     """Returns the path to python for a host."""
     return PREBUILTS_DIR / 'python' / host.os_tag

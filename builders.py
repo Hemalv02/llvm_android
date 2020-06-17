@@ -465,7 +465,7 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'lldb-server'
     src_dir: Path = paths.LLVM_PATH / 'llvm'
     config_list: List[configs.Config] = configs.android_configs(platform=False, static=True)
-    ninja_target: str = 'lldb-server'
+    ninja_targets: List[str] = ['lldb-server']
 
     @property
     def cflags(self) -> List[str]:
