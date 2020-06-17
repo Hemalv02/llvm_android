@@ -13,442 +13,654 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Builders for different targets."""
+"""Builder instances for various targets."""
 
 from pathlib import Path
-import logging
-import multiprocessing
 import os
 import shutil
-import subprocess
-from typing import Dict, List, Optional, Set
+import textwrap
+from typing import cast, Dict, List, Optional, Set
 
-import android_version
+import base_builders
 from builder_registry import BuilderRegistry
 import configs
 import constants
 import hosts
+import mapfile
 import paths
 import toolchains
 import utils
 
-ORIG_ENV = dict(os.environ)
-
-def logger():
-    """Returns the module level logger."""
-    return logging.getLogger(__name__)
-
-class Builder:  # pylint: disable=too-few-public-methods
-    """Base builder type."""
-    name: str = ""
-    config_list: List[configs.Config]
-
-    def __init__(self) -> None:
-        self._config: configs.Config
-
-    @BuilderRegistry.register_and_build
-    def build(self) -> None:
-        """Builds all configs."""
-        for config in self.config_list:
-            self._config = config
-
-            logger().info('Building %s for %s', self.name, self._config)
-            self._build_config()
-        self.install()
-
-    def _build_config(self) -> None:
-        raise NotImplementedError()
-
-    def _is_cross_compiling(self) -> bool:
-        return self._config.target_os != hosts.build_host()
-
-    @property
-    def cflags(self) -> List[str]:
-        """Additional cflags to use."""
-        return []
-
-    @property
-    def cxxflags(self) -> List[str]:
-        """Additional cxxflags to use."""
-        return self.cflags
-
-    @property
-    def ldflags(self) -> List[str]:
-        """Additional ldflags to use."""
-        ldflags = []
-        # When cross compiling, toolchain libs won't work on target arch.
-        if not self._is_cross_compiling():
-            ldflags.append(f'-L{self.toolchain.lib_dir}')
-        return ldflags
-
-    @property
-    def env(self) -> Dict[str, str]:
-        """Environment variables used when building."""
-        return dict(ORIG_ENV)
+class AsanMapFileBuilder(base_builders.Builder):
+    name: str = 'asan-mapfile'
+    config_list: List[configs.Config] = configs.android_configs()
 
     @property
     def toolchain(self) -> toolchains.Toolchain:
-        """Returns the toolchain used for this target."""
-        raise NotImplementedError()
+        return toolchains.get_runtime_toolchain()
 
-    def install(self) -> None:
-        """Installs built artifacts."""
+    def _build_config(self) -> None:
+        arch = self._config.target_arch
+        # We can not build asan_test using current CMake building system. Since
+        # those files are not used to build AOSP, we just simply touch them so that
+        # we can pass the build checks.
+        asan_test_path = self.toolchain.path / 'test' / arch.llvm_arch / 'bin'
+        asan_test_path.mkdir(parents=True, exist_ok=True)
+        asan_test_bin_path = asan_test_path / 'asan_test'
+        asan_test_bin_path.touch(exist_ok=True)
 
+        lib_dir = self.toolchain.resource_dir
+        self._build_sanitizer_map_file('asan', arch, lib_dir)
+        self._build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
 
-class AutoconfBuilder(Builder):
-    """Builder for autoconf targets."""
-    src_dir: Path
-    remove_install_dir: bool = True
-
-    @property
-    def output_dir(self) -> Path:
-        """The path for intermediate results."""
-        return paths.OUT_DIR / 'lib' / (f'{self.name}')
-
-    @property
-    def install_dir(self) -> Path:
-        """Returns the path this target will be installed to."""
-        return paths.OUT_DIR / 'lib' / f'{self.name}-install'
+        if arch == hosts.Arch.AARCH64:
+            self._build_sanitizer_map_file('hwasan', arch, lib_dir)
 
     @staticmethod
-    def _get_mac_sdk_path() -> Path:
-        out = subprocess.check_output(['xcrun', '--show-sdk-path'], text=True)
-        return Path(out.strip())
+    def _build_sanitizer_map_file(san: str, arch: hosts.Arch, lib_dir: Path) -> None:
+        lib_file = lib_dir / f'libclang_rt.{san}-{arch.llvm_arch}-android.so'
+        map_file = lib_dir / f'libclang_rt.{san}-{arch.llvm_arch}-android.map.txt'
+        mapfile.create_map_file(lib_file, map_file)
+
+
+class Stage1Builder(base_builders.LLVMBuilder):
+    name: str = 'stage1'
+    toolchain_name: str = 'prebuilt'
+    install_dir: Path = paths.OUT_DIR / 'stage1-install'
+    build_llvm_tools: bool = False
+    build_android_targets: bool = False
+    config_list: List[configs.Config] = [configs.host_config()]
+    use_goma_for_stage1: bool = False
+
+    @property
+    def llvm_targets(self) -> Set[str]:
+        if self.build_android_targets:
+            return constants.HOST_TARGETS | constants.ANDROID_TARGETS
+        else:
+            return constants.HOST_TARGETS
+
+    @property
+    def llvm_projects(self) -> Set[str]:
+        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        if self.build_llvm_tools:
+            # For lldb-tblgen. It will be used to build lldb-server and
+            # windows lldb.
+            proj.add('lldb')
+        return proj
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        # Point CMake to the libc++.so from the prebuilts.  Install an rpath
+        # to prevent linking with the newly-built libc++.so
+        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        return ldflags
+
+    def set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:
+        # Disable dependencies because we only need lldb-tblgen to be built.
+        defines['LLDB_ENABLE_PYTHON'] = 'OFF'
+        defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['CLANG_ENABLE_ARCMT'] = 'OFF'
+        defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
+
+        if self.build_llvm_tools:
+            defines['LLVM_BUILD_TOOLS'] = 'ON'
+        else:
+            defines['LLVM_BUILD_TOOLS'] = 'OFF'
+
+        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+        # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+        if self._config.target_os.is_linux:
+            defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+
+        # Do not build compiler-rt for Darwin.  We don't ship host (or any
+        # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
+        # fail compilation of lib/builtins/atomic_*.c that only get built for
+        # Darwin and fail compilation due to us using the bionic version of
+        # stdatomic.h.
+        if self._config.target_os.is_darwin:
+            defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
+
+        # Don't build libfuzzer as part of the first stage build.
+        defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+
+        return defines
+
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        if self.use_goma_for_stage1:
+            env['USE_GOMA'] = 'true'
+        return env
+
+
+class Stage2Builder(base_builders.LLVMBuilder):
+    name: str = 'stage2'
+    toolchain_name: str = 'stage1'
+    install_dir: Path = paths.OUT_DIR / 'stage2-install'
+    config_list: List[configs.Config] = [configs.host_config()]
+    remove_install_dir: bool = True
+    build_lldb: bool = True
+    debug_build: bool = False
+    build_instrumented: bool = False
+    profdata_file: Optional[Path] = None
+    lto: bool = True
+
+    @property
+    def llvm_targets(self) -> Set[str]:
+        return constants.ANDROID_TARGETS
+
+    @property
+    def llvm_projects(self) -> Set[str]:
+        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
+                'clang-tools-extra', 'openmp', 'polly'}
+        if self.build_lldb:
+            proj.add('lldb')
+        return proj
+
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        # Point CMake to the libc++ from stage1.  It is possible that once built,
+        # the newly-built libc++ may override this because of the rpath pointing to
+        # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
+        # the same sources.
+        env['LD_LIBRARY_PATH'] = str(self.toolchain.lib_dir)
+        return env
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        if self.build_instrumented:
+            # Building libcxx, libcxxabi with instrumentation causes linker errors
+            # because these are built with -nodefaultlibs and prevent libc symbols
+            # needed by libclang_rt.profile from being resolved.  Manually adding
+            # the libclang_rt.profile to linker flags fixes the issue.
+            resource_dir = self.toolchain.resource_dir
+            ldflags.append(str(resource_dir / 'libclang_rt.profile-x86_64.a'))
+        return ldflags
 
     @property
     def cflags(self) -> List[str]:
         cflags = super().cflags
-        cflags.append('-fPIC')
-        cflags.append('-Wno-unused-command-line-argument')
-        if self._config.sysroot:
-            cflags.append(f'--sysroot={self._config.sysroot}')
+        if self.profdata_file:
+            cflags.append('-Wno-profile-instr-out-of-date')
+            cflags.append('-Wno-profile-instr-unprofiled')
+        return cflags
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
+        defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
+        defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
+        defines['CLANG_PYTHON_BINDINGS_VERSIONS'] = '3'
+
+        if (self.lto and
+                not self._config.target_os.is_darwin and
+                not self.build_instrumented and
+                not self.debug_build):
+            defines['LLVM_ENABLE_LTO'] = 'Thin'
+
+        # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
+        # is not currently supported on Darwin.
         if self._config.target_os.is_darwin:
-            sdk_path = self._get_mac_sdk_path()
-            cflags.append(f'-mmacosx-version-min={constants.MAC_MIN_VERSION}')
-            cflags.append(f'-DMACOSX_DEPLOYMENT_TARGET={constants.MAC_MIN_VERSION}')
-            cflags.append(f'-isysroot{sdk_path}')
-            cflags.append(f'-Wl,-syslibroot,{sdk_path}')
+            defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
+        else:
+            defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'ON'
+
+        if self.debug_build:
+            defines['CMAKE_BUILD_TYPE'] = 'Debug'
+
+        if self.build_instrumented:
+            defines['LLVM_BUILD_INSTRUMENTED'] = 'ON'
+
+            # llvm-profdata is only needed to finish CMake configuration
+            # (tools/clang/utils/perf-training/CMakeLists.txt) and not needed for
+            # build
+            llvm_profdata = self.toolchain.path / 'bin' / 'llvm-profdata'
+            defines['LLVM_PROFDATA'] = str(llvm_profdata)
+        elif self.profdata_file:
+            defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
+
+        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+        # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+        if self._config.target_os.is_linux:
+            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+            defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+
+        # Do not build compiler-rt for Darwin.  We don't ship host (or any
+        # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
+        # fail compilation of lib/builtins/atomic_*.c that only get built for
+        # Darwin and fail compilation due to us using the bionic version of
+        # stdatomic.h.
+        if self._config.target_os.is_darwin:
+            defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
+
+        if self._config.target_os.is_darwin:
+            if utils.is_available_mac_ver('10.11'):
+                raise RuntimeError('libcompression can be enabled for macOS 10.11 and above.')
+            defines['HAVE_LIBCOMPRESSION'] = '0'
+        return defines
+
+
+class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'compiler-rt'
+    src_dir: Path = paths.LLVM_PATH / 'compiler-rt'
+    config_list: List[configs.Config] = (
+        configs.android_configs(platform=True) +
+        configs.android_configs(platform=False)
+    )
+
+    @property
+    def install_dir(self) -> Path:
+        if self._config.platform:
+            return self.toolchain.clang_lib_dir
+        # Installs to a temporary dir and copies to runtimes_ndk_cxx manually.
+        output_dir = self.output_dir
+        return output_dir.parent / (output_dir.name + '-install')
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        arch = self._config.target_arch
+        # FIXME: Disable WError build until upstream fixed the compiler-rt
+        # personality routine warnings caused by r309226.
+        # defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
+        defines['COMPILER_RT_TEST_COMPILER_CFLAGS'] = defines['CMAKE_C_FLAGS']
+        defines['COMPILER_RT_TEST_TARGET_TRIPLE'] = arch.llvm_triple
+        defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
+        defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
+        # With CMAKE_SYSTEM_NAME='Android', compiler-rt will be installed to
+        # lib/android instead of lib/linux.
+        del defines['CMAKE_SYSTEM_NAME']
+        libs: List[str] = []
+        if arch == 'arm':
+            libs += ['-latomic']
+        if self._config.api_level < 21:
+            libs += ['-landroid_support']
+        defines['SANITIZER_COMMON_LINK_LIBS'] = ' '.join(libs)
+        if self._config.platform:
+            defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-funwind-tables')
+        return cflags
+
+    def install_config(self) -> None:
+        # Still run `ninja install`.
+        super().install_config()
+
+        # Install the fuzzer library to the old {arch}/libFuzzer.a path for
+        # backwards compatibility.
+        arch = self._config.target_arch
+        sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
+        static_lib_filename = 'libclang_rt.fuzzer-' + sarch + '-android.a'
+
+        lib_dir = self.install_dir / 'lib' / 'linux'
+        arch_dir = lib_dir / arch.value
+        arch_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(lib_dir / static_lib_filename, arch_dir / 'libFuzzer.a')
+
+        if not self._config.platform:
+            dst_dir = self.toolchain.path / 'runtimes_ndk_cxx'
+            shutil.copytree(lib_dir, dst_dir, dirs_exist_ok=True)
+
+    def install(self) -> None:
+        # Install libfuzzer headers once for all configs.
+        header_src = self.src_dir / 'lib' / 'fuzzer'
+        header_dst = self.toolchain.path / 'prebuilt_include' / 'llvm' / 'lib' / 'Fuzzer'
+        header_dst.mkdir(parents=True, exist_ok=True)
+        for f in header_src.iterdir():
+            if f.suffix in ('.h', '.def'):
+                shutil.copy2(f, header_dst)
+
+        symlink_path = self.toolchain.resource_dir / 'libclang_rt.hwasan_static-aarch64-android.a'
+        symlink_path.unlink(missing_ok=True)
+        os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
+
+
+class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'compiler-rt-i386-host'
+    src_dir: Path = paths.LLVM_PATH / 'compiler-rt'
+    config_list: List[configs.Config] = [configs.LinuxConfig(is_32_bit=True)]
+
+    @property
+    def install_dir(self) -> Path:
+        return self.toolchain.clang_lib_dir
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        # Due to CMake and Clang oddities, we need to explicitly set
+        # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
+        # relying on auto-detection from the Compiler-rt CMake files.
+        defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
+        defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
+        defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
+        defines['SANITIZER_CXX_ABI'] = 'libstdc++'
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
+        # Add __STDC_FORMAT_MACROS so their definition gets included from
+        # inttypes.h.  This explicit flag is only needed here.  64-bit host runtimes
+        # are built in stage1/stage2 and get it from the LLVM CMake configuration.
+        # These are defined unconditionaly in bionic and newer glibc
+        # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
+        cflags.append('-D__STDC_FORMAT_MACROS')
+        cflags.append('--target=i386-linux-gnu')
+        cflags.append('-march=i686')
+        return cflags
+
+    def _build_config(self) -> None:
+        # Also remove the "stamps" created for the libcxx included in libfuzzer so
+        # CMake runs the configure again (after the cmake caches are deleted).
+        stamp_path = self.output_dir / 'lib' / 'fuzzer' / 'libcxx_fuzzer_i386-stamps'
+        if stamp_path.exists():
+            shutil.rmtree(stamp_path)
+        super()._build_config()
+
+
+class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'libomp'
+    src_dir: Path = paths.LLVM_PATH / 'openmp'
+
+    config_list: List[configs.Config] = (
+        configs.android_configs(platform=True, extra_config={'is_shared': False}) +
+        configs.android_configs(platform=False, extra_config={'is_shared': False}) +
+        configs.android_configs(platform=False, extra_config={'is_shared': True})
+    )
+
+    @property
+    def is_shared(self) -> bool:
+        return cast(Dict[str, bool], self._config.extra_config)['is_shared']
+
+    @property
+    def output_dir(self) -> Path:
+        old_path = super().output_dir
+        suffix = '-shared' if self.is_shared else '-static'
+        return old_path.parent / (old_path.name + suffix)
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['CMAKE_POSITION_INDEPENDENT_CODE'] = 'ON'
+        defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
+        defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
+        defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if self.is_shared else 'FALSE'
+        # Minimum version for OpenMP's CMake is too low for the CMP0056 policy
+        # to be ON by default.
+        defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
+        return defines
+
+    def install_config(self) -> None:
+        # We need to install libomp manually.
+        libname = 'libomp.' + ('so' if self.is_shared else 'a')
+        src_lib = self.output_dir / 'runtime' / 'src' / libname
+        dst_dir = self.install_dir
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_lib, dst_dir / libname)
+
+
+class LibEditBuilder(base_builders.AutoconfBuilder):
+    name: str = 'libedit'
+    src_dir: Path = paths.LIBEDIT_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+    def install(self) -> None:
+        super().install()
+        if self._config.target_os.is_darwin:
+            # Updates LC_ID_DYLIB so that users of libedit won't link with absolute path.
+            libedit_path = paths.get_libedit_lib(self.install_dir,
+                                                 self._config.target_os)
+            cmd = ['install_name_tool',
+                   '-id', f'@rpath/{libedit_path.name}',
+                   str(libedit_path)]
+            utils.check_call(cmd)
+
+
+class SwigBuilder(base_builders.AutoconfBuilder):
+    name: str = 'swig'
+    src_dir: Path = paths.SWIG_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+    @property
+    def config_flags(self) -> List[str]:
+        flags = super().config_flags
+        flags.append('--without-pcre')
+        return flags
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        # Point to the libc++.so from the toolchain.
+        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        return ldflags
+
+
+class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'lldb-server'
+    src_dir: Path = paths.LLVM_PATH / 'llvm'
+    config_list: List[configs.Config] = configs.android_configs(platform=False, static=True)
+    ninja_target: str = 'lldb-server'
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # The build system will add '-stdlib=libc++' automatically. Since we
+        # have -nostdinc++ here, -stdlib is useless. Adds a flag to avoid the
+        # warnings.
+        cflags.append('-Wno-unused-command-line-argument')
+        return cflags
+
+    @property
+    def _llvm_target(self) -> str:
+        return {
+            hosts.Arch.ARM: 'ARM',
+            hosts.Arch.AARCH64: 'AArch64',
+            hosts.Arch.I386: 'X86',
+            hosts.Arch.X86_64: 'X86',
+        }[self._config.target_arch]
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        # lldb depends on support libraries.
+        defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
+        defines['LLVM_TARGETS_TO_BUILD'] = self._llvm_target
+        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
+        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
+        defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
+        return defines
+
+    def install_config(self) -> None:
+        src_path = self.output_dir / 'bin' / 'lldb-server'
+        install_dir = self.install_dir
+        install_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_path, install_dir)
+
+
+class LibCxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
+    name = 'libcxxabi'
+    src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
+
+    @property
+    def install_dir(self):
+        return paths.OUT_DIR / 'windows-x86-64-install'
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines: Dict[str, str] = super().cmake_defines
+        defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.LLVM_PATH /'libcxx' / 'include')
+
+        # Build only the static library.
+        defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
+
+        if self.enable_assertions:
+            defines['LIBCXXABI_ENABLE_ASSERTIONS'] = 'ON'
+
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # Disable libcxx visibility annotations and enable WIN32 threads.  These
+        # are needed because the libcxxabi build happens before libcxx and uses
+        # headers directly from the sources.
+        cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
+        cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
+        return cflags
+
+
+class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
+    name = 'libcxx'
+    src_dir: Path = paths.LLVM_PATH / 'libcxx'
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
+
+    @property
+    def install_dir(self):
+        return paths.OUT_DIR / 'windows-x86-64-install'
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines: Dict[str, str] = super().cmake_defines
+        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
+        defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
+
+        # Use cxxabi header from the source directory since it gets installed
+        # into install_dir only during libcxx's install step.  But use the
+        # library from install_dir.
+        defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = str(paths.LLVM_PATH / 'libcxxabi' / 'include')
+        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(BuilderRegistry.get('libcxxabi').install_dir / 'lib64')
+
+        # Build only the static library.
+        defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+
+        if self.enable_assertions:
+            defines['LIBCXX_ENABLE_ASSERTIONS'] = 'ON'
+
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags: List[str] = super().cflags
+        # Disable libcxxabi visibility annotations since we're only building it
+        # statically.
+        cflags.append('-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS')
+        return cflags
+
+
+class WindowsToolchainBuilder(base_builders.LLVMBuilder):
+    name: str = 'windows-x86-64'
+    toolchain_name: str = 'stage1'
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
+    build_lldb: bool = True
+
+    @property
+    def install_dir(self) -> Path:
+        return paths.OUT_DIR / 'windows-x86-64-install'
+
+    @property
+    def llvm_targets(self) -> Set[str]:
+        return constants.ANDROID_TARGETS
+
+    @property
+    def llvm_projects(self) -> Set[str]:
+        proj = {'clang', 'clang-tools-extra', 'lld'}
+        if self.build_lldb:
+            proj.add('lldb')
+        return proj
+
+    def _create_dlltool_wrapper(self) -> Path:
+        """Creates a wrapper for dlltool, so that cmake can use it like 'lib' on windows."""
+        dlltool_wrapper = paths.OUT_DIR / 'dlltool-adapter.sh'
+        with dlltool_wrapper.open('w') as output:
+            output.write(textwrap.dedent(f"""#!/bin/bash
+
+                for i in "$@"
+                do
+                    p="${{i:1}}"
+                    eval "${{p/:/=}}"
+                done
+
+                {self.toolchain.path / 'bin' / 'llvm-dlltool'} -d "${{def}}" -l "${{out}}" -m i386:x86-64 -D "${{name}}.dll"
+            """))
+        dlltool_wrapper.chmod(0o744)
+        return dlltool_wrapper
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        # Don't build compiler-rt, libcxx etc. for Windows
+        defines['LLVM_BUILD_RUNTIME'] = 'OFF'
+        # Build clang-tidy/clang-format for Windows.
+        defines['LLVM_TOOL_CLANG_TOOLS_EXTRA_BUILD'] = 'ON'
+        defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
+        # Don't build tests for Windows.
+        defines['LLVM_INCLUDE_TESTS'] = 'OFF'
+
+        defines['CMAKE_GNUtoMS'] = 'ON'
+        defines['CMAKE_GNUtoMS_LIB'] = str(self._create_dlltool_wrapper())
+        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.build_path / 'bin' / 'llvm-config')
+        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
+        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
+        if self.build_lldb:
+            defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
+        return defines
+
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        ldflags.append('-Wl,--dynamicbase')
+        ldflags.append('-Wl,--nxcompat')
+        # Use static-libgcc to avoid runtime dependence on libgcc_eh.
+        ldflags.append('-static-libgcc')
+        # pthread is needed by libgcc_eh.
+        ldflags.append('-pthread')
+        # Add path to libc++, libc++abi.
+        libcxx_lib = BuilderRegistry.get('libcxx').install_dir / 'lib64'
+        ldflags.append(f'-L{libcxx_lib}')
+        ldflags.append('-Wl,--high-entropy-va')
+        ldflags.append('-Wl,--Xlink=-Brepro')
+        ldflags.append(f'-L{paths.WIN_ZLIB_LIB_PATH}')
+        return ldflags
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-DMS_WIN64')
+        cflags.append(f'-I{paths.WIN_ZLIB_INCLUDE_PATH}')
         return cflags
 
     @property
     def cxxflags(self) -> List[str]:
         cxxflags = super().cxxflags
-        cxxflags.append('-stdlib=libc++')
+
+        # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
+        # clang-tools-extra/clangd/Context.cpp
+        cxxflags.append('-fuse-cxa-atexit')
+
+        # Explicitly add the path to libc++ headers.  We don't need to configure
+        # options like visibility annotations, win32 threads etc. because the
+        # __generated_config header in the patch captures all the options used when
+        # building libc++.
+        cxx_headers = BuilderRegistry.get('libcxx').install_dir / 'include' / 'c++' / 'v1'
+        cxxflags.append(f'-I{cxx_headers}')
+
         return cxxflags
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
-
-    @property
-    def config_flags(self) -> List[str]:
-        """Parameters to configure."""
-        return []
-
-    def _touch_src_dir(self, files) -> None:
-        for file in files:
-            file_path = self.src_dir / file
-            if file_path.is_file():
-                file_path.touch(exist_ok=True)
-
-    def _touch_autoconfig_files(self) -> None:
-        """Touches configure files to prevent autoreconf."""
-        files_to_touch = ["aclocal.m4", "configure", "Makefile.am"]
-        self._touch_src_dir(files_to_touch)
-        self._touch_src_dir(self.src_dir.glob('**/*.in'))
-
-    def _build_config(self) -> None:
-        logger().info('Building %s for %s', self.name, self._config)
-
-        if self.remove_install_dir and self.install_dir.exists():
-            shutil.rmtree(self.install_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self._touch_autoconfig_files()
-
-        env = self.env
-        cflags = self._config.cflags + self.cflags
-        cxxflags = self._config.cxxflags + self.cxxflags
-        ldflags = self._config.ldflags + self.ldflags
-        env['CC'] = ' '.join([str(self.toolchain.cc)] + cflags + ldflags)
-        env['CXX'] = ' '.join([str(self.toolchain.cxx)] + cxxflags + ldflags)
-
-        config_cmd = [self.src_dir / 'configure', f'--prefix={self.install_dir}']
-        config_cmd.extend(self.config_flags)
-        utils.check_call(config_cmd, cwd=self.output_dir, env=env)
-
-        make_cmd = ['make', f'-j{multiprocessing.cpu_count()}']
-        utils.check_call(make_cmd, cwd=self.output_dir)
-
-        self.install()
-
-    def install(self) -> None:
-        """Installs built artifacts."""
-        install_cmd = ['make', 'install']
-        utils.check_call(install_cmd, cwd=self.output_dir)
-
-
-class CMakeBuilder(Builder):
-    """Builder for cmake targets."""
-    config: configs.Config
-    src_dir: Path
-    remove_cmake_cache: bool = False
-    remove_install_dir: bool = False
-    ninja_target: Optional[str] = None
-
-    @property
-    def install_dir(self) -> Path:
-        """Returns the path this target will be installed to."""
-        raise NotImplementedError()
-
-    @property
-    def output_dir(self) -> Path:
-        """The path for intermediate results."""
-        return paths.OUT_DIR / self.name
-
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        """CMake defines."""
-        cflags = self._config.cflags + self.cflags
-        cxxflags = self._config.cxxflags + self.cxxflags
-        ldflags = self._config.ldflags + self.ldflags
-        cflags_str = ' '.join(cflags)
-        cxxflags_str = ' '.join(cxxflags)
-        ldflags_str = ' '.join(ldflags)
-        defines: Dict[str, str] = {
-            'CMAKE_C_COMPILER': str(self.toolchain.cc),
-            'CMAKE_CXX_COMPILER': str(self.toolchain.cxx),
-
-            'CMAKE_ASM_FLAGS':  cflags_str,
-            'CMAKE_C_FLAGS': cflags_str,
-            'CMAKE_CXX_FLAGS': cxxflags_str,
-
-            'CMAKE_EXE_LINKER_FLAGS': ldflags_str,
-            'CMAKE_SHARED_LINKER_FLAGS': ldflags_str,
-            'CMAKE_MODULE_LINKER_FLAGS': ldflags_str,
-
-            'CMAKE_BUILD_TYPE': 'Release',
-            'CMAKE_INSTALL_PREFIX': str(self.install_dir),
-
-            'CMAKE_MAKE_PROGRAM': str(paths.NINJA_BIN_PATH),
-
-            'CMAKE_FIND_ROOT_PATH_MODE_INCLUDE': 'ONLY',
-            'CMAKE_FIND_ROOT_PATH_MODE_LIBRARY': 'ONLY',
-            'CMAKE_FIND_ROOT_PATH_MODE_PACKAGE': 'ONLY',
-            'CMAKE_FIND_ROOT_PATH_MODE_PROGRAM': 'NEVER',
-        }
-        if self._config.sysroot:
-            defines['CMAKE_SYSROOT'] = str(self._config.sysroot)
-        if self._config.target_os == hosts.Host.Android:
-            defines['ANDROID'] = '1'
-            # Inhibit all of CMake's own NDK handling code.
-            defines['CMAKE_SYSTEM_VERSION'] = '1'
-        if self._is_cross_compiling():
-            # Cross compiling
-            defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
-            defines['CMAKE_SYSTEM_PROCESSOR'] = self._get_cmake_system_arch()
-        return defines
-
-    def _get_cmake_system_name(self) -> str:
-        return self._config.target_os.value.capitalize()
-
-    def _get_cmake_system_arch(self) -> str:
-        return self._config.target_arch.value
-
-    @staticmethod
-    def _rm_cmake_cache(cache_dir: Path):
-        for dirpath, dirs, files in os.walk(cache_dir):
-            if 'CMakeCache.txt' in files:
-                os.remove(os.path.join(dirpath, 'CMakeCache.txt'))
-            if 'CMakeFiles' in dirs:
-                utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
-
-    def _record_cmake_command(self, cmake_cmd: List[str],
-                              env: Dict[str, str]) -> None:
-        with open(self.output_dir / 'cmake_invocation.sh', 'w') as outf:
-            for k, v in env.items():
-                if v != ORIG_ENV.get(k):
-                    outf.write(f'{k}={v}\n')
-            outf.write(utils.list2cmdline(cmake_cmd) + '\n')
-
-    def _build_config(self) -> None:
-        if self.remove_cmake_cache:
-            self._rm_cmake_cache(self.output_dir)
-
-        if self.remove_install_dir and self.install_dir.exists():
-            shutil.rmtree(self.install_dir)
-
-        cmake_cmd: List[str] = [str(paths.CMAKE_BIN_PATH), '-G', 'Ninja']
-
-        cmake_cmd.extend(f'-D{key}={val}' for key, val in self.cmake_defines.items())
-        cmake_cmd.append(str(self.src_dir))
-
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-
-        self._record_cmake_command(cmake_cmd, self.env)
-        utils.check_call(cmake_cmd, cwd=self.output_dir, env=self.env)
-
-        ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
-        if self.ninja_target:
-            ninja_cmd.append(self.ninja_target)
-        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
-
-        self.install_config()
-
-    def install_config(self) -> None:
-        """Installs built artifacts for current config."""
-        utils.check_call([paths.NINJA_BIN_PATH, 'install'],
-                         cwd=self.output_dir, env=self.env)
-
-
-class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
-    """Base builder for both llvm and individual runtime lib."""
-
-    enable_assertions: bool = False
-
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        defines = super().cmake_defines
-
-        if self.enable_assertions:
-            defines['LLVM_ENABLE_ASSERTIONS'] = 'ON'
-        else:
-            defines['LLVM_ENABLE_ASSERTIONS'] = 'OFF'
-
-        # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
-        defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
-        defines['LLVM_ENABLE_THREADS'] = 'ON'
-        defines['LLVM_USE_NEWPM'] = 'ON'
-        defines['LLVM_LIBDIR_SUFFIX'] = '64'
-        defines['LLVM_VERSION_PATCH'] = android_version.patch_level
-        defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
-        defines['CLANG_REPOSITORY_STRING'] = (
-            'https://android.googlesource.com/toolchain/llvm-project')
-        defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
-
-        if self._config.target_os.is_darwin:
-            # This will be used to set -mmacosx-version-min. And helps to choose SDK.
-            # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
-            defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = constants.MAC_MIN_VERSION
-
-        # http://b/111885871 - Disable building xray because of MacOS issues.
-        defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
-
-        # To prevent cmake from checking libstdcxx version.
-        defines['LLVM_ENABLE_LIBCXX'] = 'ON'
-
-        if not self._config.target_os.is_darwin:
-            defines['LLVM_ENABLE_LLD'] = 'ON'
-
-        return defines
-
-
-class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
-    """Base builder for llvm runtime libs."""
-
-    _config: configs.AndroidConfig
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
-
-    @property
-    def install_dir(self) -> Path:
-        arch = self._config.target_arch
-        if self._config.platform:
-            return self.toolchain.resource_dir / arch.value
-        return self.toolchain.path / 'runtimes_ndk_cxx' / arch.value
-
-    @property
-    def output_dir(self) -> Path:
-        return paths.OUT_DIR / 'lib' / (f'{self.name}{self._config.output_suffix}')
-
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        defines: Dict[str, str] = super().cmake_defines
-        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
-                                          'bin' / 'llvm-config')
-        return defines
-
-
-class LLVMBuilder(LLVMBaseBuilder):
-    """Builder for LLVM project."""
-
-    src_dir: Path = paths.LLVM_PATH / 'llvm'
-    config_list: List[configs.Config]
-    build_name: str
-    svn_revision: str
-    enable_assertions: bool = False
-    toolchain_name: str
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_toolchain_by_name(self.toolchain_name)
-
-    @property
-    def install_dir(self) -> Path:
-        return paths.OUT_DIR / f'{self.name}-install'
-
-    @property
-    def llvm_projects(self) -> Set[str]:
-        """Returns enabled llvm projects."""
-        raise NotImplementedError()
-
-    @property
-    def llvm_targets(self) -> Set[str]:
-        """Returns llvm target archtects to build."""
-        raise NotImplementedError()
-
-    @property
-    def _enable_lldb(self) -> bool:
-        return 'lldb' in self.llvm_projects
-
-    def set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:  # pylint: disable=no-self-use
-        """Sets cmake defines for lldb."""
-        # By default all these are auto-detected. Disable them explicitly to avoid unexpected dependency.
-        # They may be enabled again below if necessary.
-        defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
-        defines['LLDB_ENABLE_LZMA'] = 'OFF'
-        defines['LLDB_ENABLE_LIBXML2'] = 'OFF'
-        defines['LLDB_ENABLE_LUA'] = 'OFF'
-
-        swig_executable = BuilderRegistry.get('swig').install_dir / 'bin' / 'swig'
-        defines['SWIG_EXECUTABLE'] = str(swig_executable)
-        py_prefix = 'Python3' if target.is_windows else 'PYTHON'
-        defines['LLDB_ENABLE_PYTHON'] = 'ON'
-        defines[f'{py_prefix}_LIBRARY'] = str(paths.get_python_lib(target))
-        defines[f'{py_prefix}_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
-        defines[f'{py_prefix}_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
-
-        defines['LLDB_EMBED_PYTHON_HOME'] = 'ON'
-        defines['LLDB_PYTHON_HOME'] = '../python3'
-
-        if target.is_darwin:
-            # Avoids the build of debug server. It is only used in testing.
-            defines['LLDB_USE_SYSTEM_DEBUGSERVER'] = 'ON'
-
-        if not target.is_windows:
-            libedit_root = BuilderRegistry.get('libedit').install_dir
-            defines['LLDB_ENABLE_LIBEDIT'] = 'ON'
-            defines['LibEdit_INCLUDE_DIRS'] = str(paths.get_libedit_include_dir(libedit_root))
-            defines['LibEdit_LIBRARIES'] = str(paths.get_libedit_lib(libedit_root, target))
-
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        defines = super().cmake_defines
-
-        defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
-
-        defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
-        defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
-
-        defines['CLANG_VENDOR'] = 'Android ({} based on {})'.format(
-            self.build_name, self.svn_revision)
-
-        defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
-                                              'binutils' / 'binutils-2.27' / 'include')
-        defines['LLVM_BUILD_RUNTIME'] = 'ON'
-
-        if self._enable_lldb:
-            self.set_lldb_flags(self._config.target_os, defines)
-
-        return defines
