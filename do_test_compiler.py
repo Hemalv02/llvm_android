@@ -23,6 +23,7 @@ import shutil
 import subprocess
 
 import do_build as build
+import builders
 import hosts
 import source_manager
 import toolchains
@@ -318,7 +319,7 @@ def build_clang(instrumented=False, pgo=True):
 
     # LLVM tool llvm-profdata from stage1 is needed to merge the collected
     # profiles.  Build all LLVM tools if building instrumented stage2
-    stage1 = build.Stage1Builder()
+    stage1 = builders.Stage1Builder()
     stage1.build_name = 'dev'
     stage1.svn_revision = 'dev'
     stage1.build_llvm_tools = instrumented
@@ -331,7 +332,7 @@ def build_clang(instrumented=False, pgo=True):
         long_version = build.extract_clang_long_version(stage1_install)
         profdata = build.pgo_profdata_file(long_version)
 
-    stage2 = build.Stage2Builder()
+    stage2 = builders.Stage2Builder()
     stage2.build_name = 'dev'
     stage2.svn_revision = 'dev'
     stage2.build_lldb = False
