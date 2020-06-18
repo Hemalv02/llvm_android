@@ -1,0 +1,168 @@
+From 7e77cf473ac9d8f8b65db017d660892f1c8f4b75 Mon Sep 17 00:00:00 2001
+From: Alexandre Ganea <alexandre.ganea@ubisoft.com>
+Date: Mon, 2 Mar 2020 15:41:47 -0500
+Subject: [PATCH] [Clang] Fix Hurd toolchain test on a two-stage build with
+ ThinLTO
+
+A two-stage ThinLTO build previously failed the clang/test/Driver/hurd.c test because of a static_cast in "tools::gnutools::Linker::ConstructJob()" which wrongly converted an instance of "clang::driver::toolchains::Hurd" into that of "clang::driver::toolchains::Linux". ThinLTO would later devirtualize the "ToolChain.getDynamicLinker(Args)" call and use "Linux::getDynamicLinker()" instead, causing the test to generate a wrong "-dynamic-linker" linker flag (/lib/ld-linux.so.2 instead of /lib/ld.so)
+
+Fixes PR45061.
+
+Differential Revision: https://reviews.llvm.org/D75373
+---
+ clang/lib/Driver/ToolChains/Gnu.cpp   | 20 +++++++++++---------
+ clang/lib/Driver/ToolChains/Gnu.h     |  6 ++++++
+ clang/lib/Driver/ToolChains/Hurd.cpp  |  8 ++++++--
+ clang/lib/Driver/ToolChains/Hurd.h    |  6 ++++--
+ clang/lib/Driver/ToolChains/Linux.cpp |  5 +++++
+ clang/lib/Driver/ToolChains/Linux.h   |  4 +++-
+ 6 files changed, 35 insertions(+), 14 deletions(-)
+
+diff --git a/clang/lib/Driver/ToolChains/Gnu.cpp b/clang/lib/Driver/ToolChains/Gnu.cpp
+index c356657541f..d20d6298758 100644
+--- a/clang/lib/Driver/ToolChains/Gnu.cpp
++++ b/clang/lib/Driver/ToolChains/Gnu.cpp
+@@ -309,7 +309,7 @@ static const char *getLDMOption(const llvm::Triple &T, const ArgList &Args) {
+   }
+ }
+ 
+-static bool getPIE(const ArgList &Args, const toolchains::Linux &ToolChain) {
++static bool getPIE(const ArgList &Args, const ToolChain &TC) {
+   if (Args.hasArg(options::OPT_shared) || Args.hasArg(options::OPT_static) ||
+       Args.hasArg(options::OPT_r) || Args.hasArg(options::OPT_static_pie))
+     return false;
+@@ -317,17 +317,16 @@ static bool getPIE(const ArgList &Args, const toolchains::Linux &ToolChain) {
+   Arg *A = Args.getLastArg(options::OPT_pie, options::OPT_no_pie,
+                            options::OPT_nopie);
+   if (!A)
+-    return ToolChain.isPIEDefault();
++    return TC.isPIEDefault();
+   return A->getOption().matches(options::OPT_pie);
+ }
+ 
+-static bool getStaticPIE(const ArgList &Args,
+-                         const toolchains::Linux &ToolChain) {
++static bool getStaticPIE(const ArgList &Args, const ToolChain &TC) {
+   bool HasStaticPIE = Args.hasArg(options::OPT_static_pie);
+   // -no-pie is an alias for -nopie. So, handling -nopie takes care of
+   // -no-pie as well.
+   if (HasStaticPIE && Args.hasArg(options::OPT_nopie)) {
+-    const Driver &D = ToolChain.getDriver();
++    const Driver &D = TC.getDriver();
+     const llvm::opt::OptTable &Opts = D.getOpts();
+     const char *StaticPIEName = Opts.getOptionName(options::OPT_static_pie);
+     const char *NoPIEName = Opts.getOptionName(options::OPT_nopie);
+@@ -346,8 +345,12 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+                                            const InputInfoList &Inputs,
+                                            const ArgList &Args,
+                                            const char *LinkingOutput) const {
+-  const toolchains::Linux &ToolChain =
+-      static_cast<const toolchains::Linux &>(getToolChain());
++  // FIXME: The Linker class constructor takes a ToolChain and not a
++  // Generic_ELF, so the static_cast might return a reference to a invalid
++  // instance (see PR45061). Ideally, the Linker constructor needs to take a
++  // Generic_ELF instead.
++  const toolchains::Generic_ELF &ToolChain =
++      static_cast<const toolchains::Generic_ELF &>(getToolChain());
+   const Driver &D = ToolChain.getDriver();
+ 
+   const llvm::Triple &Triple = getToolChain().getEffectiveTriple();
+@@ -418,8 +421,7 @@ void tools::gnutools::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+   if (isAndroid)
+       CmdArgs.push_back("--warn-shared-textrel");
+ 
+-  for (const auto &Opt : ToolChain.ExtraOpts)
+-    CmdArgs.push_back(Opt.c_str());
++  ToolChain.addExtraOpts(CmdArgs);
+ 
+   CmdArgs.push_back("--eh-frame-hdr");
+ 
+diff --git a/clang/lib/Driver/ToolChains/Gnu.h b/clang/lib/Driver/ToolChains/Gnu.h
+index 083f74c0547..fa50b56bf95 100644
+--- a/clang/lib/Driver/ToolChains/Gnu.h
++++ b/clang/lib/Driver/ToolChains/Gnu.h
+@@ -356,6 +356,12 @@ public:
+   void addClangTargetOptions(const llvm::opt::ArgList &DriverArgs,
+                              llvm::opt::ArgStringList &CC1Args,
+                              Action::OffloadKind DeviceOffloadKind) const override;
++
++  virtual std::string getDynamicLinker(const llvm::opt::ArgList &Args) const {
++    return {};
++  }
++
++  virtual void addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const {}
+ };
+ 
+ } // end namespace toolchains
+diff --git a/clang/lib/Driver/ToolChains/Hurd.cpp b/clang/lib/Driver/ToolChains/Hurd.cpp
+index 72286bd09f1..ce1806c4043 100644
+--- a/clang/lib/Driver/ToolChains/Hurd.cpp
++++ b/clang/lib/Driver/ToolChains/Hurd.cpp
+@@ -61,8 +61,7 @@ static StringRef getOSLibDir(const llvm::Triple &Triple, const ArgList &Args) {
+   return Triple.isArch32Bit() ? "lib" : "lib64";
+ }
+ 
+-Hurd::Hurd(const Driver &D, const llvm::Triple &Triple,
+-           const ArgList &Args)
++Hurd::Hurd(const Driver &D, const llvm::Triple &Triple, const ArgList &Args)
+     : Generic_ELF(D, Triple, Args) {
+   std::string SysRoot = computeSysRoot();
+   path_list &Paths = getFilePaths();
+@@ -170,3 +169,8 @@ void Hurd::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
+ 
+   addExternCSystemInclude(DriverArgs, CC1Args, SysRoot + "/usr/include");
+ }
++
++void Hurd::addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const {
++  for (const auto &Opt : ExtraOpts)
++    CmdArgs.push_back(Opt.c_str());
++}
+diff --git a/clang/lib/Driver/ToolChains/Hurd.h b/clang/lib/Driver/ToolChains/Hurd.h
+index 86c6c3f734d..8f88d7e8e58 100644
+--- a/clang/lib/Driver/ToolChains/Hurd.h
++++ b/clang/lib/Driver/ToolChains/Hurd.h
+@@ -27,9 +27,11 @@ public:
+   AddClangSystemIncludeArgs(const llvm::opt::ArgList &DriverArgs,
+                             llvm::opt::ArgStringList &CC1Args) const override;
+ 
+-  virtual std::string computeSysRoot() const;
++  std::string computeSysRoot() const;
+ 
+-  virtual std::string getDynamicLinker(const llvm::opt::ArgList &Args) const;
++  std::string getDynamicLinker(const llvm::opt::ArgList &Args) const override;
++
++  void addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const override;
+ 
+   std::vector<std::string> ExtraOpts;
+ 
+diff --git a/clang/lib/Driver/ToolChains/Linux.cpp b/clang/lib/Driver/ToolChains/Linux.cpp
+index d8d8a8da8fc..3d76e680114 100644
+--- a/clang/lib/Driver/ToolChains/Linux.cpp
++++ b/clang/lib/Driver/ToolChains/Linux.cpp
+@@ -1007,3 +1007,8 @@ llvm::DenormalMode Linux::getDefaultDenormalModeForType(
+     return llvm::DenormalMode::getIEEE();
+   }
+ }
++
++void Linux::addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const {
++  for (const auto &Opt : ExtraOpts)
++    CmdArgs.push_back(Opt.c_str());
++}
+diff --git a/clang/lib/Driver/ToolChains/Linux.h b/clang/lib/Driver/ToolChains/Linux.h
+index e3c0103ac3e..999f991b636 100644
+--- a/clang/lib/Driver/ToolChains/Linux.h
++++ b/clang/lib/Driver/ToolChains/Linux.h
+@@ -42,7 +42,9 @@ public:
+                         llvm::opt::ArgStringList &CmdArgs) const override;
+   virtual std::string computeSysRoot() const;
+ 
+-  virtual std::string getDynamicLinker(const llvm::opt::ArgList &Args) const;
++  std::string getDynamicLinker(const llvm::opt::ArgList &Args) const override;
++
++  void addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const override;
+ 
+   std::vector<std::string> ExtraOpts;
+ 
+-- 
+2.27.0.111.gc72c7da667-goog
+

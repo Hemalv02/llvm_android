@@ -1,0 +1,158 @@
+From 6c4ce202267ee089e611b7bee1dc4f3eb07ba23d Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Wed, 10 Jun 2020 17:08:04 -0700
+Subject: [PATCH] [Driver] Search computed sysroot for libc++ header paths
+
+Summary:
+The Android NDK's clang driver is used with an Android -target setting,
+and the driver automatically finds the Android sysroot at a path
+relative to the driver. The sysroot has the libc++ headers in it.
+
+Remove Hurd::computeSysRoot as it is equivalent to the new
+ToolChain::computeSysRoot method.
+
+Fixes PR46213.
+
+Reviewers: srhines, danalbert, #libc, kristina
+
+Reviewed By: srhines, danalbert
+
+Subscribers: ldionne, sthibaul, asb, rbar, johnrusso, simoncook, sabuasal, niosHD, jrtc27, MaskRay, zzheng, edward-jones, rogfer01, MartinMosbeck, brucehoult, the_o, PkmX, jocewei, Jim, lenary, s.egerton, pzheng, sameer.abuasal, apazos, luismarques, cfe-commits
+
+Tags: #clang
+
+Differential Revision: https://reviews.llvm.org/D81622
+---
+ clang/include/clang/Driver/ToolChain.h       | 4 ++++
+ clang/lib/Driver/ToolChain.cpp               | 4 ++++
+ clang/lib/Driver/ToolChains/Gnu.cpp          | 2 +-
+ clang/lib/Driver/ToolChains/Hurd.cpp         | 7 -------
+ clang/lib/Driver/ToolChains/Hurd.h           | 2 --
+ clang/lib/Driver/ToolChains/Linux.h          | 2 +-
+ clang/lib/Driver/ToolChains/MSP430.h         | 2 +-
+ clang/lib/Driver/ToolChains/RISCVToolchain.h | 2 +-
+ 8 files changed, 12 insertions(+), 13 deletions(-)
+
+diff --git a/clang/include/clang/Driver/ToolChain.h b/clang/include/clang/Driver/ToolChain.h
+index e8bb86be555..f33ed991f49 100644
+--- a/clang/include/clang/Driver/ToolChain.h
++++ b/clang/include/clang/Driver/ToolChain.h
+@@ -536,6 +536,10 @@ public:
+   /// FIXME: this really belongs on some sort of DeploymentTarget abstraction
+   virtual bool hasBlocksRuntime() const { return true; }
+ 
++  /// Return the sysroot, possibly searching for a default sysroot using
++  /// target-specific logic.
++  virtual std::string computeSysRoot() const;
++
+   /// Add the clang cc1 arguments for system include paths.
+   ///
+   /// This routine is responsible for adding the necessary cc1 arguments to
+diff --git a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
+index 2bda7de8ac3..c21bc0dc2a7 100644
+--- a/clang/lib/Driver/ToolChain.cpp
++++ b/clang/lib/Driver/ToolChain.cpp
+@@ -750,6 +750,10 @@ std::string ToolChain::ComputeEffectiveClangTriple(const ArgList &Args,
+   return ComputeLLVMTriple(Args, InputType);
+ }
+ 
++std::string ToolChain::computeSysRoot() const {
++  return D.SysRoot;
++}
++
+ void ToolChain::AddClangSystemIncludeArgs(const ArgList &DriverArgs,
+                                           ArgStringList &CC1Args) const {
+   // Each toolchain should provide the appropriate include flags.
+diff --git a/clang/lib/Driver/ToolChains/Gnu.cpp b/clang/lib/Driver/ToolChains/Gnu.cpp
+index a392fa00ea7..93a285d42a0 100644
+--- a/clang/lib/Driver/ToolChains/Gnu.cpp
++++ b/clang/lib/Driver/ToolChains/Gnu.cpp
+@@ -2846,7 +2846,6 @@ static std::string DetectLibcxxIncludePath(llvm::vfs::FileSystem &vfs,
+ void
+ Generic_GCC::addLibCxxIncludePaths(const llvm::opt::ArgList &DriverArgs,
+                                    llvm::opt::ArgStringList &CC1Args) const {
+-  const std::string& SysRoot = getDriver().SysRoot;
+   auto AddIncludePath = [&](std::string Path) {
+     std::string IncludePath = DetectLibcxxIncludePath(getVFS(), Path);
+     if (IncludePath.empty() || !getVFS().exists(IncludePath))
+@@ -2862,6 +2861,7 @@ Generic_GCC::addLibCxxIncludePaths(const llvm::opt::ArgList &DriverArgs,
+   // If this is a development, non-installed, clang, libcxx will
+   // not be found at ../include/c++ but it likely to be found at
+   // one of the following two locations:
++  std::string SysRoot = computeSysRoot();
+   if (AddIncludePath(SysRoot + "/usr/local/include/c++"))
+     return;
+   if (AddIncludePath(SysRoot + "/usr/include/c++"))
+diff --git a/clang/lib/Driver/ToolChains/Hurd.cpp b/clang/lib/Driver/ToolChains/Hurd.cpp
+index 3448e4f4a29..a700d7b9064 100644
+--- a/clang/lib/Driver/ToolChains/Hurd.cpp
++++ b/clang/lib/Driver/ToolChains/Hurd.cpp
+@@ -125,13 +125,6 @@ Tool *Hurd::buildAssembler() const {
+   return new tools::gnutools::Assembler(*this);
+ }
+ 
+-std::string Hurd::computeSysRoot() const {
+-  if (!getDriver().SysRoot.empty())
+-    return getDriver().SysRoot;
+-
+-  return std::string();
+-}
+-
+ std::string Hurd::getDynamicLinker(const ArgList &Args) const {
+   if (getArch() == llvm::Triple::x86)
+     return "/lib/ld.so";
+diff --git a/clang/lib/Driver/ToolChains/Hurd.h b/clang/lib/Driver/ToolChains/Hurd.h
+index 8f88d7e8e58..0612a55280a 100644
+--- a/clang/lib/Driver/ToolChains/Hurd.h
++++ b/clang/lib/Driver/ToolChains/Hurd.h
+@@ -27,8 +27,6 @@ public:
+   AddClangSystemIncludeArgs(const llvm::opt::ArgList &DriverArgs,
+                             llvm::opt::ArgStringList &CC1Args) const override;
+ 
+-  std::string computeSysRoot() const;
+-
+   std::string getDynamicLinker(const llvm::opt::ArgList &Args) const override;
+ 
+   void addExtraOpts(llvm::opt::ArgStringList &CmdArgs) const override;
+diff --git a/clang/lib/Driver/ToolChains/Linux.h b/clang/lib/Driver/ToolChains/Linux.h
+index 0a7e5bac25b..fba5c24441e 100644
+--- a/clang/lib/Driver/ToolChains/Linux.h
++++ b/clang/lib/Driver/ToolChains/Linux.h
+@@ -42,7 +42,7 @@ public:
+   SanitizerMask getSupportedSanitizers() const override;
+   void addProfileRTLibs(const llvm::opt::ArgList &Args,
+                         llvm::opt::ArgStringList &CmdArgs) const override;
+-  virtual std::string computeSysRoot() const;
++  std::string computeSysRoot() const override;
+ 
+   std::string getDynamicLinker(const llvm::opt::ArgList &Args) const override;
+ 
+diff --git a/clang/lib/Driver/ToolChains/MSP430.h b/clang/lib/Driver/ToolChains/MSP430.h
+index b5308a8dd68..ff5002b8b55 100644
+--- a/clang/lib/Driver/ToolChains/MSP430.h
++++ b/clang/lib/Driver/ToolChains/MSP430.h
+@@ -44,7 +44,7 @@ protected:
+   Tool *buildLinker() const override;
+ 
+ private:
+-  std::string computeSysRoot() const;
++  std::string computeSysRoot() const override;
+ };
+ 
+ } // end namespace toolchains
+diff --git a/clang/lib/Driver/ToolChains/RISCVToolchain.h b/clang/lib/Driver/ToolChains/RISCVToolchain.h
+index bb7f64849bc..b40ef366ff4 100644
+--- a/clang/lib/Driver/ToolChains/RISCVToolchain.h
++++ b/clang/lib/Driver/ToolChains/RISCVToolchain.h
+@@ -39,7 +39,7 @@ protected:
+   Tool *buildLinker() const override;
+ 
+ private:
+-  std::string computeSysRoot() const;
++  std::string computeSysRoot() const override;
+ };
+ 
+ } // end namespace toolchains
+-- 
+2.27.0.111.gc72c7da667-goog
+

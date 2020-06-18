@@ -24,6 +24,12 @@
         "end_version": 384124
     },
     {
+        "comment": "[UPSTREAM] clang: Guess at some platform FTZ/DAZ default settings",
+        "rel_patch_path": "cherry/fa7cd549d604bfd8f9dce5d649a19720cbc39cca.patch",
+        "start_version": 383902,
+        "end_version": 384435
+    },
+    {
         "comment": "[UPSTREAM] Fix type-dependency of bitfields in templates",
         "rel_patch_path": "cherry/a58017e5cae5be948fd1913b68d46553e87aa622.patch",
         "start_version": 383902,
@@ -64,6 +70,12 @@
         "rel_patch_path": "cherry/1de10705594c7a2c9b8fde901c391bd84062ae04.patch",
         "start_version": 377782,
         "end_version": 385989
+    },
+    {
+        "comment": "[UPSTREAM] [Clang] Fix Hurd toolchain test on a two-stage build with ThinLTO",
+        "rel_patch_path": "cherry/7e77cf473ac9d8f8b65db017d660892f1c8f4b75.patch",
+        "start_version": 383902,
+        "end_version": 386173
     },
     {
         "comment": "[UPSTREAM] Revert \"[clang] detect switch fallthrough marked by a comment (PR43465)\"",
@@ -214,6 +226,12 @@
         "rel_patch_path": "cherry/609ef948387ba40e3693c2bd693d82ca34dcdc02.patch",
         "start_version": 391452,
         "end_version": 392981
+    },
+    {
+        "comment": "[UPSTREAM] [Driver] Search computed sysroot for libc++ header paths",
+        "rel_patch_path": "cherry/6c4ce202267ee089e611b7bee1dc4f3eb07ba23d.patch",
+        "start_version": 383902,
+        "end_version": 396599
     },
     {
         "comment": "Revert two changes that break Android builds.",
