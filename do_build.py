@@ -882,6 +882,8 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
                             'clang++\n'
                             'clang.real\n'
                             'clang++.real\n'
+                            'clang-tidy\n'
+                            'clang-tidy.real\n'
                             '../lib64/libc++.so.1\n'
                             'lld\n'
                             'ld64.lld\n'
