@@ -42,6 +42,11 @@ class Toolchain:
         return self.path / 'bin' / 'clang++'
 
     @property
+    def strip(self) -> Path:
+        """Returns the path to llvm-strip."""
+        return self.path / 'bin' / 'llvm-strip'
+
+    @property
     def lib_dir(self) -> Path:
         """Returns the path to lib dir."""
         return self.path / 'lib64'

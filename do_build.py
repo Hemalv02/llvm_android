@@ -811,6 +811,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
 
     bin_dir = os.path.join(install_dir, 'bin')
     lib_dir = os.path.join(install_dir, 'lib64')
+    strip_cmd = toolchains.get_runtime_toolchain().strip
 
     for bin_filename in os.listdir(bin_dir):
         binary = os.path.join(bin_dir, bin_filename)
@@ -818,7 +819,11 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
             if bin_filename not in necessary_bin_files:
                 remove(binary)
             elif strip and bin_filename not in script_bins:
-                utils.check_call(['strip', binary])
+                # Strip all non-global symbols and debug info.
+                # These specific flags prevent Darwin executables from being
+                # stripped of additional global symbols that might be used
+                # by plugins.
+                utils.check_call([strip_cmd, '-S', '-x', binary])
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
