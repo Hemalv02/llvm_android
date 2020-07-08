@@ -1,0 +1,127 @@
+From 5122e828701c88f8d53ee881bc68f3904454d154 Mon Sep 17 00:00:00 2001
+From: Hans Wennborg <hans@chromium.org>
+Date: Thu, 27 Feb 2020 13:48:26 +0100
+Subject: [PATCH] [driver][darwin] Don't use -platform_version flag by default
+ (PR44813)
+
+The code in llvmorg-10-init-12188-g25ce33a6e4f is a breaking change for
+users of older linkers who don't pass a version parameter, which
+prevents a drop-in clang upgrade. Old tools can't know about what future
+tools will do, so as a general principle the burden should be new tools
+to be compatible by default. Also, for comparison, none of the other
+tests of Version within AddLinkArgs add any new behaviors unless the
+version is explicitly specified. Therefore, this patch changes the
+-platform_version behavior from opt-out to opt-in.
+
+Patch by David Major!
+
+Differential revision: https://reviews.llvm.org/D74784
+---
+ clang/lib/Driver/ToolChains/Darwin.cpp                 | 2 +-
+ clang/test/Driver/darwin-ld-platform-version-ios.c     | 9 +++++++--
+ clang/test/Driver/darwin-ld-platform-version-macos.c   | 9 ++++++---
+ clang/test/Driver/darwin-ld-platform-version-tvos.c    | 9 +++++++--
+ clang/test/Driver/darwin-ld-platform-version-watchos.c | 9 +++++++--
+ 5 files changed, 28 insertions(+), 10 deletions(-)
+
+diff --git a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
+index b32fad791bd..ab3a68b70f5 100644
+--- a/clang/lib/Driver/ToolChains/Darwin.cpp
++++ b/clang/lib/Driver/ToolChains/Darwin.cpp
+@@ -335,7 +335,7 @@ void darwin::Linker::AddLinkArgs(Compilation &C, const ArgList &Args,
+   Args.AddAllArgs(CmdArgs, options::OPT_init);
+ 
+   // Add the deployment target.
+-  if (!Version[0] || Version[0] >= 520)
++  if (Version[0] >= 520)
+     MachOTC.addPlatformVersionArgs(Args, CmdArgs);
+   else
+     MachOTC.addMinVersionArgs(Args, CmdArgs);
+diff --git a/clang/test/Driver/darwin-ld-platform-version-ios.c b/clang/test/Driver/darwin-ld-platform-version-ios.c
+index 2255d3f990d..05698032a32 100644
+--- a/clang/test/Driver/darwin-ld-platform-version-ios.c
++++ b/clang/test/Driver/darwin-ld-platform-version-ios.c
+@@ -1,9 +1,14 @@
+ // RUN: touch %t.o
+ 
++// RUN: %clang -target arm64-apple-ios12.3 -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=0 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
++// RUN: %clang -target arm64-apple-ios12.3 -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=400 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
+ // RUN: %clang -target arm64-apple-ios12.3 -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=520 -### %t.o 2>&1 \
+-// RUN:   | FileCheck %s
++// RUN:   | FileCheck --check-prefix=LINKER-NEW  %s
+ // RUN: %clang -target x86_64-apple-ios13-simulator -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=520 -### %t.o 2>&1 \
+ // RUN:   | FileCheck --check-prefix=SIMUL %s
+ 
+-// CHECK: "-platform_version" "ios" "12.3.0" "13.0"
++// LINKER-OLD: "-iphoneos_version_min" "12.3.0"
++// LINKER-NEW: "-platform_version" "ios" "12.3.0" "13.0"
+ // SIMUL: "-platform_version" "ios-simulator" "13.0.0" "13.0"
+diff --git a/clang/test/Driver/darwin-ld-platform-version-macos.c b/clang/test/Driver/darwin-ld-platform-version-macos.c
+index 1b849a6d2df..c1b940a3f35 100644
+--- a/clang/test/Driver/darwin-ld-platform-version-macos.c
++++ b/clang/test/Driver/darwin-ld-platform-version-macos.c
+@@ -1,11 +1,14 @@
+ // RUN: touch %t.o
+ 
+ // RUN: %clang -target x86_64-apple-macos10.13 -isysroot %S/Inputs/MacOSX10.14.sdk -mlinker-version=0 -### %t.o 2>&1 \
+-// RUN:   | FileCheck %s
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
++// RUN: %clang -target x86_64-apple-macos10.13 -isysroot %S/Inputs/MacOSX10.14.sdk -mlinker-version=400 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
+ // RUN: env SDKROOT=%S/Inputs/MacOSX10.14.sdk %clang -target x86_64-apple-macos10.13.0.1 -mlinker-version=520 -### %t.o 2>&1 \
+-// RUN:   | FileCheck %s
++// RUN:   | FileCheck --check-prefix=LINKER-NEW %s
+ 
+-// CHECK: "-platform_version" "macos" "10.13.0" "10.14"
++// LINKER-OLD: "-macosx_version_min" "10.13.0"
++// LINKER-NEW: "-platform_version" "macos" "10.13.0" "10.14"
+ 
+ // RUN: %clang -target x86_64-apple-macos10.13  -mlinker-version=520 -### %t.o 2>&1 \
+ // RUN:   | FileCheck --check-prefix=NOSDK %s
+diff --git a/clang/test/Driver/darwin-ld-platform-version-tvos.c b/clang/test/Driver/darwin-ld-platform-version-tvos.c
+index 1ef6a0b6000..39a2020cbb2 100644
+--- a/clang/test/Driver/darwin-ld-platform-version-tvos.c
++++ b/clang/test/Driver/darwin-ld-platform-version-tvos.c
+@@ -1,9 +1,14 @@
+ // RUN: touch %t.o
+ 
++// RUN: %clang -target arm64-apple-tvos12.3 -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=0 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
++// RUN: %clang -target arm64-apple-tvos12.3 -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=400 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
+ // RUN: %clang -target arm64-apple-tvos12.3 -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=520 -### %t.o 2>&1 \
+-// RUN:   | FileCheck %s
++// RUN:   | FileCheck --check-prefix=LINKER-NEW %s
+ // RUN: %clang -target x86_64-apple-tvos13-simulator -isysroot %S/Inputs/iPhoneOS13.0.sdk -mlinker-version=520 -### %t.o 2>&1 \
+ // RUN:   | FileCheck --check-prefix=SIMUL %s
+ 
+-// CHECK: "-platform_version" "tvos" "12.3.0" "13.0"
++// LINKER-OLD: "-tvos_version_min" "12.3.0"
++// LINKER-NEW: "-platform_version" "tvos" "12.3.0" "13.0"
+ // SIMUL: "-platform_version" "tvos-simulator" "13.0.0" "13.0"
+diff --git a/clang/test/Driver/darwin-ld-platform-version-watchos.c b/clang/test/Driver/darwin-ld-platform-version-watchos.c
+index 9663fc61381..db565ddbb59 100644
+--- a/clang/test/Driver/darwin-ld-platform-version-watchos.c
++++ b/clang/test/Driver/darwin-ld-platform-version-watchos.c
+@@ -1,9 +1,14 @@
+ // RUN: touch %t.o
+ 
++// RUN: %clang -target arm64_32-apple-watchos5.2 -isysroot %S/Inputs/WatchOS6.0.sdk -mlinker-version=0 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
++// RUN: %clang -target arm64_32-apple-watchos5.2 -isysroot %S/Inputs/WatchOS6.0.sdk -mlinker-version=400 -### %t.o 2>&1 \
++// RUN:   | FileCheck --check-prefix=LINKER-OLD %s
+ // RUN: %clang -target arm64_32-apple-watchos5.2 -isysroot %S/Inputs/WatchOS6.0.sdk -mlinker-version=520 -### %t.o 2>&1 \
+-// RUN:   | FileCheck %s
++// RUN:   | FileCheck --check-prefix=LINKER-NEW %s
+ // RUN: %clang -target x86_64-apple-watchos6-simulator -isysroot %S/Inputs/WatchOS6.0.sdk -mlinker-version=520 -### %t.o 2>&1 \
+ // RUN:   | FileCheck --check-prefix=SIMUL %s
+ 
+-// CHECK: "-platform_version" "watchos" "5.2.0" "6.0.0"
++// LINKER-OLD: "-watchos_version_min" "5.2.0"
++// LINKER-NEW: "-platform_version" "watchos" "5.2.0" "6.0.0"
+ // SIMUL: "-platform_version" "watchos-simulator" "6.0.0" "6.0.0"
+-- 
+2.27.0.383.g050319c2ae-goog
+

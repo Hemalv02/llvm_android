@@ -54,6 +54,12 @@
         "end_version": 385429
     },
     {
+        "comment": "[UPSTREAM] [driver][darwin] Don't use -platform_version flag by default (PR44813)",
+        "rel_patch_path": "cherry/5122e828701c88f8d53ee881bc68f3904454d154.patch",
+        "start_version": 383902,
+        "end_version": 385581
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[LICM] Support hosting of dynamic allocas out of loops\"",
         "rel_patch_path": "cherry/14845b2c459021e3dbf2ead52d707d4a7db40cbb.patch",
         "start_version": 383902,
