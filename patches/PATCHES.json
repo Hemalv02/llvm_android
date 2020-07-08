@@ -24,6 +24,12 @@
         "end_version": 384124
     },
     {
+        "comment": "[UPSTREAM] [asan] Disable qsort interceptor on Android.",
+        "rel_patch_path": "cherry/f69c83645b81ffbffbce5abfe827f8ff1a965d9f.patch",
+        "start_version": 383902,
+        "end_version": 384197
+    },
+    {
         "comment": "[UPSTREAM] clang: Guess at some platform FTZ/DAZ default settings",
         "rel_patch_path": "cherry/fa7cd549d604bfd8f9dce5d649a19720cbc39cca.patch",
         "start_version": 383902,
