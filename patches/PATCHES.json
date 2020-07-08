@@ -24,6 +24,12 @@
         "end_version": 384124
     },
     {
+        "comment": "[UPSTREAM] [asan] Disable qsort interceptor on Android.",
+        "rel_patch_path": "cherry/f69c83645b81ffbffbce5abfe827f8ff1a965d9f.patch",
+        "start_version": 383902,
+        "end_version": 384197
+    },
+    {
         "comment": "[UPSTREAM] Fix type-dependency of bitfields in templates",
         "rel_patch_path": "cherry/a58017e5cae5be948fd1913b68d46553e87aa622.patch",
         "start_version": 383902,
