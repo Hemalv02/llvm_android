@@ -1,0 +1,206 @@
+From a630b00116613aa5f38d840458e6b51e73f4e0d3 Mon Sep 17 00:00:00 2001
+From: Stephen Hines <srhines@google.com>
+Date: Tue, 14 Jul 2020 10:35:39 -0700
+Subject: [PATCH] Revert "[llvm-objcopy] [COFF] Fix a misconception about debug
+ directory payloads"
+
+This reverts commit 23e35f7c88549de8c76ee5b0643ce5116062563c.
+---
+ .../llvm-objcopy/COFF/debug-dir-unmapped.test | 52 --------------
+ .../llvm-objcopy/COFF/patch-debug-dir2.test   | 68 -------------------
+ llvm/tools/llvm-objcopy/COFF/Writer.cpp       | 25 ++-----
+ llvm/tools/llvm-objcopy/COFF/Writer.h         |  1 -
+ 4 files changed, 4 insertions(+), 142 deletions(-)
+ delete mode 100644 llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test
+ delete mode 100644 llvm/test/tools/llvm-objcopy/COFF/patch-debug-dir2.test
+
+diff --git a/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test b/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test
+deleted file mode 100644
+index b7966c14d7d..00000000000
+--- a/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test
++++ /dev/null
+@@ -1,52 +0,0 @@
+-## Check that we error out when trying to patch up debug directories that
+-## point to data outside of the runtime mapped sections (as we don't try to
+-## locate and copy such payloads from the padding areas of the input file).
+-
+-# RUN: yaml2obj %s -o %t.in.exe
+-
+-# RUN: not llvm-objcopy --remove-section .rdata %t.in.exe %t.out.exe 2>&1 | FileCheck %s
+-
+-# CHECK: error: '{{.*}}{{/|\\}}debug-dir-unmapped.test.tmp.out.exe': debug directory payload outside of mapped sections not supported
+-
+---- !COFF
+-OptionalHeader:
+-  AddressOfEntryPoint: 4096
+-  ImageBase:       1073741824
+-  SectionAlignment: 4096
+-  FileAlignment:   512
+-  MajorOperatingSystemVersion: 6
+-  MinorOperatingSystemVersion: 0
+-  MajorImageVersion: 0
+-  MinorImageVersion: 0
+-  MajorSubsystemVersion: 6
+-  MinorSubsystemVersion: 0
+-  Subsystem:       IMAGE_SUBSYSTEM_WINDOWS_CUI
+-  DLLCharacteristics: [  ]
+-  SizeOfStackReserve: 1048576
+-  SizeOfStackCommit: 4096
+-  SizeOfHeapReserve: 1048576
+-  SizeOfHeapCommit: 4096
+-  Debug:
+-    RelativeVirtualAddress: 12288
+-    Size:            28
+-header:
+-  Machine:         IMAGE_FILE_MACHINE_AMD64
+-  Characteristics: [  ]
+-sections:
+-  - Name:            .text
+-    Characteristics: [  ]
+-    VirtualAddress:  4096
+-    VirtualSize:     16
+-    SectionData:     C3909090909090909090909090909090
+-  - Name:            .rdata
+-    Characteristics: [  ]
+-    VirtualAddress:  8192
+-    VirtualSize:     32
+-    SectionData:     FFFFFFFF00000000FFFFFFFF00000000
+-  - Name:            .buildid
+-    Characteristics: [  ]
+-    VirtualAddress:  12288
+-    VirtualSize:     28
+-    SectionData:     0000000042EE405C00000000020000001900000000000000E4070000
+-symbols:
+-...
+diff --git a/llvm/test/tools/llvm-objcopy/COFF/patch-debug-dir2.test b/llvm/test/tools/llvm-objcopy/COFF/patch-debug-dir2.test
+deleted file mode 100644
+index c18a73a4af3..00000000000
+--- a/llvm/test/tools/llvm-objcopy/COFF/patch-debug-dir2.test
++++ /dev/null
+@@ -1,68 +0,0 @@
+-## Check that we successfully patch the PointerToRawData field in more than
+-## one debug directory entry.
+-
+-# RUN: yaml2obj %s -o %t.in.exe
+-
+-# RUN: llvm-readobj --coff-debug-directory %t.in.exe | FileCheck %s --check-prefixes=DEBUG-DIRS,DEBUG-DIRS-PRE
+-# RUN: llvm-readobj --sections %t.in.exe | FileCheck %s --check-prefixes=SECTIONS,SECTIONS-PRE
+-# RUN: llvm-objcopy --remove-section .rdata %t.in.exe %t.out.exe
+-# RUN: llvm-readobj --coff-debug-directory %t.out.exe | FileCheck %s --check-prefixes=DEBUG-DIRS,DEBUG-DIRS-POST
+-# RUN: llvm-readobj --sections %t.out.exe | FileCheck %s --check-prefixes=SECTIONS,SECTIONS-POST
+-
+-# DEBUG-DIRS:               AddressOfRawData: 0x3038
+-# DEBUG-DIRS-PRE-NEXT:      PointerToRawData: 0x638
+-# DEBUG-DIRS-POST-NEXT:     PointerToRawData: 0x438
+-
+-# DEBUG-DIRS:               AddressOfRawData: 0x3051
+-# DEBUG-DIRS-PRE-NEXT:      PointerToRawData: 0x651
+-# DEBUG-DIRS-POST-NEXT:     PointerToRawData: 0x451
+-
+-# SECTIONS:           Name: .buildid
+-# SECTIONS-NEXT:      VirtualSize:
+-# SECTIONS-NEXT:      VirtualAddress:
+-# SECTIONS-NEXT:      RawDataSize:
+-# SECTIONS-PRE-NEXT:  PointerToRawData: 0x600
+-# SECTIONS-POST-NEXT: PointerToRawData: 0x400
+-
+---- !COFF
+-OptionalHeader:
+-  AddressOfEntryPoint: 4096
+-  ImageBase:       5368709120
+-  SectionAlignment: 4096
+-  FileAlignment:   512
+-  MajorOperatingSystemVersion: 6
+-  MinorOperatingSystemVersion: 0
+-  MajorImageVersion: 0
+-  MinorImageVersion: 0
+-  MajorSubsystemVersion: 6
+-  MinorSubsystemVersion: 0
+-  Subsystem:       IMAGE_SUBSYSTEM_WINDOWS_CUI
+-  DLLCharacteristics: [  ]
+-  SizeOfStackReserve: 1048576
+-  SizeOfStackCommit: 4096
+-  SizeOfHeapReserve: 1048576
+-  SizeOfHeapCommit: 4096
+-  Debug:
+-    RelativeVirtualAddress: 12288
+-    Size:            56
+-header:
+-  Machine:         IMAGE_FILE_MACHINE_AMD64
+-  Characteristics: [  ]
+-sections:
+-  - Name:            .text
+-    Characteristics: [  ]
+-    VirtualAddress:  4096
+-    VirtualSize:     1
+-    SectionData:     C3
+-  - Name:            .rdata
+-    Characteristics: [  ]
+-    VirtualAddress:  8192
+-    VirtualSize:     32
+-    SectionData:     FFFFFFFFFFFFFFFF0000000000000000FFFFFFFFFFFFFFFF0000000000000000
+-  - Name:            .buildid
+-    Characteristics: [  ]
+-    VirtualAddress:  12288
+-    VirtualSize:     85
+-    SectionData:     0000000046C7A65E00000000020000001900000038300000380600000000000046C7A65E000000001400000004000000513000005106000052534453B3411F5F27A80D2A4C4C44205044422E010000000001000000
+-symbols:
+-...
+diff --git a/llvm/tools/llvm-objcopy/COFF/Writer.cpp b/llvm/tools/llvm-objcopy/COFF/Writer.cpp
+index 6b560890a4c..e35e0474a36 100644
+--- a/llvm/tools/llvm-objcopy/COFF/Writer.cpp
++++ b/llvm/tools/llvm-objcopy/COFF/Writer.cpp
+@@ -383,16 +383,6 @@ Error COFFWriter::write(bool IsBigObj) {
+   return Buf.commit();
+ }
+ 
+-Expected<uint32_t> COFFWriter::virtualAddressToFileAddress(uint32_t RVA) {
+-  for (const auto &S : Obj.getSections()) {
+-    if (RVA >= S.Header.VirtualAddress &&
+-        RVA < S.Header.VirtualAddress + S.Header.SizeOfRawData)
+-      return S.Header.PointerToRawData + RVA - S.Header.VirtualAddress;
+-  }
+-  return createStringError(object_error::parse_failed,
+-                           "debug directory payload not found");
+-}
+-
+ // Locate which sections contain the debug directories, iterate over all
+ // the debug_directory structs in there, and set the PointerToRawData field
+ // in all of them, according to their new physical location in the file.
+@@ -416,17 +406,10 @@ Error COFFWriter::patchDebugDirectory() {
+       uint8_t *End = Ptr + Dir->Size;
+       while (Ptr < End) {
+         debug_directory *Debug = reinterpret_cast<debug_directory *>(Ptr);
+-        if (!Debug->AddressOfRawData)
+-          return createStringError(object_error::parse_failed,
+-                                   "debug directory payload outside of "
+-                                   "mapped sections not supported");
+-        if (Expected<uint32_t> FilePosOrErr =
+-                virtualAddressToFileAddress(Debug->AddressOfRawData))
+-          Debug->PointerToRawData = *FilePosOrErr;
+-        else
+-          return FilePosOrErr.takeError();
+-        Ptr += sizeof(debug_directory);
+-        Offset += sizeof(debug_directory);
++        Debug->PointerToRawData =
++            S.Header.PointerToRawData + Offset + sizeof(debug_directory);
++        Ptr += sizeof(debug_directory) + Debug->SizeOfData;
++        Offset += sizeof(debug_directory) + Debug->SizeOfData;
+       }
+       // Debug directory found and patched, all done.
+       return Error::success();
+diff --git a/llvm/tools/llvm-objcopy/COFF/Writer.h b/llvm/tools/llvm-objcopy/COFF/Writer.h
+index 3c0bdcbd5d6..681a8d5e4a6 100644
+--- a/llvm/tools/llvm-objcopy/COFF/Writer.h
++++ b/llvm/tools/llvm-objcopy/COFF/Writer.h
+@@ -45,7 +45,6 @@ class COFFWriter {
+   Error write(bool IsBigObj);
+ 
+   Error patchDebugDirectory();
+-  Expected<uint32_t> virtualAddressToFileAddress(uint32_t RVA);
+ 
+ public:
+   virtual ~COFFWriter() {}
+-- 
+2.27.0.389.gc38d7665816-goog
+

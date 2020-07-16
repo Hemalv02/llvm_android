@@ -42,6 +42,7 @@ DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
 DISABLED_WARNINGS = [
     '-Wno-error=defaulted-function-deleted',
     '-Wno-error=string-plus-int',
+    '-fcommon',
     '-fsplit-lto-unit',
     '-Wno-error=alloca',
     '-Wno-error=c99-designator',

@@ -416,7 +416,9 @@ class LLVMBuilder(LLVMBaseBuilder):
         py_prefix = 'Python3' if target.is_windows else 'PYTHON'
         defines['LLDB_ENABLE_PYTHON'] = 'ON'
         defines[f'{py_prefix}_LIBRARY'] = str(paths.get_python_lib(target))
+        defines[f'{py_prefix}_LIBRARIES'] = str(paths.get_python_lib(target))
         defines[f'{py_prefix}_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
+        defines[f'{py_prefix}_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
         defines[f'{py_prefix}_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
 
         defines['LLDB_EMBED_PYTHON_HOME'] = 'ON'

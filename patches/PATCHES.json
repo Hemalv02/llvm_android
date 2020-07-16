@@ -249,6 +249,12 @@
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
+        "end_version": 394052
+    },
+    {
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
+        "start_version": 394052,
         "end_version": null
     },
     {
@@ -285,6 +291,12 @@
         "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
         "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v2.patch",
         "start_version": 390410,
+        "end_version": null
+    },
+    {
+        "comment": "Revert \"[llvm-objcopy] [COFF] Fix a misconception about debug directory payloads\"",
+        "rel_patch_path": "Revert-windows-debug-directory.patch",
+        "start_version": 399163,
         "end_version": null
     }
 ]
