@@ -1007,12 +1007,6 @@ def parse_args():
             known_components_str)
 
     parser.add_argument(
-        '--check-pgo-profile',
-        action='store_true',
-        default=False,
-        help='Fail if expected PGO profile doesn\'t exist')
-
-    parser.add_argument(
         '--build-llvm-next',
         action='store_true',
         default=False,
@@ -1084,11 +1078,6 @@ def main():
     if need_host:
         profdata_filename = pgo_profdata_filename()
         profdata = pgo_profdata_file(profdata_filename)
-        # Do not use PGO profiles if profdata file doesn't exist unless failure
-        # is explicitly requested via --check-pgo-profile.
-        if profdata is None and args.check_pgo_profile:
-            raise RuntimeError('Profdata file does not exist for ' +
-                               profdata_filename)
 
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
