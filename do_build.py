@@ -733,6 +733,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
     shutil.copytree(build_dir, install_dir, symlinks=True)
 
     ext = '.exe' if host.is_windows else ''
+    script_ext = '.cmd' if host.is_windows else '.sh'
     shlib_ext = '.dll' if host.is_windows else '.so' if host.is_linux else '.dylib'
 
     # Next, we remove unnecessary binaries.
@@ -783,6 +784,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         necessary_bin_files.update({
             'lldb-argdumper' + ext,
             'lldb' + ext,
+            'lldb' + script_ext,
         })
 
     if host.is_windows:
@@ -807,6 +809,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         'git-clang-format',
         'scan-build',
         'scan-view',
+        'lldb' + script_ext,
     }
 
     bin_dir = os.path.join(install_dir, 'bin')

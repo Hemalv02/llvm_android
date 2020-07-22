@@ -420,9 +420,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines[f'{py_prefix}_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
         defines[f'{py_prefix}_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
         defines[f'{py_prefix}_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
-
-        defines['LLDB_EMBED_PYTHON_HOME'] = 'ON'
-        defines['LLDB_PYTHON_HOME'] = '../python3'
+        defines['LLDB_EMBED_PYTHON_HOME'] = 'OFF'
 
         if target.is_darwin:
             # Avoids the build of debug server. It is only used in testing.

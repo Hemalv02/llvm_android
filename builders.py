@@ -250,6 +250,16 @@ class Stage2Builder(base_builders.LLVMBuilder):
             defines['HAVE_LIBCOMPRESSION'] = '0'
         return defines
 
+    def install_config(self) -> None:
+        super().install_config()
+        lldb_wrapper_path = self.install_dir / 'bin' / 'lldb.sh'
+        lldb_wrapper_path.write_text(textwrap.dedent("""\
+            #!/bin/bash
+            CURDIR=$(cd $(dirname $0) && pwd)
+            PYTHONHOME="$CURDIR/../python3" "$CURDIR/lldb" "$@"
+        """))
+        lldb_wrapper_path.chmod(0o755)
+
 
 class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'compiler-rt'
@@ -645,3 +655,13 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         cxxflags.append(f'-I{cxx_headers}')
 
         return cxxflags
+
+    def install_config(self) -> None:
+        super().install_config()
+        lldb_wrapper_path = self.install_dir / 'bin' / 'lldb.cmd'
+        lldb_wrapper_path.write_text(textwrap.dedent("""\
+            @ECHO OFF
+            SET PYTHONHOME=%~dp0..\python3
+            %~dp0lldb.exe %*
+            IF NOT [%ERRORLEVEL%] == [0] EXIT /B 1
+        """))
