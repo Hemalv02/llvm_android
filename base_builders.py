@@ -443,7 +443,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
 
-        defines['CLANG_VENDOR'] = 'Android ({} based on {})'.format(
+        defines['CLANG_VENDOR'] = 'Android ({}, based on {})'.format(
             self.build_name, self.svn_revision)
 
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /

@@ -119,11 +119,14 @@ def symlink_to_linux_resource_dir(install_dir):
 
 
 def sanity_check(host, install_dir, clang_version_major):
-    # Make sure the binary has correct PGO profile.
+    # Make sure the official toolchain (non llvm-next) is built with PGO
+    # profiles.
     if host == 'linux-x86':
       realClangPath = os.path.join(install_dir, 'bin', 'clang-' + clang_version_major)
       strings = utils.check_output(['strings', realClangPath])
-      if strings.find('NO PGO PROFILE') != -1:
+      no_pgo_profile = strings.find('NO PGO PROFILE') != -1
+      llvm_next = strings.find('ANDROID_LLVM_NEXT') != -1
+      if no_pgo_profile and not llvm_next:
           logger().error('The Clang binary is not built with profiles.')
           return False
 

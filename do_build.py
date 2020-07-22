@@ -1091,7 +1091,10 @@ def main():
 
         # Annotate the version string if there is no profdata.
         if profdata is None:
-            stage2.build_name += ', NO PGO PROFILE, '
+            stage2.build_name += ', NO PGO PROFILE'
+        # Annotate the version string if this is an llvm-next build.
+        if BUILD_LLVM_NEXT:
+            stage2.build_name += ', ANDROID_LLVM_NEXT'
 
         stage2.build()
         if not (stage2.build_instrumented or stage2.debug_build):
