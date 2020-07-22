@@ -43,6 +43,11 @@ class Toolchain:
         return self.path / 'bin' / 'clang++'
 
     @property
+    def cl(self) -> Path:
+        """Returns the path to windows c++ compiler."""
+        return self.path / 'bin' / 'clang-cl'
+
+    @property
     def ar(self) -> Path:
         """Returns the path to llvm-ar."""
         return self.path / 'bin' / 'llvm-ar'

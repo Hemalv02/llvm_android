@@ -22,7 +22,6 @@ import textwrap
 from typing import cast, Dict, List, Optional, Set
 
 import base_builders
-from builder_registry import BuilderRegistry
 import configs
 import constants
 import hosts
@@ -30,6 +29,7 @@ import mapfile
 import paths
 import toolchains
 import utils
+import win_sdk
 
 class AsanMapFileBuilder(base_builders.Builder):
     name: str = 'asan-mapfile'
@@ -470,6 +470,8 @@ class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
 
     @property
     def link_library(self) -> Path:
+        if self._config.target_os.is_windows and win_sdk.is_enabled():
+            return self.install_dir / 'lib' / 'liblzma.lib'
         return self.install_dir / 'lib' / 'liblzma.a'
 
     @property
@@ -501,6 +503,8 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
 
     @property
     def link_library(self) -> Path:
+        if self._config.target_os.is_windows and win_sdk.is_enabled():
+            return self.install_dir / 'lib' / 'libxml2.lib'
         return {
             hosts.Host.Linux: self.install_dir / 'lib' / 'libxml2.so.2.9.10',
             hosts.Host.Darwin: self.install_dir / 'lib' / 'libxml2.2.9.10.dylib',
@@ -560,7 +564,6 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
 class LibCxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     name = 'libcxxabi'
     src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
-    config_list: List[configs.Config] = [configs.WindowsConfig()]
 
     @property
     def install_dir(self):
@@ -594,7 +597,7 @@ class LibCxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
 class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
     name = 'libcxx'
     src_dir: Path = paths.LLVM_PATH / 'libcxx'
-    config_list: List[configs.Config] = [configs.WindowsConfig()]
+    libcxx_abi_path: Path
 
     @property
     def install_dir(self):
@@ -611,10 +614,11 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
         # into install_dir only during libcxx's install step.  But use the
         # library from install_dir.
         defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = str(paths.LLVM_PATH / 'libcxxabi' / 'include')
-        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(BuilderRegistry.get('libcxxabi').install_dir / 'lib64')
+        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(self.libcxx_abi_path / 'lib64')
 
         # Build only the static library.
         defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+        defines['LIBCXX_ENABLE_EXPERIMENTAL_LIBRARY'] = 'OFF'
 
         if self.enable_assertions:
             defines['LIBCXX_ENABLE_ASSERTIONS'] = 'ON'
@@ -633,7 +637,12 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
 class WindowsToolchainBuilder(base_builders.LLVMBuilder):
     name: str = 'windows-x86-64'
     toolchain_name: str = 'stage1'
-    config_list: List[configs.Config] = [configs.WindowsConfig()]
+    build_lldb: bool = True
+    libcxx_path: Optional[Path] = None
+
+    @property
+    def _is_msvc(self) -> bool:
+        return isinstance(self._config, configs.MSVCConfig)
 
     @property
     def install_dir(self) -> Path:
@@ -666,28 +675,49 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
         if self.build_lldb:
             defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
+        if self._is_msvc:
+            # Generating libLLVM is not supported on MSVC.
+            defines['LLVM_BUILD_LLVM_DYLIB'] = 'OFF'
+            # But we still want LLVMgold.dll.
+            defines['LLVM_ENABLE_PLUGINS'] = 'ON'
+
+        defines['CMAKE_CXX_STANDARD'] = '17'
+        defines['LLVM_BUILD_LLVM_C_DYLIB'] = 'OFF'
+
         return defines
 
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
-        ldflags.append('-Wl,--dynamicbase')
-        ldflags.append('-Wl,--nxcompat')
-        # Use static-libgcc to avoid runtime dependence on libgcc_eh.
-        ldflags.append('-static-libgcc')
-        # pthread is needed by libgcc_eh.
-        ldflags.append('-pthread')
-        # Add path to libc++, libc++abi.
-        libcxx_lib = BuilderRegistry.get('libcxx').install_dir / 'lib64'
-        ldflags.append(f'-L{libcxx_lib}')
-        ldflags.append('-Wl,--high-entropy-va')
-        ldflags.append('-Wl,--Xlink=-Brepro')
-        ldflags.append(f'-L{paths.WIN_ZLIB_LIB_PATH}')
+        if not self._is_msvc:
+            # Use static-libgcc to avoid runtime dependence on libgcc_eh.
+            ldflags.append('-static-libgcc')
+            # pthread is needed by libgcc_eh.
+            ldflags.append('-pthread')
+
+            ldflags.append('-Wl,--dynamicbase')
+            ldflags.append('-Wl,--nxcompat')
+            ldflags.append('-Wl,--high-entropy-va')
+            ldflags.append('-Wl,--Xlink=-Brepro')
+            libpath_prefix = '-L'
+        else:
+            ldflags.append('/dynamicbase')
+            ldflags.append('/nxcompat')
+            ldflags.append('/highentropyva')
+            ldflags.append('/Brepro')
+            libpath_prefix = '/LIBPATH:'
+
+        ldflags.append(libpath_prefix + str(paths.WIN_ZLIB_LIB_PATH))
+        if self.libcxx_path:
+            # Add path to libc++, libc++abi.
+            libcxx_lib = self.libcxx_path / 'lib64'
+            ldflags.append(libpath_prefix + str(libcxx_lib))
         return ldflags
 
     @property
     def cflags(self) -> List[str]:
         cflags = super().cflags
+        cflags.append('-DLZMA_API_STATIC')
         cflags.append('-DMS_WIN64')
         cflags.append(f'-I{paths.WIN_ZLIB_INCLUDE_PATH}')
         return cflags
@@ -700,12 +730,13 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         # clang-tools-extra/clangd/Context.cpp
         cxxflags.append('-fuse-cxa-atexit')
 
-        # Explicitly add the path to libc++ headers.  We don't need to configure
-        # options like visibility annotations, win32 threads etc. because the
-        # __generated_config header in the patch captures all the options used when
-        # building libc++.
-        cxx_headers = BuilderRegistry.get('libcxx').install_dir / 'include' / 'c++' / 'v1'
-        cxxflags.append(f'-I{cxx_headers}')
+        if self.libcxx_path:
+            # Explicitly add the path to libc++ headers.  We don't need to configure
+            # options like visibility annotations, win32 threads etc. because the
+            # __generated_config header in the patch captures all the options used when
+            # building libc++.
+            cxx_headers = self.libcxx_path / 'include' / 'c++' / 'v1'
+            cxxflags.append(f'-I{cxx_headers}')
 
         return cxxflags
 

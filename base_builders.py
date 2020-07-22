@@ -64,9 +64,9 @@ class Builder:  # pylint: disable=too-few-public-methods
     config_list: List[configs.Config]
 
     def __init__(self, config_list: Optional[Sequence[configs.Config]]=None) -> None:
-        self._config: configs.Config
         if config_list:
             self.config_list = list(config_list)
+        self._config: configs.Config = self.config_list[0]
 
     @BuilderRegistry.register_and_build
     def build(self) -> None:
@@ -83,6 +83,14 @@ class Builder:  # pylint: disable=too-few-public-methods
 
     def _is_cross_compiling(self) -> bool:
         return self._config.target_os != hosts.build_host()
+
+    @property
+    def _cc(self) -> Path:
+        return self._config.get_c_compiler(self.toolchain)
+
+    @property
+    def _cxx(self) -> Path:
+        return self._config.get_cxx_compiler(self.toolchain)
 
     @property
     def cflags(self) -> List[str]:
@@ -106,7 +114,11 @@ class Builder:  # pylint: disable=too-few-public-methods
     @property
     def env(self) -> Dict[str, str]:
         """Environment variables used when building."""
-        return dict(ORIG_ENV)
+        env = dict(ORIG_ENV)
+        env.update(self._config.env)
+        paths = [self._config.env.get('PATH'), ORIG_ENV.get('PATH')]
+        env['PATH'] = os.pathsep.join(p for p in paths if p)
+        return env
 
     @property
     def toolchain(self) -> toolchains.Toolchain:
@@ -192,8 +204,8 @@ class AutoconfBuilder(Builder):
         cflags = self._config.cflags + self.cflags
         cxxflags = self._config.cxxflags + self.cxxflags
         ldflags = self._config.ldflags + self.ldflags
-        env['CC'] = ' '.join([str(self.toolchain.cc)] + cflags + ldflags)
-        env['CXX'] = ' '.join([str(self.toolchain.cxx)] + cxxflags + ldflags)
+        env['CC'] = ' '.join([str(self._cc)] + cflags + ldflags)
+        env['CXX'] = ' '.join([str(self._cxx)] + cxxflags + ldflags)
 
         config_cmd = [self.src_dir / 'configure', f'--prefix={self.install_dir}']
         config_cmd.extend(self.config_flags)
@@ -244,11 +256,9 @@ class CMakeBuilder(Builder):
         cxxflags_str = ' '.join(cxxflags)
         ldflags_str = ' '.join(ldflags)
         defines: Dict[str, str] = {
-            'CMAKE_C_COMPILER': str(self.toolchain.cc),
-            'CMAKE_CXX_COMPILER': str(self.toolchain.cxx),
+            'CMAKE_C_COMPILER': str(self._cc),
+            'CMAKE_CXX_COMPILER': str(self._cxx),
 
-            'CMAKE_C_COMPILER': str(self.toolchain.cc),
-            'CMAKE_CXX_COMPILER': str(self.toolchain.cxx),
             'CMAKE_ADDR2LINE': str(self.toolchain.addr2line),
             'CMAKE_AR': str(self.toolchain.ar),
             'CMAKE_NM': str(self.toolchain.nm),
@@ -280,6 +290,9 @@ class CMakeBuilder(Builder):
 
             'CMAKE_POSITION_INDEPENDENT_CODE': 'ON',
         }
+        linker = self._config.get_linker(self.toolchain)
+        if linker:
+            defines['CMAKE_LINKER'] = str(linker)
         if self._config.sysroot:
             defines['CMAKE_SYSROOT'] = str(self._config.sysroot)
         if self._config.target_os == hosts.Host.Android:
@@ -290,6 +303,7 @@ class CMakeBuilder(Builder):
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
             defines['CMAKE_SYSTEM_PROCESSOR'] = self._get_cmake_system_arch()
+        defines.update(self._config.cmake_defines)
         return defines
 
     def _get_cmake_system_name(self) -> str:
@@ -330,12 +344,13 @@ class CMakeBuilder(Builder):
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self._record_cmake_command(cmake_cmd, self.env)
-        utils.check_call(cmake_cmd, cwd=self.output_dir, env=self.env)
+        env = self.env
+        self._record_cmake_command(cmake_cmd, env)
+        utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
         ninja_cmd.extend(self.ninja_targets)
-        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
+        utils.check_call(ninja_cmd, cwd=self.output_dir, env=env)
 
         self.install_config()
 
