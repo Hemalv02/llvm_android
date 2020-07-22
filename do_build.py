@@ -531,7 +531,7 @@ def install_lldb_deps(install_dir: Path, host: hosts.Host):
     python_prebuilt_dir: Path = paths.get_python_dir(host)
     python_dest_dir: Path = install_dir / 'python3'
     shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True,
-                    ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp'
+                    ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
                                                   '.git', '.gitignore'))
 
     py_lib = paths.get_python_dynamic_lib(host).relative_to(python_prebuilt_dir)
