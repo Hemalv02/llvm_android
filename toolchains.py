@@ -34,12 +34,58 @@ class Toolchain:
 
     @property
     def cc(self) -> Path:  # pylint: disable=invalid-name
+        """Returns the path to c compiler."""
         return self.path / 'bin' / 'clang'
 
     @property
     def cxx(self) -> Path:
         """Returns the path to c++ compiler."""
         return self.path / 'bin' / 'clang++'
+
+    @property
+    def ar(self) -> Path:
+        """Returns the path to llvm-ar."""
+        return self.path / 'bin' / 'llvm-ar'
+
+    @property
+    def rc(self) -> Path:
+        """Returns the path to llvm-rc."""
+        return self.path / 'bin' / 'llvm-rc'
+
+    @property
+    def ranlib(self) -> Path:
+        """Returns the path to llvm-ranlib."""
+        return self.path / 'bin' / 'llvm-ranlib'
+
+    @property
+    def addr2line(self) -> Path:
+        """Returns the path to llvm-addr2line."""
+        return self.path / 'bin' / 'llvm-addr2line'
+
+    @property
+    def nm(self) -> Path:
+        """Returns the path to llvm-nm."""
+        return self.path / 'bin' / 'llvm-nm'
+
+    @property
+    def objcopy(self) -> Path:
+        """Returns the path to llvm-objcopy."""
+        return self.path / 'bin' / 'llvm-objcopy'
+
+    @property
+    def objdump(self) -> Path:
+        """Returns the path to llvm-objdump."""
+        return self.path / 'bin' / 'llvm-objdump'
+
+    @property
+    def readelf(self) -> Path:
+        """Returns the path to llvm-readelf."""
+        return self.path / 'bin' / 'llvm-readelf'
+
+    @property
+    def mt(self) -> Path:
+        """Returns the path to llvm-mt."""
+        return self.path / 'bin' / 'llvm-mt'
 
     @property
     def strip(self) -> Path:

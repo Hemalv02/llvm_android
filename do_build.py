@@ -1059,15 +1059,11 @@ def main():
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
 
-    # Windows libs are built with stage1 toolchain. llvm-config is required.
-    stage1_build_llvm_tools = instrumented or \
-                              need_windows or \
-                              args.debug
-
     stage1 = builders.Stage1Builder()
     stage1.build_name = args.build_name
     stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-    stage1.build_llvm_tools = stage1_build_llvm_tools
+    # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
+    stage1.build_lldb = BUILD_LLDB
     stage1.build_android_targets = args.debug or instrumented
     stage1.use_goma_for_stage1 = USE_GOMA_FOR_STAGE1
     stage1.build()

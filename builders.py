@@ -67,10 +67,10 @@ class Stage1Builder(base_builders.LLVMBuilder):
     name: str = 'stage1'
     toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
-    build_llvm_tools: bool = False
     build_android_targets: bool = False
     config_list: List[configs.Config] = [configs.host_config()]
     use_goma_for_stage1: bool = False
+    build_lldb: bool = False
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -82,9 +82,7 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
-        if self.build_llvm_tools:
-            # For lldb-tblgen. It will be used to build lldb-server and
-            # windows lldb.
+        if self.build_lldb:
             proj.add('lldb')
         return proj
 
@@ -107,10 +105,7 @@ class Stage1Builder(base_builders.LLVMBuilder):
         defines['CLANG_ENABLE_ARCMT'] = 'OFF'
         defines['CLANG_ENABLE_STATIC_ANALYZER'] = 'OFF'
 
-        if self.build_llvm_tools:
-            defines['LLVM_BUILD_TOOLS'] = 'ON'
-        else:
-            defines['LLVM_BUILD_TOOLS'] = 'OFF'
+        defines['LLVM_BUILD_TOOLS'] = 'ON'
 
         # Make libc++.so a symlink to libc++.so.x instead of a linker script that
         # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
