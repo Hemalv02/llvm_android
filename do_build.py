@@ -457,6 +457,9 @@ class SysrootsBuilder(base_builders.Builder):
 
 def build_llvm_for_windows(enable_assertions,
                            build_name):
+    if BUILD_LLDB:
+        builders.XzWindowsBuilder().build()
+
     win_builder = builders.WindowsToolchainBuilder()
     if win_builder.install_dir.exists():
         shutil.rmtree(win_builder.install_dir)
@@ -1075,6 +1078,7 @@ def main():
     if BUILD_LLDB:
         builders.SwigBuilder().build()
         if need_host:
+            builders.XzBuilder().build()
             # libedit is not needed for windows lldb.
             builders.LibEditBuilder().build()
 

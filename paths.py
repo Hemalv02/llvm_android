@@ -27,6 +27,7 @@ SYSROOTS: Path = OUT_DIR / 'sysroots'
 LLVM_PATH: Path = OUT_DIR / 'llvm-project'
 PREBUILTS_DIR: Path = ANDROID_DIR / 'prebuilts'
 EXTERNAL_DIR: Path = ANDROID_DIR / 'external'
+TOOLCHAIN_DIR: Path = ANDROID_DIR / 'toolchain'
 
 CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host().os_tag
                             / constants.CLANG_PREBUILT_VERSION)
@@ -38,8 +39,9 @@ NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag
 
 LIBEDIT_SRC_DIR: Path = EXTERNAL_DIR / 'libedit'
 SWIG_SRC_DIR: Path = EXTERNAL_DIR / 'swig'
+XZ_SRC_DIR: Path = TOOLCHAIN_DIR / 'xz'
 
-NDK_BASE: Path = ANDROID_DIR / 'toolchain' / 'prebuilts' /'ndk' / constants.NDK_VERSION
+NDK_BASE: Path = TOOLCHAIN_DIR / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'
 NDK_LIBCXXABI_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++abi' / 'include'
 NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'include'

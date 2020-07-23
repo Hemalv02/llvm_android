@@ -461,6 +461,18 @@ class SwigBuilder(base_builders.AutoconfBuilder):
         return ldflags
 
 
+class XzBuilder(base_builders.CMakeBuilder):
+    name: str = 'xz'
+    src_dir: Path = paths.XZ_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+
+class XzWindowsBuilder(base_builders.CMakeBuilder):
+    name: str = 'xz-windows'
+    src_dir: Path = paths.XZ_SRC_DIR
+    config_list: List[configs.Config] = [configs.WindowsConfig()]
+
+
 class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'lldb-server'
     src_dir: Path = paths.LLVM_PATH / 'llvm'
