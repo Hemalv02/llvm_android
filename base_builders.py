@@ -179,10 +179,10 @@ class AutoconfBuilder(Builder):
         make_cmd = ['make', f'-j{multiprocessing.cpu_count()}']
         utils.check_call(make_cmd, cwd=self.output_dir)
 
-        self.install()
+        self.install_config()
 
-    def install(self) -> None:
-        """Installs built artifacts."""
+    def install_config(self) -> None:
+        """Installs built artifacts for current config."""
         install_cmd = ['make', 'install']
         utils.check_call(install_cmd, cwd=self.output_dir)
 
