@@ -791,12 +791,12 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         })
 
     if host.is_windows:
-        windows_blacklist_bin_files = {
+        windows_exclude_bin_files = {
             'clang-' + version.major_version() + ext,
             'scan-build' + ext,
             'scan-view' + ext,
         }
-        necessary_bin_files -= windows_blacklist_bin_files
+        necessary_bin_files -= windows_exclude_bin_files
 
     if BUILD_LLDB:
         install_lldb_deps(Path(install_dir), host)
@@ -900,9 +900,9 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
                             'ld64.lld\n'
                             'ld.lld\n'
                            )
-            blacklist_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'share\n')
+            exclude_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'share\n')
             libs_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'lib', 'linux\n')
-            dependencies += (blacklist_dir + libs_dir)
+            dependencies += (exclude_dir + libs_dir)
             inputs_file.write(dependencies)
 
     # Package up the resulting trimmed install/ directory.

@@ -71,8 +71,8 @@ class ArgParser(argparse.ArgumentParser):
             help='Remove/overwrite any existing prebuilt directories.')
 
         self.add_argument(
-            '--no-sanity-check', action='store_true',
-            help='Skip sanity checks on the prebuilt binaries.')
+            '--no-validity-check', action='store_true',
+            help='Skip validity checks on the prebuilt binaries.')
 
 
 def fetch_artifact(branch, target, build, pattern):
@@ -118,7 +118,7 @@ def symlink_to_linux_resource_dir(install_dir):
     os.chdir(prebuilt_dir)
 
 
-def sanity_check(host, install_dir, clang_version_major):
+def validity_check(host, install_dir, clang_version_major):
     # Make sure the official toolchain (non llvm-next) is built with PGO
     # profiles.
     if host == 'linux-x86':
@@ -159,7 +159,7 @@ def format_bug(bug):
 
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
-                 manifest, overwrite, do_sanity_check):
+                 manifest, overwrite, do_validity_check):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
     os.chdir(prebuilt_dir)
 
@@ -204,8 +204,8 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     if host == 'darwin-x86':
         symlink_to_linux_resource_dir(install_subdir)
 
-    if do_sanity_check:
-        if not sanity_check(host, install_subdir, clang_version.split('.')[0]):
+    if do_validity_check:
+        if not validity_check(host, install_subdir, clang_version.split('.')[0]):
             sys.exit(1)
 
     shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
@@ -272,7 +272,7 @@ def main():
         for host in hosts:
             update_clang(host, args.build, args.use_current_branch,
                          download_dir, args.bug, manifest, args.overwrite,
-                         not args.no_sanity_check)
+                         not args.no_validity_check)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
