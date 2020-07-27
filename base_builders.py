@@ -193,7 +193,7 @@ class CMakeBuilder(Builder):
     src_dir: Path
     remove_cmake_cache: bool = False
     remove_install_dir: bool = False
-    ninja_target: Optional[str] = None
+    ninja_targets: List[str] = []
 
     @property
     def output_dir(self) -> Path:
@@ -297,8 +297,7 @@ class CMakeBuilder(Builder):
         utils.check_call(cmake_cmd, cwd=self.output_dir, env=self.env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
-        if self.ninja_target:
-            ninja_cmd.append(self.ninja_target)
+        ninja_cmd.extend(self.ninja_targets)
         utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
 
         self.install_config()
