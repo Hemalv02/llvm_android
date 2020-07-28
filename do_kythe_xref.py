@@ -45,14 +45,15 @@ def build_llvm() -> builders.Stage2Builder:
     stage2.enable_assertions = True
     stage2.lto = False
     stage2.build_lldb = False
-    stage2.ninja_targets = ['all', 'UnitTests', 'google-benchmark-libcxx']
+    stage2.ninja_targets = ['all', 'UnitTests']
     stage2.build()
     return stage2
 
 # runextractor is expected to fail on these sources.
-EXPECTED_ERRORS = set([
-    'toolchain/llvm-project/compiler-rt/lib/scudo/standalone/benchmarks/malloc_benchmark.cpp',
-])
+EXPECTED_ERROR_DIRS = [
+    'toolchain/llvm-project/compiler-rt/lib/scudo/standalone/benchmarks',
+    'toolchain/llvm-project/libcxx/benchmarks',
+]
 
 def build_kythe_corpus(builder: builders.Stage2Builder) -> None:
     kythe_out_dir = paths.KYTHE_OUTPUT_DIR
@@ -80,15 +81,20 @@ def build_kythe_corpus(builder: builders.Stage2Builder) -> None:
     if extractor.returncode == 0:
         raise RuntimeError('runextractor is expected to fail')
 
-    get_rel_path = lambda full_path: full_path[len(str(paths.ANDROID_DIR))+1:]
+    def get_rel_path(full_path: str) -> str:
+        return full_path[len(str(paths.ANDROID_DIR))+1:]
+
+    def in_expected_dir(path: str) -> str:
+        return any(path.startswith(d) for d in EXPECTED_ERROR_DIRS)
+
     failed_srcs = re.findall('(?P<file>\\S+)\': error running extractor',
                              extractor.stderr)
     srcSet = set(get_rel_path(f) for f in failed_srcs)
-    if srcSet != EXPECTED_ERRORS:
+    unexpected = [f for f in srcSet if not in_expected_dir(f)]
+    if unexpected:
         print(extractor.stderr)
-        raise RuntimeError('Runextractor failures different than expected' +\
-                           f'Expected: {EXPECTED_ERRORS}\n' +\
-                           f'Actual: {srcSet}\n')
+        raise RuntimeError('Runextractor failed on unexpected source' +\
+                           f'Unexpected failures: {unexpected}\n')
 
 
 def package(build_name: str) -> None:
