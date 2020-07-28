@@ -76,7 +76,7 @@ def _build_toolchain_for_path(path: Path, build_path: Path) -> Toolchain:
 
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
-    # Prebuilt toolchain doesn't have a build path. Use a dummy path instead.
+    # Prebuilt toolchain doesn't have a build path. Use a temp path instead.
     return _build_toolchain_for_path(paths.CLANG_PREBUILT_DIR, Path('.'))
 
 
