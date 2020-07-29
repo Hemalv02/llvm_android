@@ -74,6 +74,16 @@ class ArgParser(argparse.ArgumentParser):
             '--no-validity-check', action='store_true',
             help='Skip validity checks on the prebuilt binaries.')
 
+        host_choices = ['darwin-x86', 'linux-x86', 'windows-x86']
+        self.add_argument(
+            '--host', metavar='HOST_OS',
+            choices=host_choices,
+            help=f'Update prebuilts only for HOST_OS (one of {host_choices}).')
+
+        self.add_argument(
+            '--repo-upload', action='store_true',
+            help='Upload prebuilts CLs to gerrit using \'repo upload\'')
+
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
@@ -231,6 +241,18 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     utils.check_call(['git', 'commit', '-m', message])
 
 
+def repo_upload(host: str, hashtag: str, is_testing: bool):
+    prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
+    cmd = ['repo', 'upload', '.',
+           '--current-branch',
+           '--yes', # Answer yes to all safe prompts
+           f'--hashtag={hashtag}',]
+    if is_testing:
+        # -2 a testing prebuilt so we don't accidentally submit it.
+        cmd.append('--label=Code-Review-2')
+    utils.check_output(cmd, cwd=prebuilt_dir)
+
+
 def main():
     args = ArgParser().parse_args()
     logging.basicConfig(level=logging.INFO)
@@ -246,8 +268,11 @@ def main():
 
     os.chdir(download_dir)
 
-    targets = ['darwin_mac', 'linux', 'windows_x86_64']
-    hosts = ['darwin-x86', 'linux-x86', 'windows-x86']
+    targets_map = {'darwin-x86': 'darwin_mac',
+                   'linux-x86': 'linux',
+                   'windows-x86': 'windows_x86_64'}
+    hosts = [args.host] if args.host else targets_map.keys()
+    targets = [targets_map[h] for h  in hosts]
     clang_pattern = 'clang-*.tar.bz2'
     manifest = f'manifest_{args.build}.xml'
 
@@ -273,6 +298,15 @@ def main():
             update_clang(host, args.build, args.use_current_branch,
                          download_dir, args.bug, manifest, args.overwrite,
                          not args.no_validity_check)
+
+        if args.repo_upload:
+            is_testing = (branch == 'aosp-llvm-toolchain-testing')
+            hashtag = f'clang-prebuilt-{args.build}'
+            if is_testing:
+                hashtag = hashtag.replace('prebuilt', 'testing-prebuilt')
+
+            for host in hosts:
+                repo_upload(host, hashtag, is_testing)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
