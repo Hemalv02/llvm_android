@@ -294,6 +294,12 @@
         "end_version": null
     },
     {
+        "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
+        "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms.patch",
+        "start_version": 395739,
+        "end_version": null
+    },
+    {
         "comment": "Revert \"[llvm-objcopy] [COFF] Fix a misconception about debug directory payloads\"",
         "rel_patch_path": "Revert-windows-debug-directory.patch",
         "start_version": 399163,
