@@ -84,7 +84,7 @@ def build_kythe_corpus(builder: builders.Stage2Builder) -> None:
     def get_rel_path(full_path: str) -> str:
         return full_path[len(str(paths.ANDROID_DIR))+1:]
 
-    def in_expected_dir(path: str) -> str:
+    def in_expected_dir(path: str) -> bool:
         return any(path.startswith(d) for d in EXPECTED_ERROR_DIRS)
 
     failed_srcs = re.findall('(?P<file>\\S+)\': error running extractor',
