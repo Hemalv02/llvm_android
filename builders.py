@@ -239,10 +239,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
         if self._config.target_os.is_darwin:
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
-        if self._config.target_os.is_darwin:
-            if utils.is_available_mac_ver('10.11'):
-                raise RuntimeError('libcompression can be enabled for macOS 10.11 and above.')
-            defines['HAVE_LIBCOMPRESSION'] = '0'
         return defines
 
     def install_config(self) -> None:

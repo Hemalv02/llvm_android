@@ -477,6 +477,11 @@ class LLVMBuilder(LLVMBaseBuilder):
                                               'binutils' / 'binutils-2.27' / 'include')
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
+        if self._config.target_os.is_darwin:
+            if utils.is_available_mac_ver('10.11'):
+                raise RuntimeError('libcompression can be enabled for macOS 10.11 and above.')
+            defines['HAVE_LIBCOMPRESSION'] = '0'
+
         if self._enable_lldb:
             self.set_lldb_flags(self._config.target_os, defines)
 
