@@ -98,6 +98,9 @@ class Stage1Builder(base_builders.LLVMBuilder):
         # Disable dependencies because we only need lldb-tblgen to be built.
         defines['LLDB_ENABLE_PYTHON'] = 'OFF'
         defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
+        if target.is_darwin:
+            # Avoids the build of debug server. It is only used in testing.
+            defines['LLDB_USE_SYSTEM_DEBUGSERVER'] = 'ON'
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
