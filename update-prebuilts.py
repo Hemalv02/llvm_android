@@ -229,7 +229,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         return
 
     message_lines = [
-        f'Update prebuilt Clang to {svn_revision}.',
+        f'Update prebuilt Clang to {svn_revision} ({clang_version}).',
         '',
         f'clang {clang_version} (based on {svn_revision}) from build {build_number}.'
     ]
@@ -241,12 +241,13 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     utils.check_call(['git', 'commit', '-m', message])
 
 
-def repo_upload(host: str, hashtag: str, is_testing: bool):
+def repo_upload(host: str, topic: str, is_testing: bool):
     prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
     cmd = ['repo', 'upload', '.',
            '--current-branch',
            '--yes', # Answer yes to all safe prompts
-           f'--hashtag={hashtag}',]
+           f'--push-option=topic={topic}',
+           f'--hashtag={topic}',]
     if is_testing:
         # -2 a testing prebuilt so we don't accidentally submit it.
         cmd.append('--label=Code-Review-2')
@@ -301,12 +302,12 @@ def main():
 
         if args.repo_upload:
             is_testing = (branch == 'aosp-llvm-toolchain-testing')
-            hashtag = f'clang-prebuilt-{args.build}'
+            topic = f'clang-prebuilt-{args.build}'
             if is_testing:
-                hashtag = hashtag.replace('prebuilt', 'testing-prebuilt')
+                topic = topic.replace('prebuilt', 'testing-prebuilt')
 
             for host in hosts:
-                repo_upload(host, hashtag, is_testing)
+                repo_upload(host, topic, is_testing)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
