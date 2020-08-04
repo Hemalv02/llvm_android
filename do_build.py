@@ -455,10 +455,11 @@ class SysrootsBuilder(base_builders.Builder):
                 shutil.copy2(out_path, libdir)
 
 
-def build_llvm_for_windows(enable_assertions,
-                           build_name):
-    if BUILD_LLDB:
-        builders.XzWindowsBuilder().build()
+def build_llvm_for_windows(enable_assertions: bool,
+                           build_name: str,
+                           swig_builder: Optional[builders.SwigBuilder]):
+    config_list = [configs.WindowsConfig()]
+    lldb_deps_to_install: List[Path] = []
 
     win_builder = builders.WindowsToolchainBuilder()
     if win_builder.install_dir.exists():
@@ -473,13 +474,27 @@ def build_llvm_for_windows(enable_assertions,
     libcxx_builder.enable_assertions = enable_assertions
     libcxx_builder.build()
 
+    win_builder.build_lldb = BUILD_LLDB
+    if BUILD_LLDB:
+        assert swig_builder is not None
+        win_builder.libedit = None
+        win_builder.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
+
+        xz_builder = builders.XzBuilder(config_list)
+        xz_builder.build()
+        win_builder.liblzma = xz_builder
+
+        libxml2_builder = builders.LibXml2Builder(config_list)
+        libxml2_builder.build()
+        win_builder.libxml2 = libxml2_builder
+        lldb_deps_to_install.append(libxml2_builder.install_library)
+
     win_builder.build_name = build_name
     win_builder.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-    win_builder.build_lldb = BUILD_LLDB
     win_builder.enable_assertions = enable_assertions
     win_builder.build()
 
-    return win_builder.install_dir
+    return (win_builder.install_dir, lldb_deps_to_install)
 
 
 def host_sysroot():
@@ -527,7 +542,7 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
     return cflags, ldflags
 
 
-def install_lldb_deps(install_dir: Path, host: hosts.Host):
+def install_lldb_deps(install_dir: Path, host: hosts.Host, lldb_deps: List[Path]):
     lib_dir = install_dir / ('bin' if host.is_windows else 'lib64')
     check_create_path(lib_dir)
 
@@ -541,9 +556,9 @@ def install_lldb_deps(install_dir: Path, host: hosts.Host):
     dest_py_lib = python_dest_dir / py_lib
     py_lib_rel = os.path.relpath(dest_py_lib, lib_dir)
     os.symlink(py_lib_rel, lib_dir / py_lib.name)
-    if not host.is_windows:
-        libedit_root = BuilderRegistry.get('libedit').install_dir
-        shutil.copy2(paths.get_libedit_lib(libedit_root, host), lib_dir)
+
+    for lldb_dep in lldb_deps:
+        shutil.copy(lldb_dep, lib_dir)
 
 
 def build_runtimes(toolchain, args=None):
@@ -720,7 +735,8 @@ def get_package_install_path(host: hosts.Host, package_name):
     return utils.out_path('install', host.os_tag, package_name)
 
 
-def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=True, create_tar=True):
+def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
+                      lldb_deps_to_install: List[Path], strip=True, create_tar=True):
     package_name = 'clang-' + build_name
     version = extract_clang_version(build_dir)
 
@@ -799,13 +815,13 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir, strip=T
         necessary_bin_files -= windows_exclude_bin_files
 
     if BUILD_LLDB:
-        install_lldb_deps(Path(install_dir), host)
+        install_lldb_deps(Path(install_dir), host, lldb_deps_to_install)
         if host.is_windows:
-            windows_additional_bin_files = {
+            necessary_bin_files |= {
                 'liblldb' + shlib_ext,
                 'python38' + shlib_ext
             }
-            necessary_bin_files |= windows_additional_bin_files
+            necessary_bin_files |= set(path.name for path in lldb_deps_to_install)
 
     # scripts that should not be stripped
     script_bins = {
@@ -1072,11 +1088,11 @@ def main():
     stage1_install = str(stage1.install_dir)
 
     if BUILD_LLDB:
-        builders.SwigBuilder().build()
-        if need_host:
-            builders.XzBuilder().build()
-            # libedit is not needed for windows lldb.
-            builders.LibEditBuilder().build()
+        # Swig is needed for both host and windows lldb.
+        swig_builder = builders.SwigBuilder()
+        swig_builder.build()
+    else:
+        swig_builder = None
 
     if need_host:
         profdata_filename = pgo_profdata_filename()
@@ -1085,12 +1101,32 @@ def main():
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
         stage2.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-        stage2.build_lldb = BUILD_LLDB
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = not args.no_lto
         stage2.build_instrumented = instrumented
         stage2.profdata_file = Path(profdata) if profdata else None
+
+        stage2.build_lldb = BUILD_LLDB
+        if BUILD_LLDB:
+            stage2.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
+
+            xz_builder = builders.XzBuilder()
+            xz_builder.build()
+            stage2.liblzma = xz_builder
+
+            libxml2_builder = builders.LibXml2Builder()
+            libxml2_builder.build()
+            stage2.libxml2_path = libxml2_builder
+
+            libedit_builder = builders.LibEditBuilder()
+            libedit_builder.build()
+            stage2.libedit = libedit_builder
+
+            lldb_deps: List[Path] = [
+                libxml2_builder.install_library,
+                libedit_builder.install_library,
+            ]
 
         # Annotate the version string if there is no profdata.
         if profdata is None:
@@ -1112,9 +1148,10 @@ def main():
             build_runtimes(runtimes_toolchain, args)
 
     if need_windows:
-        windows64_install = build_llvm_for_windows(
+        windows64_install, win_lldb_deps = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
-            build_name=args.build_name)
+            build_name=args.build_name,
+            swig_builder=swig_builder)
 
     dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
     if do_package and need_host:
@@ -1123,6 +1160,7 @@ def main():
             args.build_name,
             hosts.build_host(),
             dist_dir,
+            lldb_deps,
             strip=do_strip_host_package)
 
     if do_package and need_windows:
@@ -1131,6 +1169,7 @@ def main():
             args.build_name,
             hosts.Host.Windows,
             dist_dir,
+            win_lldb_deps,
             strip=do_strip)
 
     return 0

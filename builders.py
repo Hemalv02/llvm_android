@@ -70,7 +70,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
     build_android_targets: bool = False
     config_list: List[configs.Config] = [configs.host_config()]
     use_goma_for_stage1: bool = False
-    build_lldb: bool = False
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -93,14 +92,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
         # to prevent linking with the newly-built libc++.so
         ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
         return ldflags
-
-    def set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:
-        # Disable dependencies because we only need lldb-tblgen to be built.
-        defines['LLDB_ENABLE_PYTHON'] = 'OFF'
-        defines['LLDB_ENABLE_LIBEDIT'] = 'OFF'
-        if target.is_darwin:
-            # Avoids the build of debug server. It is only used in testing.
-            defines['LLDB_USE_SYSTEM_DEBUGSERVER'] = 'ON'
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -144,7 +135,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
     config_list: List[configs.Config] = [configs.host_config()]
     remove_install_dir: bool = True
-    build_lldb: bool = True
     debug_build: bool = False
     build_instrumented: bool = False
     profdata_file: Optional[Path] = None
@@ -428,12 +418,26 @@ class LibEditBuilder(base_builders.AutoconfBuilder):
         super().install()
         if self._config.target_os.is_darwin:
             # Updates LC_ID_DYLIB so that users of libedit won't link with absolute path.
-            libedit_path = paths.get_libedit_lib(self.install_dir,
-                                                 self._config.target_os)
+            libedit_path = self.link_library
             cmd = ['install_name_tool',
                    '-id', f'@rpath/{libedit_path.name}',
                    str(libedit_path)]
             utils.check_call(cmd)
+
+    @property
+    def include_dir(self) -> Path:
+        return self.install_dir / 'include'
+
+    @property
+    def link_library(self) -> Path:
+        return {
+            hosts.Host.Linux: self.install_dir / 'lib' / 'libedit.so.0',
+            hosts.Host.Darwin: self.install_dir / 'lib' / 'libedit.0.dylib',
+        }[self._config.target_os]
+
+    @property
+    def install_library(self) -> Path:
+        return self.link_library
 
 
 class SwigBuilder(base_builders.AutoconfBuilder):
@@ -455,16 +459,59 @@ class SwigBuilder(base_builders.AutoconfBuilder):
         return ldflags
 
 
-class XzBuilder(base_builders.CMakeBuilder):
+class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'xz'
     src_dir: Path = paths.XZ_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
 
+    @property
+    def include_dir(self) -> Path:
+        return self.install_dir / 'include'
 
-class XzWindowsBuilder(base_builders.CMakeBuilder):
-    name: str = 'xz-windows'
-    src_dir: Path = paths.XZ_SRC_DIR
-    config_list: List[configs.Config] = [configs.WindowsConfig()]
+    @property
+    def link_library(self) -> Path:
+        return self.install_dir / 'lib' / 'liblzma.a'
+
+    @property
+    def install_library(self) -> Optional[Path]:
+        return None
+
+
+class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
+    name: str = 'libxml2'
+    src_dir: Path = paths.LIBXML2_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+
+    def build(self) -> None:
+        # The src dir contains configure files for Android platform. Remove them.
+        (self.src_dir / 'config.h').unlink(missing_ok=True)
+        (self.src_dir / 'include' / 'libxml' / 'xmlversion.h').unlink(missing_ok=True)
+        super().build()
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LIBXML2_WITH_PYTHON'] = 'OFF'
+        defines['LIBXML2_WITH_PROGRAMS'] = 'OFF'
+        return defines
+
+    @property
+    def include_dir(self) -> Path:
+        return self.install_dir / 'include' / 'libxml2'
+
+    @property
+    def link_library(self) -> Path:
+        return {
+            hosts.Host.Linux: self.install_dir / 'lib' / 'libxml2.so.2.9.10',
+            hosts.Host.Darwin: self.install_dir / 'lib' / 'libxml2.2.9.10.dylib',
+            hosts.Host.Windows: self.install_dir / 'lib' / 'libxml2.dll.a',
+        }[self._config.target_os]
+
+    @property
+    def install_library(self) -> Path:
+        if self._config.target_os.is_windows:
+            return self.install_dir / 'bin' / 'libxml2.dll'
+        return self.link_library
 
 
 class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
@@ -587,7 +634,6 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
     name: str = 'windows-x86-64'
     toolchain_name: str = 'stage1'
     config_list: List[configs.Config] = [configs.WindowsConfig()]
-    build_lldb: bool = True
 
     @property
     def install_dir(self) -> Path:
