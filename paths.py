@@ -21,7 +21,8 @@ from pathlib import Path
 import constants
 import hosts
 
-ANDROID_DIR: Path = Path(__file__).resolve().parents[2]
+SCRIPTS_DIR: Path = Path(__file__).resolve()
+ANDROID_DIR: Path = SCRIPTS_DIR.parents[2]
 OUT_DIR: Path = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
 SYSROOTS: Path = OUT_DIR / 'sysroots'
 LLVM_PATH: Path = OUT_DIR / 'llvm-project'
