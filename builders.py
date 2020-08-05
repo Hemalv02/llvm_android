@@ -500,6 +500,7 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
         defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
         defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
+        defines['LLVM_HOST_TRIPLE'] = self._config.target_arch.llvm_triple
         return defines
 
     def install_config(self) -> None:
