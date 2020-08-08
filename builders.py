@@ -15,11 +15,12 @@
 #
 """Builder instances for various targets."""
 
+import contextlib
 from pathlib import Path
 import os
 import shutil
 import textwrap
-from typing import cast, Dict, List, Optional, Set
+from typing import cast, Dict, Iterator, List, Optional, Set
 
 import base_builders
 import configs
@@ -478,11 +479,25 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     src_dir: Path = paths.LIBXML2_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
 
+    @contextlib.contextmanager
+    def _backup_file(self, file_to_backup: Path) -> Iterator[None]:
+        backup_file = file_to_backup.parent / (file_to_backup.name + '.bak')
+        if file_to_backup.exists():
+            file_to_backup.rename(backup_file)
+        try:
+            yield
+        finally:
+            if backup_file.exists():
+                backup_file.rename(file_to_backup)
+
     def build(self) -> None:
-        # The src dir contains configure files for Android platform. Remove them.
-        (self.src_dir / 'config.h').unlink(missing_ok=True)
-        (self.src_dir / 'include' / 'libxml' / 'xmlversion.h').unlink(missing_ok=True)
-        super().build()
+        # The src dir contains configure files for Android platform. Rename them
+        # so that they will not be used during our build.
+        # We don't delete them here because the same libxml2 may be used to build
+        # Android platform later.
+        with self._backup_file(self.src_dir / 'include' / 'libxml' / 'xmlversion.h'):
+            with self._backup_file(self.src_dir / 'config.h'):
+                super().build()
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
