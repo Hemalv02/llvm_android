@@ -25,7 +25,7 @@ import shutil
 import string
 import sys
 import textwrap
-from typing import cast, List, Optional
+from typing import cast, List, Optional, Set
 
 import android_version
 import base_builders
@@ -482,7 +482,7 @@ def build_llvm_for_windows(enable_assertions: bool,
         win_builder.libcxx_path = libcxx_builder.install_dir
 
     win_builder.build_lldb = BUILD_LLDB
-    lldb_deps_to_install: List[Path] = []
+    lldb_bins: Optional[Set[str]] = None
     if BUILD_LLDB:
         assert swig_builder is not None
         win_builder.libedit = None
@@ -495,14 +495,18 @@ def build_llvm_for_windows(enable_assertions: bool,
         libxml2_builder = builders.LibXml2Builder(config_list)
         libxml2_builder.build()
         win_builder.libxml2 = libxml2_builder
-        lldb_deps_to_install.append(libxml2_builder.install_library)
+        lldb_bins = {
+            'liblldb.dll',
+            'python38.dll',
+            libxml2_builder.install_library.name,
+        }
 
     win_builder.build_name = build_name
     win_builder.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
     win_builder.enable_assertions = enable_assertions
     win_builder.build()
 
-    return (win_builder.install_dir, lldb_deps_to_install)
+    return (win_builder.install_dir, lldb_bins)
 
 
 def host_sysroot():
@@ -548,25 +552,6 @@ def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
                    ))
 
     return cflags, ldflags
-
-
-def install_lldb_deps(install_dir: Path, host: hosts.Host, lldb_deps: List[Path]):
-    lib_dir = install_dir / ('bin' if host.is_windows else 'lib64')
-    check_create_path(lib_dir)
-
-    python_prebuilt_dir: Path = paths.get_python_dir(host)
-    python_dest_dir: Path = install_dir / 'python3'
-    shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True,
-                    ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
-                                                  '.git', '.gitignore'))
-
-    py_lib = paths.get_python_dynamic_lib(host).relative_to(python_prebuilt_dir)
-    dest_py_lib = python_dest_dir / py_lib
-    py_lib_rel = os.path.relpath(dest_py_lib, lib_dir)
-    os.symlink(py_lib_rel, lib_dir / py_lib.name)
-
-    for lldb_dep in lldb_deps:
-        shutil.copy(lldb_dep, lib_dir)
 
 
 def build_runtimes(toolchain, args=None):
@@ -744,7 +729,7 @@ def get_package_install_path(host: hosts.Host, package_name):
 
 
 def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
-                      lldb_deps_to_install: List[Path], strip=True, create_tar=True):
+                      necessary_bin_files: Optional[Set[str]]=None, strip=True, create_tar=True):
     package_name = 'clang-' + build_name
     version = extract_clang_version(build_dir)
 
@@ -763,8 +748,11 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
     script_ext = '.cmd' if host.is_windows else '.sh'
     shlib_ext = '.dll' if host.is_windows else '.so' if host.is_linux else '.dylib'
 
+    if not necessary_bin_files:
+        necessary_bin_files = set()
+
     # Next, we remove unnecessary binaries.
-    necessary_bin_files = {
+    necessary_bin_files |= {
         'clang' + ext,
         'clang++' + ext,
         'clang-' + version.major_version() + ext,
@@ -821,15 +809,6 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
             'scan-view' + ext,
         }
         necessary_bin_files -= windows_exclude_bin_files
-
-    if BUILD_LLDB:
-        install_lldb_deps(Path(install_dir), host, lldb_deps_to_install)
-        if host.is_windows:
-            necessary_bin_files |= {
-                'liblldb' + shlib_ext,
-                'python38' + shlib_ext
-            }
-            necessary_bin_files |= set(path.name for path in lldb_deps_to_install)
 
     # scripts that should not be stripped
     script_bins = {
@@ -1132,16 +1111,11 @@ def main():
 
             libxml2_builder = builders.LibXml2Builder()
             libxml2_builder.build()
-            stage2.libxml2_path = libxml2_builder
+            stage2.libxml2 = libxml2_builder
 
             libedit_builder = builders.LibEditBuilder()
             libedit_builder.build()
             stage2.libedit = libedit_builder
-
-            lldb_deps: List[Path] = [
-                libxml2_builder.install_library,
-                libedit_builder.install_library,
-            ]
 
         # Annotate the version string if there is no profdata.
         if profdata is None:
@@ -1165,7 +1139,7 @@ def main():
     if need_windows:
         if args.windows_sdk:
             win_sdk.set_path(Path(args.windows_sdk))
-        windows64_install, win_lldb_deps = build_llvm_for_windows(
+        windows64_install, win_lldb_bins = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
             build_name=args.build_name,
             swig_builder=swig_builder)
@@ -1177,7 +1151,6 @@ def main():
             args.build_name,
             hosts.build_host(),
             dist_dir,
-            lldb_deps,
             strip=do_strip_host_package)
 
     if do_package and need_windows:
@@ -1186,7 +1159,7 @@ def main():
             args.build_name,
             hosts.Host.Windows,
             dist_dir,
-            win_lldb_deps,
+            win_lldb_bins,
             strip=do_strip)
 
     return 0

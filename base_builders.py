@@ -465,7 +465,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         """Returns llvm target archtects to build."""
         raise NotImplementedError()
 
-    def set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:  # pylint: disable=no-self-use
+    def _set_lldb_flags(self, target: hosts.Host, defines: Dict[str, str]) -> None:
         """Sets cmake defines for lldb."""
         if target.is_darwin:
             # Avoids the build of debug server. It is only used in testing.
@@ -507,6 +507,25 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_LIBXML2'] = 'OFF'
 
+    def _install_lldb_deps(self) -> None:
+        lib_dir = self.install_dir / ('bin' if self._config.target_os.is_windows else 'lib64')
+        lib_dir.mkdir(exist_ok=True, parents=True)
+
+        python_prebuilt_dir = paths.get_python_dir(self._config.target_os)
+        python_dest_dir = self.install_dir / 'python3'
+        shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True,
+                        ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
+                                                    '.git', '.gitignore'))
+
+        py_lib = paths.get_python_dynamic_lib(self._config.target_os).relative_to(python_prebuilt_dir)
+        dest_py_lib = python_dest_dir / py_lib
+        py_lib_rel = os.path.relpath(dest_py_lib, lib_dir)
+        os.symlink(py_lib_rel, lib_dir / py_lib.name)
+
+        for lib in (self.liblzma, self.libedit, self.libxml2):
+            if lib and lib.install_library:
+                shutil.copy2(lib.install_library, lib_dir)
+
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
@@ -529,6 +548,10 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['HAVE_LIBCOMPRESSION'] = '0'
 
         if self.build_lldb:
-            self.set_lldb_flags(self._config.target_os, defines)
+            self._set_lldb_flags(self._config.target_os, defines)
 
         return defines
+
+    def install_config(self) -> None:
+        super().install_config()
+        self._install_lldb_deps()
