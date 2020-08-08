@@ -351,6 +351,7 @@ def build_clang(instrumented=False, pgo=True):
         'dev',
         hosts.build_host(),
         dist_dir=None,
+        lldb_deps_to_install=[],
         strip=True,
         create_tar=False)
 
