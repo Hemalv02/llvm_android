@@ -451,7 +451,7 @@ class SysrootsBuilder(base_builders.Builder):
                 # We can build libcxxabi only after the sysroots are
                 # created.  Build it for the current arch and copy it to
                 # <libdir>.
-                out_dir = build_libcxxabi(self.toolchain, arch)
+                out_dir = build_libcxxabi(self.output_toolchain, arch)
                 out_path = out_dir / 'lib64' / 'libc++abi.a'
                 shutil.copy2(out_path, libdir)
 

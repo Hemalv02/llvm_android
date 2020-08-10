@@ -44,12 +44,12 @@ class AsanMapFileBuilder(base_builders.Builder):
         # We can not build asan_test using current CMake building system. Since
         # those files are not used to build AOSP, we just simply touch them so that
         # we can pass the build checks.
-        asan_test_path = self.toolchain.path / 'test' / arch.llvm_arch / 'bin'
+        asan_test_path = self.output_toolchain.path / 'test' / arch.llvm_arch / 'bin'
         asan_test_path.mkdir(parents=True, exist_ok=True)
         asan_test_bin_path = asan_test_path / 'asan_test'
         asan_test_bin_path.touch(exist_ok=True)
 
-        lib_dir = self.toolchain.resource_dir
+        lib_dir = self.output_toolchain.resource_dir
         self._build_sanitizer_map_file('asan', arch, lib_dir)
         self._build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
 
@@ -256,7 +256,7 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def install_dir(self) -> Path:
         if self._config.platform:
-            return self.toolchain.clang_lib_dir
+            return self.output_toolchain.clang_lib_dir
         # Installs to a temporary dir and copies to runtimes_ndk_cxx manually.
         output_dir = self.output_dir
         return output_dir.parent / (output_dir.name + '-install')
@@ -307,19 +307,19 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         shutil.copy2(lib_dir / static_lib_filename, arch_dir / 'libFuzzer.a')
 
         if not self._config.platform:
-            dst_dir = self.toolchain.path / 'runtimes_ndk_cxx'
+            dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
             shutil.copytree(lib_dir, dst_dir, dirs_exist_ok=True)
 
     def install(self) -> None:
         # Install libfuzzer headers once for all configs.
         header_src = self.src_dir / 'lib' / 'fuzzer'
-        header_dst = self.toolchain.path / 'prebuilt_include' / 'llvm' / 'lib' / 'Fuzzer'
+        header_dst = self.output_toolchain.path / 'prebuilt_include' / 'llvm' / 'lib' / 'Fuzzer'
         header_dst.mkdir(parents=True, exist_ok=True)
         for f in header_src.iterdir():
             if f.suffix in ('.h', '.def'):
                 shutil.copy2(f, header_dst)
 
-        symlink_path = self.toolchain.resource_dir / 'libclang_rt.hwasan_static-aarch64-android.a'
+        symlink_path = self.output_toolchain.resource_dir / 'libclang_rt.hwasan_static-aarch64-android.a'
         symlink_path.unlink(missing_ok=True)
         os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
 
@@ -331,7 +331,7 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
 
     @property
     def install_dir(self) -> Path:
-        return self.toolchain.clang_lib_dir
+        return self.output_toolchain.clang_lib_dir
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
