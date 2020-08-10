@@ -19,14 +19,11 @@
 import argparse
 import multiprocessing
 import os
-import shutil
 import subprocess
 
 import do_build as build
-import builders
 import hosts
-import source_manager
-import toolchains
+import paths
 import utils
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
@@ -169,6 +166,8 @@ def parse_args():
         dest='profile',
         help='Build instrumented compiler and gather profiles')
 
+    # TODO(pirama): This arg is no longer necessary.  Remove after deleting from
+    # the build server.
     parser.add_argument(
         '--no-pgo',
         action='store_true',
@@ -176,9 +175,6 @@ def parse_args():
         help='Do not use PGO profile to build stage2 Clang (defaults to False)')
 
     args = parser.parse_args()
-    if args.profile and not args.no_pgo:
-        parser.error(
-            '--no-pgo must be specified along with --generate-clang-profile')
     if args.clang_path and args.clang_package_path:
         parser.error('Only one of --clang-path and --clang-package-path must'
                      'be specified')
@@ -310,55 +306,6 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
     return result
 
 
-def build_clang(instrumented=False, pgo=True):
-    stage2_install = utils.out_path('stage2-install')
-
-    # Clone sources to build the current version, with patches.
-    source_manager.setup_sources(source_dir=utils.llvm_path(),
-                                 build_llvm_next=False)
-
-
-    # LLVM tool llvm-profdata from stage1 is needed to merge the collected
-    # profiles.  Build all LLVM tools if building instrumented stage2
-    stage1 = builders.Stage1Builder()
-    stage1.build_name = 'dev'
-    stage1.svn_revision = 'dev'
-    stage1.build_llvm_tools = instrumented
-    stage1.debug_stage2 = False
-    stage1.build()
-    stage1_install = str(stage1.install_dir)
-
-    profdata = None
-    if pgo:
-        long_version = build.extract_clang_long_version(stage1_install)
-        profdata = build.pgo_profdata_file(long_version)
-
-    stage2 = builders.Stage2Builder()
-    stage2.build_name = 'dev'
-    stage2.svn_revision = 'dev'
-    stage2.build_lldb = False
-    stage2.build_instrumented = instrumented
-    stage2.profdata_file = Path(profdata) if profdata else None
-    stage2.build()
-    stage2_toolchain = toolchains.get_toolchain_from_builder(stage2)
-    toolchains.set_runtime_toolchain(stage2_toolchain)
-    stage2_install = str(stage2.install_dir)
-
-    build.build_runtimes(stage2_install)
-
-    build.package_toolchain(
-        stage2_install,
-        'dev',
-        hosts.build_host(),
-        dist_dir=None,
-        strip=True,
-        create_tar=False)
-
-    clang_path = build.get_package_install_path(hosts.build_host(), 'clang-dev')
-    version = build.extract_clang_version(clang_path)
-    return clang_path, version
-
-
 def extract_packaged_clang(package_path):
     # Find package to extract
     tarballs = [f for f in os.listdir(package_path) if \
@@ -400,8 +347,13 @@ def main():
         clang_path = extract_packaged_clang(args.clang_package_path)
         clang_version = build.extract_clang_version(clang_path)
     else:
-        clang_path, clang_version = build_clang(
-            instrumented=args.profile, pgo=(not args.no_pgo))
+        cmd = [paths.ANDROID_DIR / 'toolchain' / 'llvm_android' / 'build.py',
+               '--no-build=windows,lldb',]
+        if args.profile:
+            cmd.append('--build-instrumented')
+        utils.check_call(cmd)
+        clang_path = build.get_package_install_path(hosts.build_host(), 'clang-dev')
+        clang_version = build.extract_clang_version(clang_path)
     link_clang(args.android_path, clang_path)
 
     if args.build_only:
