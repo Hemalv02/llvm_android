@@ -1009,6 +1009,12 @@ def parse_args():
         help='Skip the packaging, and only do the build step')
 
     parser.add_argument(
+        '--create-tar',
+        action='store_true',
+        default=False,
+        help='Create a tar archive of the toolchains')
+
+    parser.add_argument(
         '--no-strip',
         action='store_true',
         default=False,
