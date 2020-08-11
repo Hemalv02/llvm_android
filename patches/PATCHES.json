@@ -246,6 +246,48 @@
         "end_version": 396599
     },
     {
+        "comment": "[UPSTREAM] Revert \"[compiler-rt] [test] Allow expanding lit substitutions recursively\"",
+        "rel_patch_path": "cherry/eafeb8af34946306a7382fa3801cf6e39a1c7226.patch",
+        "start_version": 399163,
+        "end_version": 399186
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Revert \"[compiler-rt] [test] Use the parent process env as base env in tests\"\"",
+        "rel_patch_path": "cherry/faa7e306e41ba250b1bf74511a6b0b15a944fb93.patch",
+        "start_version": 399163,
+        "end_version": 399188
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[SCEV][IndVarSimplify] insert point should not be block front.\"",
+        "rel_patch_path": "cherry/1cd1c1d62edc6693a3854b22d53c9bbc1b149798.patch",
+        "start_version": 399163,
+        "end_version": 399218
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[compiler-rt][Android] Stop using detect_target_arch\"",
+        "rel_patch_path": "cherry/bef00b244c3140558c574cc106771b0f2452ef84.patch",
+        "start_version": 399163,
+        "end_version": 399285
+    },
+    {
+        "comment": "[UPSTREAM] Temporarily Revert \"[AssumeBundles] Use operand bundles to encode alignment assumptions\" due to the performance bugs filed in https://bugs.llvm.org/show_bug.cgi?id=46753.",
+        "rel_patch_path": "cherry/7bfaa40086359ed7e41c862ab0a65e0bb1be0aeb.patch",
+        "start_version": 399163,
+        "end_version": 399514
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[AddressSanitizer] Don't use weak linkage for __{start,stop}_asan_globals\"",
+        "rel_patch_path": "cherry/cf5df40c4cf1a53a02ab1d56a488642e3dda8f6d.patch",
+        "start_version": 399163,
+        "end_version": 399661
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Switch to using -debug-info-kind=constructor as default (from =limited)\"",
+        "rel_patch_path": "cherry/394db2259575ef3cac8d3d37836b11eb2373c435.patch",
+        "start_version": 399163,
+        "end_version": 400648
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
