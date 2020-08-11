@@ -1079,7 +1079,8 @@ def main():
             args.build_name,
             hosts.build_host(),
             dist_dir,
-            strip=do_strip_host_package)
+            strip=do_strip_host_package,
+            create_tar=args.create_tar)
 
     if do_package and need_windows:
         package_toolchain(
@@ -1088,7 +1089,8 @@ def main():
             hosts.Host.Windows,
             dist_dir,
             win_lldb_bins,
-            strip=do_strip)
+            strip=do_strip,
+            create_tar=args.create_tar)
 
     return 0
 
