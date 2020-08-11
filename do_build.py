@@ -339,90 +339,6 @@ def build_libcxxabi(toolchain: toolchains.Toolchain, build_arch: hosts.Arch) -> 
     raise ValueError(f"{build_arch} is not supported.")
 
 
-class SysrootsBuilder(base_builders.Builder):
-    name: str = 'sysroots'
-    config_list: List[configs.Config] = (
-        configs.android_configs(platform=True) +
-        configs.android_configs(platform=False)
-    )
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
-
-    def _build_config(self) -> None:
-        config: configs.AndroidConfig = cast(configs.AndroidConfig, self._config)
-        arch = config.target_arch
-        platform = config.platform
-        sysroot = config.sysroot
-        if sysroot.exists():
-            shutil.rmtree(sysroot)
-        sysroot.mkdir(parents=True, exist_ok=True)
-
-        base_header_path = paths.NDK_BASE / 'sysroot' / 'usr' / 'include'
-        base_lib_path = paths.NDK_BASE / 'platforms' / f'android-{config.api_level}'
-        dest_usr = sysroot / 'usr'
-
-        # Copy over usr/include.
-        dest_usr_include = dest_usr / 'include'
-        shutil.copytree(base_header_path, dest_usr_include, symlinks=True)
-
-        # Copy over usr/include/asm.
-        asm_headers = base_header_path / arch.ndk_triple / 'asm'
-        dest_usr_include_asm = dest_usr_include / 'asm'
-        shutil.copytree(asm_headers, dest_usr_include_asm, symlinks=True)
-
-        # Copy over usr/lib.
-        arch_lib_path = base_lib_path / f'arch-{arch.ndk_arch}' / 'usr' / 'lib'
-        dest_usr_lib = dest_usr / 'lib'
-        shutil.copytree(arch_lib_path, dest_usr_lib, symlinks=True)
-
-        # For only x86_64, we also need to copy over usr/lib64
-        if arch == hosts.Arch.X86_64:
-            arch_lib64_path = base_lib_path / f'arch-{arch.ndk_arch}' / 'usr' / 'lib64'
-            dest_usr_lib64 = dest_usr / 'lib64'
-            shutil.copytree(arch_lib64_path, dest_usr_lib64, symlinks=True)
-
-        if platform:
-            # Create a stub library for the platform's libc++.
-            platform_stubs = paths.OUT_DIR / 'platform_stubs' / arch.ndk_arch
-            platform_stubs.mkdir(parents=True, exist_ok=True)
-            libdir = dest_usr_lib64 if arch == hosts.Arch.X86_64 else dest_usr_lib
-            with (platform_stubs / 'libc++.c').open('w') as f:
-                f.write(textwrap.dedent("""\
-                    void __cxa_atexit() {}
-                    void __cxa_demangle() {}
-                    void __cxa_finalize() {}
-                    void __dynamic_cast() {}
-                    void _ZTIN10__cxxabiv117__class_type_infoE() {}
-                    void _ZTIN10__cxxabiv120__si_class_type_infoE() {}
-                    void _ZTIN10__cxxabiv121__vmi_class_type_infoE() {}
-                    void _ZTISt9type_info() {}
-                """))
-
-            utils.check_call([self.toolchain.cc,
-                              f'--target={arch.llvm_triple}',
-                              '-fuse-ld=lld', '-nostdlib', '-shared',
-                              '-Wl,-soname,libc++.so',
-                              '-o{}'.format(libdir / 'libc++.so'),
-                              str(platform_stubs / 'libc++.c')])
-
-            # For arm64 and x86_64, build static cxxabi library from
-            # toolchain/libcxxabi and use it when building runtimes.  This
-            # should affect all compiler-rt runtimes that use libcxxabi
-            # (e.g. asan, hwasan, scudo, tsan, ubsan, xray).
-            if arch not in (hosts.Arch.AARCH64, hosts.Arch.X86_64):
-                with (libdir / 'libc++abi.so').open('w') as f:
-                    f.write('INPUT(-lc++)')
-            else:
-                # We can build libcxxabi only after the sysroots are
-                # created.  Build it for the current arch and copy it to
-                # <libdir>.
-                out_dir = build_libcxxabi(self.output_toolchain, arch)
-                out_path = out_dir / 'lib64' / 'libc++abi.a'
-                shutil.copy2(out_path, libdir)
-
-
 def build_llvm_for_windows(enable_assertions: bool,
                            build_name: str,
                            swig_builder: Optional[builders.SwigBuilder]):
@@ -477,8 +393,9 @@ def build_llvm_for_windows(enable_assertions: bool,
 
 
 def build_runtimes(toolchain, args=None):
-    SysrootsBuilder().build()
+    builders.SysrootsBuilder().build()
 
+    builders.PlatformLibcxxAbiBuilder().build()
     builders.CompilerRTBuilder().build()
     # 32-bit host crts are not needed for Darwin
     if hosts.build_host().is_linux:
