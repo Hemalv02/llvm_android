@@ -60,285 +60,6 @@ def logger():
     return logging.getLogger(__name__)
 
 
-def install_file(src, dst):
-    """Proxy for shutil.copy2 with logging and dry-run support."""
-    logger().info('copy %s %s', src, dst)
-    shutil.copy2(src, dst)
-
-
-def remove(path):
-    """Proxy for os.remove with logging."""
-    logger().debug('remove %s', path)
-    os.remove(path)
-
-
-def extract_clang_version(clang_install) -> Version:
-    version_file = (Path(clang_install) / 'include' / 'clang' / 'Basic' /
-                    'Version.inc')
-    return Version(version_file)
-
-
-def pgo_profdata_filename():
-    svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-    base_revision = svn_revision.rstrip(string.ascii_lowercase)
-    return '%s.profdata' % base_revision
-
-def pgo_profdata_file(profdata_file):
-    profile = utils.android_path('prebuilts', 'clang', 'host', 'linux-x86',
-                                 'profiles', profdata_file)
-    return profile if os.path.exists(profile) else None
-
-
-def ndk_base():
-    ndk_version = 'r20'
-    return utils.android_path('toolchain/prebuilts/ndk', ndk_version)
-
-
-def android_api(arch: hosts.Arch, platform=False):
-    if platform:
-        return 29
-    elif arch in [hosts.Arch.ARM, hosts.Arch.I386]:
-        return 16
-    else:
-        return 21
-
-
-def ndk_toolchain_lib(arch: hosts.Arch, toolchain_root, host_tag):
-    toolchain_lib = os.path.join(ndk_base(), 'toolchains', toolchain_root,
-                                 'prebuilt', 'linux-x86_64', host_tag)
-    if arch in [hosts.Arch.ARM, hosts.Arch.I386]:
-        toolchain_lib = os.path.join(toolchain_lib, 'lib')
-    else:
-        toolchain_lib = os.path.join(toolchain_lib, 'lib64')
-    return toolchain_lib
-
-
-def clang_prebuilt_base_dir():
-    return utils.android_path('prebuilts/clang/host',
-                              hosts.build_host().os_tag, constants.CLANG_PREBUILT_VERSION)
-
-
-def clang_prebuilt_bin_dir():
-    return utils.android_path(clang_prebuilt_base_dir(), 'bin')
-
-
-def clang_resource_dir(version, arch: Optional[hosts.Arch] = None):
-    arch_str = arch.value if arch else ''
-    return os.path.join('lib64', 'clang', version, 'lib', 'linux', arch_str)
-
-
-def check_create_path(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-
-def get_sysroot(arch: hosts.Arch, platform=False):
-    sysroots = utils.out_path('sysroots')
-    platform_or_ndk = 'platform' if platform else 'ndk'
-    return os.path.join(sysroots, platform_or_ndk, arch.ndk_arch)
-
-
-def debug_prefix_flag():
-    return '-fdebug-prefix-map={}='.format(utils.android_path())
-
-
-def go_bin_dir():
-    return utils.android_path('prebuilts/go', hosts.build_host().os_tag, 'bin')
-
-
-def update_cmake_sysroot_flags(defines, sysroot):
-    defines['CMAKE_SYSROOT'] = sysroot
-    defines['CMAKE_FIND_ROOT_PATH_MODE_INCLUDE'] = 'ONLY'
-    defines['CMAKE_FIND_ROOT_PATH_MODE_LIBRARY'] = 'ONLY'
-    defines['CMAKE_FIND_ROOT_PATH_MODE_PACKAGE'] = 'ONLY'
-    defines['CMAKE_FIND_ROOT_PATH_MODE_PROGRAM'] = 'NEVER'
-
-
-def rm_cmake_cache(cacheDir):
-    for dirpath, dirs, files in os.walk(cacheDir): # pylint: disable=not-an-iterable
-        if 'CMakeCache.txt' in files:
-            os.remove(os.path.join(dirpath, 'CMakeCache.txt'))
-        if 'CMakeFiles' in dirs:
-            utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
-
-
-def invoke_cmake(out_path, defines, env, cmake_path, target=None, install=True):
-    flags = ['-G', 'Ninja']
-
-    flags += ['-DCMAKE_MAKE_PROGRAM=' + str(paths.NINJA_BIN_PATH)]
-
-    for key in defines:
-        newdef = '-D' + key + '=' + defines[key]
-        flags += [newdef]
-    flags += [cmake_path]
-
-    check_create_path(out_path)
-    # TODO(srhines): Enable this with a flag, because it forces clean builds
-    # due to the updated cmake generated files.
-    #rm_cmake_cache(out_path)
-
-    if target:
-        ninja_target = [target]
-    else:
-        ninja_target = []
-
-    utils.check_call([paths.CMAKE_BIN_PATH] + flags, cwd=out_path, env=env)
-    utils.check_call([paths.NINJA_BIN_PATH] + ninja_target, cwd=out_path, env=env)
-    if install:
-        utils.check_call([paths.NINJA_BIN_PATH, 'install'], cwd=out_path, env=env)
-
-
-def cross_compile_configs(toolchain, platform=False, static=False):
-    configs = [
-        (hosts.Arch.ARM, 'arm/arm-linux-androideabi-4.9/arm-linux-androideabi',
-         'arm-linux-android', '-march=armv7-a'),
-        (hosts.Arch.AARCH64,
-         'aarch64/aarch64-linux-android-4.9/aarch64-linux-android',
-         'aarch64-linux-android', ''),
-        (hosts.Arch.X86_64,
-         'x86/x86_64-linux-android-4.9/x86_64-linux-android',
-         'x86_64-linux-android', ''),
-        (hosts.Arch.I386, 'x86/x86_64-linux-android-4.9/x86_64-linux-android',
-         'i686-linux-android', '-m32'),
-    ]
-
-    cc = os.path.join(toolchain, 'bin', 'clang')
-    cxx = os.path.join(toolchain, 'bin', 'clang++')
-    llvm_config = os.path.join(toolchain, 'bin', 'llvm-config')
-
-    for (arch, toolchain_path, llvm_triple, extra_flags) in configs:
-        if static:
-            api_level = android_api(arch, platform=True)
-        else:
-            api_level = android_api(arch, platform)
-        toolchain_root = utils.android_path('prebuilts/gcc',
-                                            hosts.build_host().os_tag)
-        toolchain_bin = os.path.join(toolchain_root, toolchain_path, 'bin')
-        sysroot = get_sysroot(arch, platform)
-
-        defines = {}
-        defines['CMAKE_C_COMPILER'] = cc
-        defines['CMAKE_CXX_COMPILER'] = cxx
-        defines['LLVM_CONFIG_PATH'] = llvm_config
-
-        # Include the directory with libgcc.a to the linker search path.
-        toolchain_builtins = os.path.join(
-            toolchain_root, toolchain_path, '..', 'lib', 'gcc',
-            os.path.basename(toolchain_path), '4.9.x')
-        # The 32-bit libgcc.a is sometimes in a separate subdir
-        if arch == hosts.Arch.I386:
-            toolchain_builtins = os.path.join(toolchain_builtins, '32')
-
-        if arch == hosts.Arch.ARM:
-            toolchain_lib = ndk_toolchain_lib(arch, 'arm-linux-androideabi-4.9',
-                                              'arm-linux-androideabi')
-        elif arch in [hosts.Arch.I386, hosts.Arch.X86_64]:
-            toolchain_lib = ndk_toolchain_lib(arch, arch.ndk_arch + '-4.9',
-                                              llvm_triple)
-        else:
-            toolchain_lib = ndk_toolchain_lib(arch, llvm_triple + '-4.9',
-                                              llvm_triple)
-
-        ldflags = [
-            '-L' + toolchain_builtins, '-Wl,-z,defs',
-            '-L' + toolchain_lib,
-            '-fuse-ld=lld',
-            '-Wl,--gc-sections',
-            '-Wl,--build-id=sha1',
-            '-pie',
-        ]
-        if static:
-            ldflags.append('-static')
-        if not platform:
-            triple = 'arm-linux-androideabi' if arch == hosts.Arch.ARM else llvm_triple
-            libcxx_libs = os.path.join(ndk_base(), 'toolchains', 'llvm',
-                                       'prebuilt', 'linux-x86_64', 'sysroot',
-                                       'usr', 'lib', triple)
-            ldflags += ['-L', os.path.join(libcxx_libs, str(api_level))]
-            ldflags += ['-L', libcxx_libs]
-
-        defines['CMAKE_EXE_LINKER_FLAGS'] = ' '.join(ldflags)
-        defines['CMAKE_SHARED_LINKER_FLAGS'] = ' '.join(ldflags)
-        defines['CMAKE_MODULE_LINKER_FLAGS'] = ' '.join(ldflags)
-        update_cmake_sysroot_flags(defines, sysroot)
-
-        macro_api_level = 10000 if platform else api_level
-
-        cflags = [
-            debug_prefix_flag(),
-            '--target=%s' % llvm_triple,
-            '-B%s' % toolchain_bin,
-            '-D__ANDROID_API__=' + str(macro_api_level),
-            '-ffunction-sections',
-            '-fdata-sections',
-            extra_flags,
-        ]
-        yield (arch, llvm_triple, defines, cflags)
-
-
-def build_libcxx(toolchain, clang_version):
-    for (arch, llvm_triple, libcxx_defines,
-         cflags) in cross_compile_configs(toolchain): # pylint: disable=not-an-iterable
-        logger().info('Building libcxx for %s', arch.value)
-        libcxx_path = utils.out_path('lib', 'libcxx-' + arch.value)
-
-        libcxx_defines['CMAKE_ASM_FLAGS'] = ' '.join(cflags)
-        libcxx_defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-        libcxx_defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-        libcxx_defines['CMAKE_BUILD_TYPE'] = 'Release'
-
-        libcxx_env = dict(ORIG_ENV)
-
-        libcxx_cmake_path = utils.llvm_path('libcxx')
-        rm_cmake_cache(libcxx_path)
-
-        invoke_cmake(
-            out_path=libcxx_path,
-            defines=libcxx_defines,
-            env=libcxx_env,
-            cmake_path=libcxx_cmake_path,
-            install=False)
-        # We need to install libcxx manually.
-        install_subdir = clang_resource_dir(clang_version.long_version(),
-                                            hosts.Arch.from_triple(llvm_triple))
-        libcxx_install = os.path.join(toolchain, install_subdir)
-
-        libcxx_libs = os.path.join(libcxx_path, 'lib')
-        check_create_path(libcxx_install)
-        for f in os.listdir(libcxx_libs):
-            if f.startswith('libc++'):
-                shutil.copy2(os.path.join(libcxx_libs, f), libcxx_install)
-
-
-def build_libcxxabi(toolchain: toolchains.Toolchain, build_arch: hosts.Arch) -> Path:
-    # TODO: Refactor cross_compile_configs to support per-arch queries in
-    # addition to being a generator.
-    for (arch, llvm_triple, defines, cflags) in \
-         cross_compile_configs(toolchain.path, platform=True): # pylint: disable=not-an-iterable
-
-        # Build only the requested arch.
-        if arch != build_arch:
-            continue
-
-        logger().info('Building libcxxabi for %s', arch.value)
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = utils.llvm_path('libcxx', 'include')
-        defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
-        defines['CMAKE_C_FLAGS'] = ' '.join(cflags)
-        defines['CMAKE_CXX_FLAGS'] = ' '.join(cflags)
-
-        out_path = utils.out_path('lib', 'libcxxabi-' + arch.value)
-        if os.path.exists(out_path):
-            utils.rm_tree(out_path)
-
-        invoke_cmake(out_path=out_path,
-                     defines=defines,
-                     env=dict(ORIG_ENV),
-                     cmake_path=utils.llvm_path('libcxxabi'),
-                     install=False)
-        return Path(out_path)
-    raise ValueError(f"{build_arch} is not supported.")
-
-
 def build_llvm_for_windows(enable_assertions: bool,
                            build_name: str,
                            swig_builder: Optional[builders.SwigBuilder]):
@@ -389,10 +110,10 @@ def build_llvm_for_windows(enable_assertions: bool,
     win_builder.enable_assertions = enable_assertions
     win_builder.build()
 
-    return (win_builder.install_dir, lldb_bins)
+    return (win_builder, lldb_bins)
 
 
-def build_runtimes(toolchain, args=None):
+def build_runtimes():
     builders.SysrootsBuilder().build()
 
     builders.PlatformLibcxxAbiBuilder().build()
@@ -416,7 +137,7 @@ def install_wrappers(llvm_install_path):
     # Note: The build script automatically determines the architecture
     # based on the host.
     go_env = dict(os.environ)
-    go_env['PATH'] = go_bin_dir() + ':' + go_env['PATH']
+    go_env['PATH'] = str(paths.GO_BIN_PATH) + os.pathsep + go_env['PATH']
     utils.check_call([sys.executable, wrapper_build_script,
                       '--config=android',
                       '--use_ccache=false',
@@ -447,7 +168,7 @@ def install_wrappers(llvm_install_path):
     shutil.copy2(wrapper_path, clang_path)
     shutil.copy2(wrapper_path, clangxx_path)
     shutil.copy2(wrapper_path, clang_tidy_path)
-    install_file(bisect_path, bin_path)
+    shutil.copy2(bisect_path, bin_path)
 
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
@@ -504,7 +225,7 @@ def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
         for lib in all_libs:
             lib = os.path.join(libdir, lib)
             if lib != soname_lib:
-                remove(lib)
+                os.remove(lib)
 
 
 def install_license_files(install_dir):
@@ -523,7 +244,7 @@ def install_license_files(install_dir):
     llvm_android_path = utils.android_path('toolchain', 'llvm_android')
     license_pattern = os.path.join(llvm_android_path, 'MODULE_LICENSE_*')
     for license_file in glob.glob(license_pattern):
-        install_file(license_file, install_dir)
+        shutil.copy2(license_file, install_dir)
 
     # Fetch all the LICENSE.* files under our projects and append them into a
     # single NOTICE file for the resulting prebuilts.
@@ -546,10 +267,10 @@ def install_winpthreads(bin_dir, lib_dir):
     lib_path = os.path.join(mingw_dir, 'bin', lib_name)
 
     lib_install = os.path.join(lib_dir, lib_name)
-    install_file(lib_path, lib_install)
+    shutil.copy2(lib_path, lib_install)
 
     bin_install = os.path.join(bin_dir, lib_name)
-    install_file(lib_path, bin_install)
+    shutil.copy2(lib_path, bin_install)
 
 
 def remove_static_libraries(static_lib_dir, necessary_libs=None):
@@ -560,19 +281,21 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
         for lib_file in lib_files:
             if lib_file.endswith('.a') and lib_file not in necessary_libs:
                 static_library = os.path.join(static_lib_dir, lib_file)
-                remove(static_library)
+                os.remove(static_library)
 
 
-def get_package_install_path(host: hosts.Host, package_name):
-    return utils.out_path('install', host.os_tag, package_name)
+def package_toolchain(toolchain_builder: base_builders.LLVMBuilder,
+                      necessary_bin_files: Optional[Set[str]]=None,
+                      strip=True, create_tar=True):
+    dist_dir = Path(ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
+    build_dir = toolchain_builder.install_dir
+    host = toolchain_builder.config_list[0].target_os
+    build_name = toolchain_builder.build_name
+    version = toolchain_builder.installed_toolchain.version
 
-
-def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
-                      necessary_bin_files: Optional[Set[str]]=None, strip=True, create_tar=True):
     package_name = 'clang-' + build_name
-    version = extract_clang_version(build_dir)
 
-    install_dir = get_package_install_path(host, package_name)
+    install_dir = paths.get_package_install_path(host, package_name)
     install_host_dir = os.path.realpath(os.path.join(install_dir, '../'))
 
     # Remove any previously installed toolchain so it doesn't pollute the
@@ -634,7 +357,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
         'scan-view' + ext,
     }
 
-    if BUILD_LLDB:
+    if toolchain_builder.build_lldb:
         necessary_bin_files.update({
             'lldb-argdumper' + ext,
             'lldb' + ext,
@@ -665,7 +388,7 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
         binary = os.path.join(bin_dir, bin_filename)
         if os.path.isfile(binary):
             if bin_filename not in necessary_bin_files:
-                remove(binary)
+                os.remove(binary)
             elif strip and bin_filename not in script_bins:
                 # Strip all non-global symbols and debug info.
                 # These specific flags prevent Darwin executables from being
@@ -711,13 +434,13 @@ def package_toolchain(build_dir, build_name, host: hosts.Host, dist_dir,
     header_path = os.path.join(resdir_top, version.long_version(), 'include')
 
     stdatomic_path = utils.android_path(libc_include_path, 'stdatomic.h')
-    install_file(stdatomic_path, header_path)
+    shutil.copy2(stdatomic_path, header_path)
 
     bits_install_path = os.path.join(header_path, 'bits')
     if not os.path.isdir(bits_install_path):
         os.mkdir(bits_install_path)
     bits_stdatomic_path = utils.android_path(libc_include_path, 'bits', 'stdatomic.h')
-    install_file(bits_stdatomic_path, bits_install_path)
+    shutil.copy2(bits_stdatomic_path, bits_install_path)
 
 
     # Install license files as NOTICE in the toolchain install dir.
@@ -922,9 +645,8 @@ def main():
     stage1.build_android_targets = args.debug or instrumented
     stage1.use_goma_for_stage1 = USE_GOMA_FOR_STAGE1
     stage1.build()
-    stage1_toolchain = toolchains.get_toolchain_from_builder(stage1)
+    stage1_toolchain = stage1.installed_toolchain
     toolchains.set_runtime_toolchain(stage1_toolchain)
-    stage1_install = str(stage1.install_dir)
 
     if BUILD_LLDB:
         # Swig is needed for both host and windows lldb.
@@ -934,8 +656,8 @@ def main():
         swig_builder = None
 
     if need_host:
-        profdata_filename = pgo_profdata_filename()
-        profdata = pgo_profdata_file(profdata_filename)
+        profdata_filename = paths.pgo_profdata_filename(BUILD_LLVM_NEXT)
+        profdata = paths.pgo_profdata_file(profdata_filename)
 
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
@@ -944,7 +666,7 @@ def main():
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = not args.no_lto
         stage2.build_instrumented = instrumented
-        stage2.profdata_file = Path(profdata) if profdata else None
+        stage2.profdata_file = profdata if profdata else None
 
         stage2.build_lldb = BUILD_LLDB
         if BUILD_LLDB:
@@ -962,50 +684,40 @@ def main():
             libedit_builder.build()
             stage2.libedit = libedit_builder
 
+        stage2_tags = []
         # Annotate the version string if there is no profdata.
         if profdata is None:
-            stage2.build_name += ', NO PGO PROFILE'
+            stage2_tags.append('NO PGO PROFILE')
         # Annotate the version string if this is an llvm-next build.
         if BUILD_LLVM_NEXT:
-            stage2.build_name += ', ANDROID_LLVM_NEXT'
+            stage2_tags.append('ANDROID_LLVM_NEXT')
+        stage2.build_tags = stage2_tags
 
         stage2.build()
         if not (stage2.build_instrumented or stage2.debug_build):
-            stage2_toolchain = toolchains.get_toolchain_from_builder(stage2)
-            toolchains.set_runtime_toolchain(stage2_toolchain)
-        stage2_install = str(stage2.install_dir)
+            toolchains.set_runtime_toolchain(stage2.installed_toolchain)
 
         if hosts.build_host().is_linux and do_runtimes:
-            runtimes_toolchain = stage2_install
-            if args.debug or instrumented:
-                runtimes_toolchain = stage1_install
-            build_runtimes(runtimes_toolchain, args)
+            build_runtimes()
 
     if need_windows:
         if args.windows_sdk:
             win_sdk.set_path(Path(args.windows_sdk))
-        windows64_install, win_lldb_bins = build_llvm_for_windows(
+        win_builder, win_lldb_bins = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
             build_name=args.build_name,
             swig_builder=swig_builder)
 
-    dist_dir = ORIG_ENV.get('DIST_DIR', utils.out_path())
     if do_package and need_host:
         package_toolchain(
-            stage2_install,
-            args.build_name,
-            hosts.build_host(),
-            dist_dir,
+            stage2,
             strip=do_strip_host_package,
             create_tar=args.create_tar)
 
     if do_package and need_windows:
         package_toolchain(
-            windows64_install,
-            args.build_name,
-            hosts.Host.Windows,
-            dist_dir,
-            win_lldb_bins,
+            win_builder,
+            necessary_bin_files=win_lldb_bins,
             strip=do_strip,
             create_tar=args.create_tar)
 

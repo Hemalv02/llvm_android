@@ -110,40 +110,29 @@ class Toolchain:
         return self.path / 'include' / 'clang' / 'Basic'/ 'Version.inc'
 
     @functools.cached_property
-    def _version(self) -> version.Version:
+    def version(self) -> version.Version:
         return version.Version(self._version_file)
 
     @property
     def clang_lib_dir(self) -> Path:
-        return self.lib_dir / 'clang' / self._version.long_version()
+        return self.lib_dir / 'clang' / self.version.long_version()
 
     @property
     def resource_dir(self) -> Path:
         return self.clang_lib_dir / 'lib' / 'linux'
 
 
-@functools.lru_cache
-def _build_toolchain_for_path(path: Path, build_path: Path) -> Toolchain:
-    """Returns a toolchain object for a given path."""
-    return Toolchain(path, build_path)
-
-
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
     # Prebuilt toolchain doesn't have a build path. Use a temp path instead.
-    return _build_toolchain_for_path(paths.CLANG_PREBUILT_DIR, Path('.'))
-
-
-def get_toolchain_from_builder(builder) -> Toolchain:
-    """Gets the toolchain from a toolchain builder."""
-    return _build_toolchain_for_path(builder.install_dir, builder.output_dir)
+    return Toolchain(paths.CLANG_PREBUILT_DIR, Path('.'))
 
 
 def get_toolchain_by_name(name: str) -> Toolchain:
     """Tet a toolchain by name."""
     if name == 'prebuilt':
         return get_prebuilt_toolchain()
-    return get_toolchain_from_builder(BuilderRegistry.get(name))
+    return BuilderRegistry.get(name).installed_toolchain
 
 
 _RUNTIME_TOOLCHAIN: Toolchain = get_prebuilt_toolchain()

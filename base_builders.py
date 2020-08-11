@@ -15,6 +15,7 @@
 #
 """Builders for various build tools and build systems."""
 
+import functools
 from pathlib import Path
 import logging
 import multiprocessing
@@ -439,6 +440,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     src_dir: Path = paths.LLVM_PATH / 'llvm'
     config_list: List[configs.Config]
     build_name: str
+    build_tags: Optional[List[str]] = None
     svn_revision: str
     enable_assertions: bool = False
     toolchain_name: str
@@ -543,8 +545,13 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
 
-        defines['CLANG_VENDOR'] = 'Android ({}, based on {})'.format(
-            self.build_name, self.svn_revision)
+        if self.build_tags:
+            tags_str = ''.join(tag + ', ' for tag in self.build_tags)
+        else:
+            tags_str = ''
+
+        defines['CLANG_VENDOR'] = 'Android ({}, {}based on {})'.format(
+            self.build_name, tags_str, self.svn_revision)
 
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
                                               'binutils' / 'binutils-2.27' / 'include')
@@ -564,3 +571,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         super().install_config()
         if self.build_lldb:
             self._install_lldb_deps()
+
+    @functools.cached_property
+    def installed_toolchain(self) -> toolchains.Toolchain:
+        """Gets the built Toolchain."""
+        return toolchains.Toolchain(self.install_dir, self.output_dir)

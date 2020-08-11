@@ -17,7 +17,10 @@
 
 import os
 from pathlib import Path
+import string
+from typing import Optional
 
+import android_version
 import constants
 import hosts
 
@@ -35,6 +38,7 @@ CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host(
 CLANG_PREBUILT_LIBCXX_HEADERS: Path = CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1'
 BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
+GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
 NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'ninja'
 
@@ -61,6 +65,19 @@ KYTHE_RUN_EXTRACTOR = (PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag
 KYTHE_CXX_EXTRACTOR = (PREBUILTS_DIR / 'clang-tools' / hosts.build_host().os_tag / 'bin' /
                        'cxx_extractor')
 KYTHE_OUTPUT_DIR = OUT_DIR / 'kythe-files'
+
+def pgo_profdata_filename(llvm_next: bool=False) -> str:
+    svn_revision = android_version.get_svn_revision(llvm_next)
+    base_revision = svn_revision.rstrip(string.ascii_lowercase)
+    return f'{base_revision}.profdata'
+
+def pgo_profdata_file(profdata_file) -> Optional[Path]:
+    profile = (PREBUILTS_DIR / 'prebuilts' / 'clang' / 'host' / 'linux-x86' /
+               'profiles' / profdata_file)
+    return profile if profile.exists() else None
+
+def get_package_install_path(host: hosts.Host, package_name):
+    return OUT_DIR / 'install' / host.os_tag / package_name
 
 def get_python_dir(host: hosts.Host) -> Path:
     """Returns the path to python for a host."""

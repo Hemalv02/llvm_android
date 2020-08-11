@@ -19,12 +19,15 @@
 import argparse
 import multiprocessing
 import os
+from pathlib import Path
+import shutil
 import subprocess
+from typing import List
 
-import do_build as build
 import hosts
 import paths
 import utils
+import version
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
 DEFAULT_TIDY_CHECKS = ('*', '-readability-*', '-google-readability-*',
@@ -79,7 +82,7 @@ class ClangProfileHandler(object):
         stage1_install = utils.out_path('stage1-install')
         profdata = os.path.join(stage1_install, 'bin', 'llvm-profdata')
 
-        profdata_file = build.pgo_profdata_filename()
+        profdata_file = paths.pgo_profdata_filename()
 
         dist_dir = os.environ.get('DIST_DIR', utils.out_path())
         out_file = os.path.join(dist_dir, profdata_file)
@@ -198,6 +201,12 @@ def rm_current_product_out():
         utils.remove(os.environ['ANDROID_PRODUCT_OUT'])
 
 
+def extract_clang_version(clang_install: Path) -> version.Version:
+    version_file = (Path(clang_install) / 'include' / 'clang' / 'Basic' /
+                    'Version.inc')
+    return version.Version(version_file)
+
+
 def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
                  with_tidy, profiler=None):
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
@@ -235,7 +244,7 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
                 os.path.join(android_base, 'out', 'clang-error.log'))
             utils.remove(redirect_path)
         env[redirect_key] = redirect_path
-        fallback_path = build.clang_prebuilt_bin_dir()
+        fallback_path = str(paths.CLANG_PREBUILT_DIR / 'bin')
         env[PREBUILT_COMPILER_PATH_KEY] = fallback_path
         env[DISABLED_WARNINGS_KEY] = ' '.join(DISABLED_WARNINGS)
 
@@ -298,34 +307,34 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
     return result
 
 
-def extract_packaged_clang(package_path):
+def extract_packaged_clang(package_path: Path) -> Path:
     # Find package to extract
-    tarballs = [f for f in os.listdir(package_path) if \
-                    f.endswith('.tar.bz2') and 'linux' in f]
+    tarballs: List[Path] = [f for f in package_path.iterdir()
+                            if f.name.endswith('.tar.bz2') and 'linux' in f.name]
     if len(tarballs) != 1:
         raise RuntimeError(
-            'No clang packages (.tar.bz2) found in ' + package_path)
+            f'No clang packages (.tar.bz2) found in {package_path}')
 
-    tarball = os.path.join(package_path, tarballs[0])
+    tarball = tarballs[0]
 
     # Extract package to $OUT_DIR/extracted
-    extract_dir = utils.out_path('extracted')
-    if os.path.exists(extract_dir):
-        utils.rm_tree(extract_dir)
-    build.check_create_path(extract_dir)
+    extract_dir = paths.OUT_DIR / 'extracted'
+    if extract_dir.exists():
+        shutil.rmtree(extract_dir)
+    extract_dir.mkdir(parents=True, exist_ok=True)
 
-    args = ['tar', '-xjC', extract_dir, '-f', tarball]
+    args: List[str] = ['tar', '-xjC', str(extract_dir), '-f', str(tarball)]
     subprocess.check_call(args)
 
     # Find and return a singleton subdir
-    extracted = os.listdir(extract_dir)
+    extracted: List[Path] = list(extract_dir.iterdir())
     if len(extracted) != 1:
         raise RuntimeError(
-            'Expected one file from package.  Found: ' + ' '.join(extracted))
+            f'Expected one file from package.  Found: {extracted}')
 
-    clang_path = os.path.join(extract_dir, extracted[0])
-    if not os.path.isdir(clang_path):
-        raise RuntimeError('Extracted path is not a dir: ' + clang_path)
+    clang_path = extracted[0]
+    if not clang_path.is_dir():
+        raise RuntimeError(f'Extracted path is not a dir: {clang_path}')
 
     return clang_path
 
@@ -333,19 +342,19 @@ def extract_packaged_clang(package_path):
 def main():
     args = parse_args()
     if args.clang_path is not None:
-        clang_path = args.clang_path
-        clang_version = build.extract_clang_version(clang_path)
+        clang_path = Path(args.clang_path)
+        clang_version = extract_clang_version(clang_path)
     elif args.clang_package_path is not None:
-        clang_path = extract_packaged_clang(args.clang_package_path)
-        clang_version = build.extract_clang_version(clang_path)
+        clang_path = extract_packaged_clang(Path(args.clang_package_path))
+        clang_version = extract_clang_version(clang_path)
     else:
         cmd = [paths.ANDROID_DIR / 'toolchain' / 'llvm_android' / 'build.py',
                '--no-build=windows,lldb',]
         if args.profile:
             cmd.append('--build-instrumented')
         utils.check_call(cmd)
-        clang_path = build.get_package_install_path(hosts.build_host(), 'clang-dev')
-        clang_version = build.extract_clang_version(clang_path)
+        clang_path = paths.get_package_install_path(hosts.build_host(), 'clang-dev')
+        clang_version = extract_clang_version(clang_path)
     link_clang(args.android_path, clang_path)
 
     if args.build_only:

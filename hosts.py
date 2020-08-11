@@ -58,14 +58,6 @@ class Arch(enum.Enum):
     I386 = 'i386'
     X86_64 = 'x86_64'
 
-    @staticmethod
-    def from_triple(triple: str) -> 'Arch':
-        """Parses arch from a triple."""
-        arch = triple.split('-')[0]
-        if arch == 'i686':
-            arch = 'i386'
-        return Arch(arch)
-
     @property
     def llvm_arch(self) -> str:
         """Converts to llvm arch."""
