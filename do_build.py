@@ -103,16 +103,6 @@ def android_api(arch: hosts.Arch, platform=False):
         return 21
 
 
-def ndk_libcxx_headers():
-    return os.path.join(ndk_base(), 'sources', 'cxx-stl', 'llvm-libc++',
-                        'include')
-
-
-def ndk_libcxxabi_headers():
-    return os.path.join(ndk_base(), 'sources', 'cxx-stl', 'llvm-libc++abi',
-                        'include')
-
-
 def ndk_toolchain_lib(arch: hosts.Arch, toolchain_root, host_tag):
     toolchain_lib = os.path.join(ndk_base(), 'toolchains', toolchain_root,
                                  'prebuilt', 'linux-x86_64', host_tag)
@@ -121,10 +111,6 @@ def ndk_toolchain_lib(arch: hosts.Arch, toolchain_root, host_tag):
     else:
         toolchain_lib = os.path.join(toolchain_lib, 'lib64')
     return toolchain_lib
-
-
-def support_headers():
-    return os.path.join(ndk_base(), 'sources', 'android', 'support', 'include')
 
 
 def clang_prebuilt_base_dir():
@@ -139,25 +125,6 @@ def clang_prebuilt_bin_dir():
 def clang_resource_dir(version, arch: Optional[hosts.Arch] = None):
     arch_str = arch.value if arch else ''
     return os.path.join('lib64', 'clang', version, 'lib', 'linux', arch_str)
-
-
-def clang_prebuilt_libcxx_headers():
-    return utils.android_path(clang_prebuilt_base_dir(), 'include', 'c++', 'v1')
-
-
-def libcxx_header_dirs(ndk_cxx):
-    if ndk_cxx:
-        return [
-            ndk_libcxx_headers(),
-            ndk_libcxxabi_headers(),
-            support_headers()
-        ]
-    else:
-        # <prebuilts>/include/c++/v1 includes the cxxabi headers
-        return [
-            clang_prebuilt_libcxx_headers(),
-            utils.android_path('bionic', 'libc', 'include')
-        ]
 
 
 def check_create_path(path):
@@ -507,51 +474,6 @@ def build_llvm_for_windows(enable_assertions: bool,
     win_builder.build()
 
     return (win_builder.install_dir, lldb_bins)
-
-
-def host_sysroot():
-    if hosts.build_host().is_darwin:
-        return ""
-    else:
-        return utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
-                                  'host/x86_64-linux-glibc2.17-4.8/sysroot')
-
-
-def host_gcc_toolchain_flags(host: hosts.Host, is_32_bit=False):
-    cflags: List[str] = [debug_prefix_flag()]
-    ldflags: List[str] = []
-
-    if host.is_darwin:
-        return cflags, ldflags
-
-    # GCC toolchain flags for Linux and Windows
-    if host.is_linux:
-        gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
-                                     'host/x86_64-linux-glibc2.17-4.8')
-        gccTriple = 'x86_64-linux'
-        gccVersion = '4.8.3'
-    elif host.is_windows:
-        gccRoot = utils.android_path('prebuilts/gcc', hosts.build_host().os_tag,
-                                     'host/x86_64-w64-mingw32-4.8')
-        gccTriple = 'x86_64-w64-mingw32'
-        gccVersion = '4.8.3'
-
-    cflags.append(f'-B{gccRoot}/{gccTriple}/bin')
-
-    gccLibDir = f'{gccRoot}/lib/gcc/{gccTriple}/{gccVersion}'
-    gccBuiltinDir = f'{gccRoot}/{gccTriple}/lib64'
-    if is_32_bit:
-        gccLibDir += '/32'
-        gccBuiltinDir = gccBuiltinDir.replace('lib64', 'lib32')
-
-    ldflags.extend(('-B' + gccLibDir,
-                    '-L' + gccLibDir,
-                    '-B' + gccBuiltinDir,
-                    '-L' + gccBuiltinDir,
-                    '-fuse-ld=lld',
-                   ))
-
-    return cflags, ldflags
 
 
 def build_runtimes(toolchain, args=None):

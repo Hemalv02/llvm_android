@@ -62,21 +62,6 @@ def llvm_path(*args):
     return out_path('llvm-project', *args)
 
 
-def yes_or_no(prompt, default=True):
-    prompt += " (Y/n)" if default else " (y/N)"
-    prompt += ": "
-    while True:
-        reply = str(raw_input(prompt)).lower().strip()
-        if len(reply) == 0:
-            return default
-        elif reply[0] == 'y':
-            return True
-        elif reply[0] == 'n':
-            return False
-        else:
-            print("Unrecognized reply, try again")
-
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -118,13 +103,6 @@ def check_call_d(args, stdout=None, stderr=None, cwd=None, dry_run=False):
     if not dry_run:
         return subprocess.check_call(args, stdout=stdout, stderr=stderr,
                                      cwd=cwd)
-    else:
-        print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
-
-def check_output_d(args, stderr=None, cwd=None, dry_run=False):
-    if not dry_run:
-        return subprocess.check_output(args, stderr=stderr, cwd=cwd,
-                                       universal_newlines=True)
     else:
         print("Project " + os.path.basename(cwd) + ": " + list2cmdline(args))
 
