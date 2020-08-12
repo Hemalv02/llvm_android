@@ -166,14 +166,6 @@ def parse_args():
         dest='profile',
         help='Build instrumented compiler and gather profiles')
 
-    # TODO(pirama): This arg is no longer necessary.  Remove after deleting from
-    # the build server.
-    parser.add_argument(
-        '--no-pgo',
-        action='store_true',
-        default=False,
-        help='Do not use PGO profile to build stage2 Clang (defaults to False)')
-
     args = parser.parse_args()
     if args.clang_path and args.clang_package_path:
         parser.error('Only one of --clang-path and --clang-package-path must'
