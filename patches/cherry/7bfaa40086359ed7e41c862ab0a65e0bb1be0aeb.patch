@@ -1,0 +1,2058 @@
+From d3e7f4b484c67c05eb2fa4ba21b125a37274e70f Mon Sep 17 00:00:00 2001
+From: Eric Christopher <echristo@gmail.com>
+Date: Thu, 16 Jul 2020 11:40:43 -0700
+Subject: [PATCH] Temporarily Revert "[AssumeBundles] Use operand bundles to
+ encode alignment assumptions" due to the performance bugs filed in
+ https://bugs.llvm.org/show_bug.cgi?id=46753.
+
+An SROA change soon may obviate some of these problems.
+
+This reverts commit 8d09f20798ac180b1749276bff364682ce0196ab.
+
+(cherry picked from commit 7bfaa40086359ed7e41c862ab0a65e0bb1be0aeb)
+---
+ clang/lib/CodeGen/CodeGenFunction.cpp         |  36 +-----
+ clang/test/CodeGen/align_value.cpp            |  30 ++++-
+ clang/test/CodeGen/alloc-align-attr.c         |  44 +++++--
+ ...ssume-aligned-and-alloc-align-attributes.c |   8 +-
+ clang/test/CodeGen/builtin-align-array.c      |  32 +++--
+ clang/test/CodeGen/builtin-align.c            |  24 +++-
+ clang/test/CodeGen/builtin-assume-aligned.c   |  32 ++++-
+ ...mption-attribute-align_value-on-lvalue.cpp |   8 +-
+ ...tion-attribute-align_value-on-paramvar.cpp |   2 +-
+ ...ibute-alloc_align-on-function-variable.cpp |  10 +-
+ ...tion-attribute-alloc_align-on-function.cpp |   2 +-
+ ...-assume_aligned-on-function-two-params.cpp |  10 +-
+ ...n-attribute-assume_aligned-on-function.cpp |   2 +-
+ ...n_assume_aligned-three-params-variable.cpp |  10 +-
+ ...on-builtin_assume_aligned-three-params.cpp |  10 +-
+ ...tion-builtin_assume_aligned-two-params.cpp |   8 +-
+ .../catch-alignment-assumption-openmp.cpp     |   8 +-
+ .../non-power-of-2-alignment-assumptions.c    |  13 +-
+ clang/test/OpenMP/simd_codegen.cpp            |  16 +++
+ clang/test/OpenMP/simd_metadata.c             | 117 ++++++++++-------
+ ...s_distribute_parallel_for_simd_codegen.cpp |   5 +-
+ llvm/include/llvm/IR/IRBuilder.h              |  28 ++--
+ .../Scalar/AlignmentFromAssumptions.h         |   6 +-
+ llvm/lib/Analysis/AssumeBundleQueries.cpp     |  13 +-
+ llvm/lib/IR/IRBuilder.cpp                     |  77 +++++++----
+ llvm/lib/IR/Verifier.cpp                      |  23 +---
+ .../InstCombine/InstCombineCalls.cpp          |  15 +--
+ .../Scalar/AlignmentFromAssumptions.cpp       | 121 +++++++++++++-----
+ .../AlignmentFromAssumptions/simple.ll        |  75 +++++++----
+ .../AlignmentFromAssumptions/simple32.ll      | 114 +++++++++++++----
+ llvm/test/Transforms/Inline/align.ll          |  15 ++-
+ llvm/test/Transforms/InstCombine/assume.ll    |   1 -
+ .../inlining-alignment-assumptions.ll         |  27 +++-
+ llvm/test/Verifier/assume-bundles.ll          |  16 +--
+ .../Analysis/AssumeBundleQueriesTest.cpp      |  38 ------
+ 35 files changed, 627 insertions(+), 369 deletions(-)
+
+diff --git a/clang/lib/CodeGen/CodeGenFunction.cpp b/clang/lib/CodeGen/CodeGenFunction.cpp
+index 4a7c84562de..8ce488f35dd 100644
+--- a/clang/lib/CodeGen/CodeGenFunction.cpp
++++ b/clang/lib/CodeGen/CodeGenFunction.cpp
+@@ -2154,39 +2154,13 @@ void CodeGenFunction::emitAlignmentAssumption(llvm::Value *PtrValue,
+                                               SourceLocation AssumptionLoc,
+                                               llvm::Value *Alignment,
+                                               llvm::Value *OffsetValue) {
+-  if (Alignment->getType() != IntPtrTy)
+-    Alignment =
+-        Builder.CreateIntCast(Alignment, IntPtrTy, false, "casted.align");
+-  if (OffsetValue && OffsetValue->getType() != IntPtrTy)
+-    OffsetValue =
+-        Builder.CreateIntCast(OffsetValue, IntPtrTy, true, "casted.offset");
+-  llvm::Value *TheCheck = nullptr;
++  llvm::Value *TheCheck;
++  llvm::Instruction *Assumption = Builder.CreateAlignmentAssumption(
++      CGM.getDataLayout(), PtrValue, Alignment, OffsetValue, &TheCheck);
+   if (SanOpts.has(SanitizerKind::Alignment)) {
+-    llvm::Value *PtrIntValue =
+-        Builder.CreatePtrToInt(PtrValue, IntPtrTy, "ptrint");
+-
+-    if (OffsetValue) {
+-      bool IsOffsetZero = false;
+-      if (const auto *CI = dyn_cast<llvm::ConstantInt>(OffsetValue))
+-        IsOffsetZero = CI->isZero();
+-
+-      if (!IsOffsetZero)
+-        PtrIntValue = Builder.CreateSub(PtrIntValue, OffsetValue, "offsetptr");
+-    }
+-
+-    llvm::Value *Zero = llvm::ConstantInt::get(IntPtrTy, 0);
+-    llvm::Value *Mask =
+-        Builder.CreateSub(Alignment, llvm::ConstantInt::get(IntPtrTy, 1));
+-    llvm::Value *MaskedPtr = Builder.CreateAnd(PtrIntValue, Mask, "maskedptr");
+-    TheCheck = Builder.CreateICmpEQ(MaskedPtr, Zero, "maskcond");
++    emitAlignmentAssumptionCheck(PtrValue, Ty, Loc, AssumptionLoc, Alignment,
++                                 OffsetValue, TheCheck, Assumption);
+   }
+-  llvm::Instruction *Assumption = Builder.CreateAlignmentAssumption(
+-      CGM.getDataLayout(), PtrValue, Alignment, OffsetValue);
+-
+-  if (!SanOpts.has(SanitizerKind::Alignment))
+-    return;
+-  emitAlignmentAssumptionCheck(PtrValue, Ty, Loc, AssumptionLoc, Alignment,
+-                               OffsetValue, TheCheck, Assumption);
+ }
+ 
+ void CodeGenFunction::emitAlignmentAssumption(llvm::Value *PtrValue,
+diff --git a/clang/test/CodeGen/align_value.cpp b/clang/test/CodeGen/align_value.cpp
+index a18cb651fe4..acbfbaf2ba5 100644
+--- a/clang/test/CodeGen/align_value.cpp
++++ b/clang/test/CodeGen/align_value.cpp
+@@ -29,7 +29,10 @@ struct ad_struct {
+ // CHECK-NEXT:    [[TMP0:%.*]] = load %struct.ad_struct*, %struct.ad_struct** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[A:%.*]] = getelementptr inbounds [[STRUCT_AD_STRUCT:%.*]], %struct.ad_struct* [[TMP0]], i32 0, i32 0
+ // CHECK-NEXT:    [[TMP1:%.*]] = load double*, double** [[A]], align 8
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(double* [[TMP1]], i64 64) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint double* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret double* [[TMP1]]
+ //
+ double *foo(ad_struct& x) {
+@@ -45,7 +48,10 @@ double *foo(ad_struct& x) {
+ // CHECK-NEXT:    [[TMP0:%.*]] = load %struct.ad_struct*, %struct.ad_struct** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[A:%.*]] = getelementptr inbounds [[STRUCT_AD_STRUCT:%.*]], %struct.ad_struct* [[TMP0]], i32 0, i32 0
+ // CHECK-NEXT:    [[TMP1:%.*]] = load double*, double** [[A]], align 8
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(double* [[TMP1]], i64 64) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint double* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret double* [[TMP1]]
+ //
+ double *goo(ad_struct *x) {
+@@ -60,7 +66,10 @@ double *goo(ad_struct *x) {
+ // CHECK-NEXT:    store double** [[X]], double*** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load double**, double*** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = load double*, double** [[TMP0]], align 8
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(double* [[TMP1]], i64 64) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint double* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret double* [[TMP1]]
+ //
+ double *bar(aligned_double *x) {
+@@ -75,7 +84,10 @@ double *bar(aligned_double *x) {
+ // CHECK-NEXT:    store double** [[X]], double*** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load double**, double*** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = load double*, double** [[TMP0]], align 8
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(double* [[TMP1]], i64 64) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint double* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret double* [[TMP1]]
+ //
+ double *car(aligned_double &x) {
+@@ -91,7 +103,10 @@ double *car(aligned_double &x) {
+ // CHECK-NEXT:    [[TMP0:%.*]] = load double**, double*** [[X_ADDR]], align 8
+ // CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds double*, double** [[TMP0]], i64 5
+ // CHECK-NEXT:    [[TMP1:%.*]] = load double*, double** [[ARRAYIDX]], align 8
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(double* [[TMP1]], i64 64) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint double* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret double* [[TMP1]]
+ //
+ double *dar(aligned_double *x) {
+@@ -103,7 +118,10 @@ aligned_double eep();
+ // CHECK-LABEL: define {{[^@]+}}@_Z3retv() #0
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[CALL:%.*]] = call double* @_Z3eepv()
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(double* [[CALL]], i64 64) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint double* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret double* [[CALL]]
+ //
+ double *ret() {
+diff --git a/clang/test/CodeGen/alloc-align-attr.c b/clang/test/CodeGen/alloc-align-attr.c
+index 44a57291b47..9517c50dbb1 100644
+--- a/clang/test/CodeGen/alloc-align-attr.c
++++ b/clang/test/CodeGen/alloc-align-attr.c
+@@ -11,8 +11,12 @@ __INT32_TYPE__*m1(__INT32_TYPE__ i) __attribute__((alloc_align(1)));
+ // CHECK-NEXT:    store i32 [[A]], i32* [[A_ADDR]], align 4
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[A_ADDR]], align 4
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* @m1(i32 [[TMP0]])
+-// CHECK-NEXT:    [[CASTED_ALIGN:%.*]] = zext i32 [[TMP0]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 [[CASTED_ALIGN]]) ]
++// CHECK-NEXT:    [[ALIGNMENTCAST:%.*]] = zext i32 [[TMP0]] to i64
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[ALIGNMENTCAST]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP1:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP1]]
+ //
+@@ -28,8 +32,12 @@ __INT32_TYPE__ test1(__INT32_TYPE__ a) {
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, i64* [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[CONV:%.*]] = trunc i64 [[TMP0]] to i32
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* @m1(i32 [[CONV]])
+-// CHECK-NEXT:    [[CASTED_ALIGN:%.*]] = zext i32 [[CONV]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 [[CASTED_ALIGN]]) ]
++// CHECK-NEXT:    [[ALIGNMENTCAST:%.*]] = zext i32 [[CONV]] to i64
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[ALIGNMENTCAST]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP1:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP1]]
+ //
+@@ -47,7 +55,11 @@ __INT32_TYPE__ *m2(__SIZE_TYPE__ i) __attribute__((alloc_align(1)));
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[A_ADDR]], align 4
+ // CHECK-NEXT:    [[CONV:%.*]] = sext i32 [[TMP0]] to i64
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* @m2(i64 [[CONV]])
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 [[CONV]]) ]
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[CONV]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP1:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP1]]
+ //
+@@ -63,7 +75,11 @@ __INT32_TYPE__ test3(__INT32_TYPE__ a) {
+ // CHECK-NEXT:    store i64 [[A]], i64* [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, i64* [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* @m2(i64 [[TMP0]])
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 [[TMP0]]) ]
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[TMP0]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP1:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP1]]
+ //
+@@ -99,8 +115,12 @@ __INT32_TYPE__ *m3(struct Empty s, __int128_t i) __attribute__((alloc_align(2)))
+ // CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds { i64, i64 }, { i64, i64 }* [[TMP4]], i32 0, i32 1
+ // CHECK-NEXT:    [[TMP8:%.*]] = load i64, i64* [[TMP7]], align 8
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* @m3(i64 [[TMP6]], i64 [[TMP8]])
+-// CHECK-NEXT:    [[CASTED_ALIGN:%.*]] = trunc i128 [[TMP3]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 [[CASTED_ALIGN]]) ]
++// CHECK-NEXT:    [[ALIGNMENTCAST:%.*]] = trunc i128 [[TMP3]] to i64
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[ALIGNMENTCAST]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP9:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP9]]
+ //
+@@ -137,8 +157,12 @@ __INT32_TYPE__ *m4(struct MultiArgs s, __int128_t i) __attribute__((alloc_align(
+ // CHECK-NEXT:    [[TMP12:%.*]] = getelementptr inbounds { i64, i64 }, { i64, i64 }* [[TMP9]], i32 0, i32 1
+ // CHECK-NEXT:    [[TMP13:%.*]] = load i64, i64* [[TMP12]], align 8
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* @m4(i64 [[TMP6]], i64 [[TMP8]], i64 [[TMP11]], i64 [[TMP13]])
+-// CHECK-NEXT:    [[CASTED_ALIGN:%.*]] = trunc i128 [[TMP3]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 [[CASTED_ALIGN]]) ]
++// CHECK-NEXT:    [[ALIGNMENTCAST:%.*]] = trunc i128 [[TMP3]] to i64
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[ALIGNMENTCAST]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP14:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP14]]
+ //
+diff --git a/clang/test/CodeGen/assume-aligned-and-alloc-align-attributes.c b/clang/test/CodeGen/assume-aligned-and-alloc-align-attributes.c
+index cd8a6f19b4f..fa4ee8db12e 100644
+--- a/clang/test/CodeGen/assume-aligned-and-alloc-align-attributes.c
++++ b/clang/test/CodeGen/assume-aligned-and-alloc-align-attributes.c
+@@ -36,8 +36,12 @@ void *t2_immediate2() {
+ // CHECK-NEXT:    store i32 [[ALIGNMENT:%.*]], i32* [[ALIGNMENT_ADDR]], align 4
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[ALIGNMENT_ADDR]], align 4
+ // CHECK-NEXT:    [[CALL:%.*]] = call align 32 i8* @my_aligned_alloc(i32 320, i32 [[TMP0]])
+-// CHECK-NEXT:    [[TMP1:%.*]] = zext i32 [[TMP0]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[CALL]], i64 [[TMP1]]) ]
++// CHECK-NEXT:    [[ALIGNMENTCAST:%.*]] = zext i32 [[TMP0]] to i64
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[ALIGNMENTCAST]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret i8* [[CALL]]
+ //
+ void *t3_variable(int alignment) {
+diff --git a/clang/test/CodeGen/builtin-align-array.c b/clang/test/CodeGen/builtin-align-array.c
+index 31f7b42b561..97235c33b7f 100644
+--- a/clang/test/CodeGen/builtin-align-array.c
++++ b/clang/test/CodeGen/builtin-align-array.c
+@@ -4,7 +4,7 @@
+ 
+ extern int func(char *c);
+ 
+-// CHECK-LABEL: @test_array(
++// CHECK-LABEL: define {{[^@]+}}@test_array() #0
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[BUF:%.*]] = alloca [1024 x i8], align 16
+ // CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [1024 x i8], [1024 x i8]* [[BUF]], i64 0, i64 44
+@@ -12,7 +12,10 @@ extern int func(char *c);
+ // CHECK-NEXT:    [[ALIGNED_INTPTR:%.*]] = and i64 [[INTPTR]], -16
+ // CHECK-NEXT:    [[DIFF:%.*]] = sub i64 [[ALIGNED_INTPTR]], [[INTPTR]]
+ // CHECK-NEXT:    [[ALIGNED_RESULT:%.*]] = getelementptr inbounds i8, i8* [[ARRAYIDX]], i64 [[DIFF]]
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[ALIGNED_RESULT]], i64 16) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[ALIGNED_RESULT]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 15
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32 @func(i8* [[ALIGNED_RESULT]])
+ // CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds [1024 x i8], [1024 x i8]* [[BUF]], i64 0, i64 22
+ // CHECK-NEXT:    [[INTPTR2:%.*]] = ptrtoint i8* [[ARRAYIDX1]] to i64
+@@ -20,10 +23,13 @@ extern int func(char *c);
+ // CHECK-NEXT:    [[ALIGNED_INTPTR4:%.*]] = and i64 [[OVER_BOUNDARY]], -32
+ // CHECK-NEXT:    [[DIFF5:%.*]] = sub i64 [[ALIGNED_INTPTR4]], [[INTPTR2]]
+ // CHECK-NEXT:    [[ALIGNED_RESULT6:%.*]] = getelementptr inbounds i8, i8* [[ARRAYIDX1]], i64 [[DIFF5]]
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[ALIGNED_RESULT6]], i64 32) ]
+-// CHECK-NEXT:    [[CALL7:%.*]] = call i32 @func(i8* [[ALIGNED_RESULT6]])
+-// CHECK-NEXT:    [[ARRAYIDX8:%.*]] = getelementptr inbounds [1024 x i8], [1024 x i8]* [[BUF]], i64 0, i64 16
+-// CHECK-NEXT:    [[SRC_ADDR:%.*]] = ptrtoint i8* [[ARRAYIDX8]] to i64
++// CHECK-NEXT:    [[PTRINT7:%.*]] = ptrtoint i8* [[ALIGNED_RESULT6]] to i64
++// CHECK-NEXT:    [[MASKEDPTR8:%.*]] = and i64 [[PTRINT7]], 31
++// CHECK-NEXT:    [[MASKCOND9:%.*]] = icmp eq i64 [[MASKEDPTR8]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND9]])
++// CHECK-NEXT:    [[CALL10:%.*]] = call i32 @func(i8* [[ALIGNED_RESULT6]])
++// CHECK-NEXT:    [[ARRAYIDX11:%.*]] = getelementptr inbounds [1024 x i8], [1024 x i8]* [[BUF]], i64 0, i64 16
++// CHECK-NEXT:    [[SRC_ADDR:%.*]] = ptrtoint i8* [[ARRAYIDX11]] to i64
+ // CHECK-NEXT:    [[SET_BITS:%.*]] = and i64 [[SRC_ADDR]], 63
+ // CHECK-NEXT:    [[IS_ALIGNED:%.*]] = icmp eq i64 [[SET_BITS]], 0
+ // CHECK-NEXT:    [[CONV:%.*]] = zext i1 [[IS_ALIGNED]] to i32
+@@ -36,7 +42,7 @@ int test_array(void) {
+   return __builtin_is_aligned(&buf[16], 64);
+ }
+ 
+-// CHECK-LABEL: @test_array_should_not_mask(
++// CHECK-LABEL: define {{[^@]+}}@test_array_should_not_mask() #0
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[BUF:%.*]] = alloca [1024 x i8], align 32
+ // CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds [1024 x i8], [1024 x i8]* [[BUF]], i64 0, i64 64
+@@ -44,7 +50,10 @@ int test_array(void) {
+ // CHECK-NEXT:    [[ALIGNED_INTPTR:%.*]] = and i64 [[INTPTR]], -16
+ // CHECK-NEXT:    [[DIFF:%.*]] = sub i64 [[ALIGNED_INTPTR]], [[INTPTR]]
+ // CHECK-NEXT:    [[ALIGNED_RESULT:%.*]] = getelementptr inbounds i8, i8* [[ARRAYIDX]], i64 [[DIFF]]
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[ALIGNED_RESULT]], i64 16) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[ALIGNED_RESULT]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 15
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32 @func(i8* [[ALIGNED_RESULT]])
+ // CHECK-NEXT:    [[ARRAYIDX1:%.*]] = getelementptr inbounds [1024 x i8], [1024 x i8]* [[BUF]], i64 0, i64 32
+ // CHECK-NEXT:    [[INTPTR2:%.*]] = ptrtoint i8* [[ARRAYIDX1]] to i64
+@@ -52,8 +61,11 @@ int test_array(void) {
+ // CHECK-NEXT:    [[ALIGNED_INTPTR4:%.*]] = and i64 [[OVER_BOUNDARY]], -32
+ // CHECK-NEXT:    [[DIFF5:%.*]] = sub i64 [[ALIGNED_INTPTR4]], [[INTPTR2]]
+ // CHECK-NEXT:    [[ALIGNED_RESULT6:%.*]] = getelementptr inbounds i8, i8* [[ARRAYIDX1]], i64 [[DIFF5]]
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[ALIGNED_RESULT6]], i64 32) ]
+-// CHECK-NEXT:    [[CALL7:%.*]] = call i32 @func(i8* [[ALIGNED_RESULT6]])
++// CHECK-NEXT:    [[PTRINT7:%.*]] = ptrtoint i8* [[ALIGNED_RESULT6]] to i64
++// CHECK-NEXT:    [[MASKEDPTR8:%.*]] = and i64 [[PTRINT7]], 31
++// CHECK-NEXT:    [[MASKCOND9:%.*]] = icmp eq i64 [[MASKEDPTR8]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND9]])
++// CHECK-NEXT:    [[CALL10:%.*]] = call i32 @func(i8* [[ALIGNED_RESULT6]])
+ // CHECK-NEXT:    ret i32 1
+ //
+ int test_array_should_not_mask(void) {
+diff --git a/clang/test/CodeGen/builtin-align.c b/clang/test/CodeGen/builtin-align.c
+index 60f7fc99c1d..7e66e2b5c0b 100644
+--- a/clang/test/CodeGen/builtin-align.c
++++ b/clang/test/CodeGen/builtin-align.c
+@@ -122,7 +122,11 @@ _Bool is_aligned(TYPE ptr, unsigned align) {
+ // CHECK-VOID_PTR-NEXT:    [[ALIGNED_INTPTR:%.*]] = and i64 [[OVER_BOUNDARY]], [[INVERTED_MASK]]
+ // CHECK-VOID_PTR-NEXT:    [[DIFF:%.*]] = sub i64 [[ALIGNED_INTPTR]], [[INTPTR]]
+ // CHECK-VOID_PTR-NEXT:    [[ALIGNED_RESULT:%.*]] = getelementptr inbounds i8, i8* [[PTR]], i64 [[DIFF]]
+-// CHECK-VOID_PTR-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[ALIGNED_RESULT]], i64 [[ALIGNMENT]]) ]
++// CHECK-VOID_PTR-NEXT:    [[MASK1:%.*]] = sub i64 [[ALIGNMENT]], 1
++// CHECK-VOID_PTR-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[ALIGNED_RESULT]] to i64
++// CHECK-VOID_PTR-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK1]]
++// CHECK-VOID_PTR-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-VOID_PTR-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-VOID_PTR-NEXT:    ret i8* [[ALIGNED_RESULT]]
+ //
+ // CHECK-FLOAT_PTR-LABEL: define {{[^@]+}}@align_up
+@@ -138,7 +142,11 @@ _Bool is_aligned(TYPE ptr, unsigned align) {
+ // CHECK-FLOAT_PTR-NEXT:    [[TMP0:%.*]] = bitcast float* [[PTR]] to i8*
+ // CHECK-FLOAT_PTR-NEXT:    [[ALIGNED_RESULT:%.*]] = getelementptr inbounds i8, i8* [[TMP0]], i64 [[DIFF]]
+ // CHECK-FLOAT_PTR-NEXT:    [[TMP1:%.*]] = bitcast i8* [[ALIGNED_RESULT]] to float*
+-// CHECK-FLOAT_PTR-NEXT:    call void @llvm.assume(i1 true) [ "align"(float* [[TMP1]], i64 [[ALIGNMENT]]) ]
++// CHECK-FLOAT_PTR-NEXT:    [[MASK1:%.*]] = sub i64 [[ALIGNMENT]], 1
++// CHECK-FLOAT_PTR-NEXT:    [[PTRINT:%.*]] = ptrtoint float* [[TMP1]] to i64
++// CHECK-FLOAT_PTR-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK1]]
++// CHECK-FLOAT_PTR-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-FLOAT_PTR-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-FLOAT_PTR-NEXT:    ret float* [[TMP1]]
+ //
+ // CHECK-LONG-LABEL: define {{[^@]+}}@align_up
+@@ -176,7 +184,11 @@ TYPE align_up(TYPE ptr, unsigned align) {
+ // CHECK-VOID_PTR-NEXT:    [[ALIGNED_INTPTR:%.*]] = and i64 [[INTPTR]], [[INVERTED_MASK]]
+ // CHECK-VOID_PTR-NEXT:    [[DIFF:%.*]] = sub i64 [[ALIGNED_INTPTR]], [[INTPTR]]
+ // CHECK-VOID_PTR-NEXT:    [[ALIGNED_RESULT:%.*]] = getelementptr inbounds i8, i8* [[PTR]], i64 [[DIFF]]
+-// CHECK-VOID_PTR-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[ALIGNED_RESULT]], i64 [[ALIGNMENT]]) ]
++// CHECK-VOID_PTR-NEXT:    [[MASK1:%.*]] = sub i64 [[ALIGNMENT]], 1
++// CHECK-VOID_PTR-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[ALIGNED_RESULT]] to i64
++// CHECK-VOID_PTR-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK1]]
++// CHECK-VOID_PTR-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-VOID_PTR-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-VOID_PTR-NEXT:    ret i8* [[ALIGNED_RESULT]]
+ //
+ // CHECK-FLOAT_PTR-LABEL: define {{[^@]+}}@align_down
+@@ -191,7 +203,11 @@ TYPE align_up(TYPE ptr, unsigned align) {
+ // CHECK-FLOAT_PTR-NEXT:    [[TMP0:%.*]] = bitcast float* [[PTR]] to i8*
+ // CHECK-FLOAT_PTR-NEXT:    [[ALIGNED_RESULT:%.*]] = getelementptr inbounds i8, i8* [[TMP0]], i64 [[DIFF]]
+ // CHECK-FLOAT_PTR-NEXT:    [[TMP1:%.*]] = bitcast i8* [[ALIGNED_RESULT]] to float*
+-// CHECK-FLOAT_PTR-NEXT:    call void @llvm.assume(i1 true) [ "align"(float* [[TMP1]], i64 [[ALIGNMENT]]) ]
++// CHECK-FLOAT_PTR-NEXT:    [[MASK1:%.*]] = sub i64 [[ALIGNMENT]], 1
++// CHECK-FLOAT_PTR-NEXT:    [[PTRINT:%.*]] = ptrtoint float* [[TMP1]] to i64
++// CHECK-FLOAT_PTR-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK1]]
++// CHECK-FLOAT_PTR-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-FLOAT_PTR-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-FLOAT_PTR-NEXT:    ret float* [[TMP1]]
+ //
+ // CHECK-LONG-LABEL: define {{[^@]+}}@align_down
+diff --git a/clang/test/CodeGen/builtin-assume-aligned.c b/clang/test/CodeGen/builtin-assume-aligned.c
+index b9f1ebfbdcf..90693cc2152 100644
+--- a/clang/test/CodeGen/builtin-assume-aligned.c
++++ b/clang/test/CodeGen/builtin-assume-aligned.c
+@@ -8,7 +8,10 @@
+ // CHECK-NEXT:    store i32* [[A]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = bitcast i32* [[TMP0]] to i8*
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[TMP1]], i64 32, i64 0) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP2:%.*]] = bitcast i8* [[TMP1]] to i32*
+ // CHECK-NEXT:    store i32* [[TMP2]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP3:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+@@ -28,7 +31,10 @@ int test1(int *a) {
+ // CHECK-NEXT:    store i32* [[A]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = bitcast i32* [[TMP0]] to i8*
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[TMP1]], i64 32, i64 0) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP2:%.*]] = bitcast i8* [[TMP1]] to i32*
+ // CHECK-NEXT:    store i32* [[TMP2]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP3:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+@@ -48,7 +54,10 @@ int test2(int *a) {
+ // CHECK-NEXT:    store i32* [[A]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = bitcast i32* [[TMP0]] to i8*
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[TMP1]], i64 32) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP2:%.*]] = bitcast i8* [[TMP1]] to i32*
+ // CHECK-NEXT:    store i32* [[TMP2]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP3:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+@@ -72,7 +81,11 @@ int test3(int *a) {
+ // CHECK-NEXT:    [[TMP1:%.*]] = bitcast i32* [[TMP0]] to i8*
+ // CHECK-NEXT:    [[TMP2:%.*]] = load i32, i32* [[B_ADDR]], align 4
+ // CHECK-NEXT:    [[CONV:%.*]] = sext i32 [[TMP2]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[TMP1]], i64 32, i64 [[CONV]]) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[TMP1]] to i64
++// CHECK-NEXT:    [[OFFSETPTR:%.*]] = sub i64 [[PTRINT]], [[CONV]]
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[OFFSETPTR]], 31
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP3:%.*]] = bitcast i8* [[TMP1]] to i32*
+ // CHECK-NEXT:    store i32* [[TMP3]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP4:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+@@ -102,7 +115,11 @@ int *m2() __attribute__((assume_aligned(64, 12)));
+ // CHECK-LABEL: define {{[^@]+}}@test6() #0
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[CALL:%.*]] = call i32* (...) @m2()
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[CALL]], i64 64, i64 12) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[CALL]] to i64
++// CHECK-NEXT:    [[OFFSETPTR:%.*]] = sub i64 [[PTRINT]], 12
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[OFFSETPTR]], 63
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[CALL]], align 4
+ // CHECK-NEXT:    ret i32 [[TMP0]]
+ //
+@@ -117,7 +134,10 @@ int test6() {
+ // CHECK-NEXT:    store i32* [[A]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = bitcast i32* [[TMP0]] to i8*
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[TMP1]], i64 536870912) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[TMP1]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 536870911
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    [[TMP2:%.*]] = bitcast i8* [[TMP1]] to i32*
+ // CHECK-NEXT:    store i32* [[TMP2]], i32** [[A_ADDR]], align 8
+ // CHECK-NEXT:    [[TMP3:%.*]] = load i32*, i32** [[A_ADDR]], align 8
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-lvalue.cpp b/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-lvalue.cpp
+index fb2b1a76116..96d264190be 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-lvalue.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-lvalue.cpp
+@@ -21,9 +21,9 @@ char **load_from_ac_struct(struct ac_struct *x) {
+   // CHECK-NEXT:                        %[[X_RELOADED:.*]] = load %[[STRUCT_AC_STRUCT]]*, %[[STRUCT_AC_STRUCT]]** %[[STRUCT_AC_STRUCT_ADDR]], align 8
+   // CHECK:                             %[[A_ADDR:.*]] = getelementptr inbounds %[[STRUCT_AC_STRUCT]], %[[STRUCT_AC_STRUCT]]* %[[X_RELOADED]], i32 0, i32 0
+   // CHECK:                             %[[A:.*]] = load i8**, i8*** %[[A_ADDR]], align 8
+-  // CHECK-SANITIZE-NEXT:               %[[PTRINT:.*]] = ptrtoint i8** %[[A]] to i64
+-  // CHECK-SANITIZE-NEXT:               %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], 2147483647
+-  // CHECK-SANITIZE-NEXT:               %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:                        %[[PTRINT:.*]] = ptrtoint i8** %[[A]] to i64
++  // CHECK-NEXT:                        %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], 2147483647
++  // CHECK-NEXT:                        %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8** %[[A]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -32,7 +32,7 @@ char **load_from_ac_struct(struct ac_struct *x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8** %[[A]], i64 2147483648) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8** %[[A]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-paramvar.cpp b/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-paramvar.cpp
+index 46f7d09ae2a..0e3fa750c66 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-paramvar.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-attribute-align_value-on-paramvar.cpp
+@@ -24,7 +24,7 @@ char **passthrough(__attribute__((align_value(0x80000000))) char **x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-SANITIZE-NEXT:               call void @llvm.assume(i1 true) [ "align"(i8** %[[X_RELOADED]], i64 2147483648) ]
++  // CHECK-SANITIZE-NEXT:               call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8** %[[X_RELOADED]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function-variable.cpp b/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function-variable.cpp
+index 40abbc38719..591eaa0e131 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function-variable.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function-variable.cpp
+@@ -30,10 +30,10 @@ char **caller(char **x, unsigned long alignment) {
+   // CHECK-NEXT:                        %[[X_RELOADED:.*]] = load i8**, i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[ALIGNMENT_RELOADED:.*]] = load i64, i64* %[[ALIGNMENT_ADDR]], align 8
+   // CHECK-NEXT:                        %[[X_RETURNED:.*]] = call i8** @[[PASSTHROUGH]](i8** %[[X_RELOADED]], i64 %[[ALIGNMENT_RELOADED]])
+-  // CHECK-SANITIZE-NEXT:               %[[PTRINT:.*]] = ptrtoint i8** %[[X_RETURNED]] to i64
+-  // CHECK-SANITIZE-NEXT:               %[[MASK:.*]] = sub i64 %[[ALIGNMENT_RELOADED]], 1
+-  // CHECK-SANITIZE-NEXT:               %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], %[[MASK]]
+-  // CHECK-SANITIZE-NEXT:               %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:                        %[[MASK:.*]] = sub i64 %[[ALIGNMENT_RELOADED]], 1
++  // CHECK-NEXT:                        %[[PTRINT:.*]] = ptrtoint i8** %[[X_RETURNED]] to i64
++  // CHECK-NEXT:                        %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], %[[MASK]]
++  // CHECK-NEXT:                        %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8** %[[X_RETURNED]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -42,7 +42,7 @@ char **caller(char **x, unsigned long alignment) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8** %[[X_RETURNED]], i64 %1) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8** %[[X_RETURNED]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function.cpp b/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function.cpp
+index 87d903c6971..a41357933f9 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-attribute-alloc_align-on-function.cpp
+@@ -39,7 +39,7 @@ char **caller(char **x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-SANITIZE-NEXT:               call void @llvm.assume(i1 true) [ "align"(i8** %[[X_RETURNED]], i64 128) ]
++  // CHECK-SANITIZE-NEXT:               call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8** %[[X_RETURNED]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function-two-params.cpp b/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function-two-params.cpp
+index ecc96bcf6a5..e78667ce16e 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function-two-params.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function-two-params.cpp
+@@ -24,10 +24,10 @@ char **caller(char **x) {
+   // CHECK-NEXT:                        store i8** %[[X]], i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[X_RELOADED:.*]] = load i8**, i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[X_RETURNED:.*]] = call i8** @[[PASSTHROUGH]](i8** %[[X_RELOADED]])
+-  // CHECK-SANITIZE-NEXT:               %[[PTRINT:.*]] = ptrtoint i8** %[[X_RETURNED]] to i64
+-  // CHECK-SANITIZE-NEXT:               %[[OFFSETPTR:.*]] = sub i64 %[[PTRINT]], 42
+-  // CHECK-SANITIZE-NEXT:               %[[MASKEDPTR:.*]] = and i64 %[[OFFSETPTR]], 2147483647
+-  // CHECK-SANITIZE-NEXT:               %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:                        %[[PTRINT:.*]] = ptrtoint i8** %[[X_RETURNED]] to i64
++  // CHECK-NEXT:                        %[[OFFSETPTR:.*]] = sub i64 %[[PTRINT]], 42
++  // CHECK-NEXT:                        %[[MASKEDPTR:.*]] = and i64 %[[OFFSETPTR]], 2147483647
++  // CHECK-NEXT:                        %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8** %[[X_RETURNED]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -36,7 +36,7 @@ char **caller(char **x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8** %[[X_RETURNED]], i64 2147483648, i64 42) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8** %[[X_RETURNED]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function.cpp b/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function.cpp
+index 5bbc5843b89..f750bbd77d4 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-attribute-assume_aligned-on-function.cpp
+@@ -36,7 +36,7 @@ char **caller(char **x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-SANITIZE-NEXT:               call void @llvm.assume(i1 true) [ "align"(i8** %[[X_RETURNED]], i64 128) ]
++  // CHECK-SANITIZE-NEXT:               call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8** %[[X_RETURNED]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params-variable.cpp b/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params-variable.cpp
+index 9c8944ba280..4306e322f5f 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params-variable.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params-variable.cpp
+@@ -16,10 +16,10 @@ void *caller(char **x, unsigned long offset) {
+   // CHECK-NEXT:                        %[[X_RELOADED:.*]] = load i8**, i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[BITCAST:.*]] = bitcast i8** %[[X_RELOADED]] to i8*
+   // CHECK-NEXT:                        %[[OFFSET_RELOADED:.*]] = load i64, i64* %[[OFFSET_ADDR]], align 8
+-  // CHECK-SANITIZE-NEXT:               %[[PTRINT:.*]] = ptrtoint i8* %[[BITCAST]] to i64
+-  // CHECK-SANITIZE-NEXT:               %[[OFFSETPTR:.*]] = sub i64 %[[PTRINT]], %[[OFFSET_RELOADED]]
+-  // CHECK-SANITIZE-NEXT:               %[[MASKEDPTR:.*]] = and i64 %[[OFFSETPTR]], 536870911
+-  // CHECK-SANITIZE-NEXT:               %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:                        %[[PTRINT:.*]] = ptrtoint i8* %[[BITCAST]] to i64
++  // CHECK-NEXT:                        %[[OFFSETPTR:.*]] = sub i64 %[[PTRINT]], %[[OFFSET_RELOADED]]
++  // CHECK-NEXT:                        %[[MASKEDPTR:.*]] = and i64 %[[OFFSETPTR]], 536870911
++  // CHECK-NEXT:                        %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8* %[[BITCAST]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -28,7 +28,7 @@ void *caller(char **x, unsigned long offset) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8* %[[BITCAST]], i64 536870912, i64 %[[OFFSET_RELOADED]]) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8* %[[BITCAST]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params.cpp b/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params.cpp
+index 9f61e08106a..27f53e92bed 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-three-params.cpp
+@@ -13,10 +13,10 @@ void *caller(char **x) {
+   // CHECK-NEXT:                        store i8** %[[X]], i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[X_RELOADED:.*]] = load i8**, i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[BITCAST:.*]] = bitcast i8** %[[X_RELOADED]] to i8*
+-  // CHECK-SANITIZE-NEXT:               %[[PTRINT:.*]] = ptrtoint i8* %[[BITCAST]] to i64
+-  // CHECK-SANITIZE-NEXT:               %[[OFFSETPTR:.*]] = sub i64 %[[PTRINT]], 42
+-  // CHECK-SANITIZE-NEXT:               %[[MASKEDPTR:.*]] = and i64 %[[OFFSETPTR]], 536870911
+-  // CHECK-SANITIZE-NEXT:               %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:                        %[[PTRINT:.*]] = ptrtoint i8* %[[BITCAST]] to i64
++  // CHECK-NEXT:                        %[[OFFSETPTR:.*]] = sub i64 %[[PTRINT]], 42
++  // CHECK-NEXT:                        %[[MASKEDPTR:.*]] = and i64 %[[OFFSETPTR]], 536870911
++  // CHECK-NEXT:                        %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8* %[[BITCAST]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -25,7 +25,7 @@ void *caller(char **x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8* %[[BITCAST]], i64 536870912, i64 42) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8* %[[BITCAST]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-two-params.cpp b/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-two-params.cpp
+index 20bed646ff9..5412270f376 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-two-params.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-builtin_assume_aligned-two-params.cpp
+@@ -13,9 +13,9 @@ void *caller(char **x) {
+   // CHECK-NEXT:                        store i8** %[[X]], i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[X_RELOADED:.*]] = load i8**, i8*** %[[X_ADDR]], align 8
+   // CHECK-NEXT:                        %[[BITCAST:.*]] = bitcast i8** %[[X_RELOADED]] to i8*
+-  // CHECK-SANITIZE-NEXT:               %[[PTRINT:.*]] = ptrtoint i8* %[[BITCAST]] to i64
+-  // CHECK-SANITIZE-NEXT:               %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], 536870911
+-  // CHECK-SANITIZE-NEXT:               %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:                        %[[PTRINT:.*]] = ptrtoint i8* %[[BITCAST]] to i64
++  // CHECK-NEXT:                        %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], 536870911
++  // CHECK-NEXT:                        %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8* %[[BITCAST]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -24,7 +24,7 @@ void *caller(char **x) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8* %[[BITCAST]], i64 536870912) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+   // CHECK-NEXT:                        ret i8* %[[BITCAST]]
+   // CHECK-NEXT:                      }
+ #line 100
+diff --git a/clang/test/CodeGen/catch-alignment-assumption-openmp.cpp b/clang/test/CodeGen/catch-alignment-assumption-openmp.cpp
+index 353f2fd7f17..6d75ee0858d 100644
+--- a/clang/test/CodeGen/catch-alignment-assumption-openmp.cpp
++++ b/clang/test/CodeGen/catch-alignment-assumption-openmp.cpp
+@@ -12,9 +12,9 @@ void func(char *data) {
+   // CHECK-NEXT:   %[[DATA_ADDR:.*]] = alloca i8*, align 8
+   // CHECK:   store i8* %[[DATA]], i8** %[[DATA_ADDR]], align 8
+   // CHECK:   %[[DATA_RELOADED:.*]] = load i8*, i8** %[[DATA_ADDR]], align 8
+-  // CHECK-SANITIZE-NEXT:   %[[PTRINT:.*]] = ptrtoint i8* %[[DATA_RELOADED]] to i64
+-  // CHECK-SANITIZE-NEXT:   %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], 1073741823
+-  // CHECK-SANITIZE-NEXT:   %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
++  // CHECK-NEXT:   %[[PTRINT:.*]] = ptrtoint i8* %[[DATA_RELOADED]] to i64
++  // CHECK-NEXT:   %[[MASKEDPTR:.*]] = and i64 %[[PTRINT]], 1073741823
++  // CHECK-NEXT:   %[[MASKCOND:.*]] = icmp eq i64 %[[MASKEDPTR]], 0
+   // CHECK-SANITIZE-NEXT:               %[[PTRINT_DUP:.*]] = ptrtoint i8* %[[DATA_RELOADED]] to i64, !nosanitize
+   // CHECK-SANITIZE-NEXT:               br i1 %[[MASKCOND]], label %[[CONT:.*]], label %[[HANDLER_ALIGNMENT_ASSUMPTION:[^,]+]],{{.*}} !nosanitize
+   // CHECK-SANITIZE:                  [[HANDLER_ALIGNMENT_ASSUMPTION]]:
+@@ -23,7 +23,7 @@ void func(char *data) {
+   // CHECK-SANITIZE-TRAP-NEXT:          call void @llvm.trap(){{.*}}, !nosanitize
+   // CHECK-SANITIZE-UNREACHABLE-NEXT:   unreachable, !nosanitize
+   // CHECK-SANITIZE:                  [[CONT]]:
+-  // CHECK-NEXT:                        call void @llvm.assume(i1 true) [ "align"(i8* %[[DATA_RELOADED]], i64 1073741824) ]
++  // CHECK-NEXT:                        call void @llvm.assume(i1 %[[MASKCOND]])
+ 
+ #line 100
+ #pragma omp for simd aligned(data : 0x40000000)
+diff --git a/clang/test/CodeGen/non-power-of-2-alignment-assumptions.c b/clang/test/CodeGen/non-power-of-2-alignment-assumptions.c
+index b8ce1699f7e..9467f6228df 100644
+--- a/clang/test/CodeGen/non-power-of-2-alignment-assumptions.c
++++ b/clang/test/CodeGen/non-power-of-2-alignment-assumptions.c
+@@ -9,8 +9,12 @@ void *__attribute__((alloc_align(1))) alloc(int align);
+ // CHECK-NEXT:    store i32 [[ALIGN:%.*]], i32* [[ALIGN_ADDR]], align 4
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[ALIGN_ADDR]], align 4
+ // CHECK-NEXT:    [[CALL:%.*]] = call i8* @alloc(i32 [[TMP0]])
+-// CHECK-NEXT:    [[TMP1:%.*]] = zext i32 [[TMP0]] to i64
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[CALL]], i64 [[TMP1]]) ]
++// CHECK-NEXT:    [[ALIGNMENTCAST:%.*]] = zext i32 [[TMP0]] to i64
++// CHECK-NEXT:    [[MASK:%.*]] = sub i64 [[ALIGNMENTCAST]], 1
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], [[MASK]]
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret void
+ //
+ void t0(int align) {
+@@ -21,7 +25,10 @@ void t0(int align) {
+ // CHECK-NEXT:    [[ALIGN_ADDR:%.*]] = alloca i32, align 4
+ // CHECK-NEXT:    store i32 [[ALIGN:%.*]], i32* [[ALIGN_ADDR]], align 4
+ // CHECK-NEXT:    [[CALL:%.*]] = call i8* @alloc(i32 7)
+-// CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i8* [[CALL]], i64 7) ]
++// CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i8* [[CALL]] to i64
++// CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 6
++// CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ // CHECK-NEXT:    ret void
+ //
+ void t1(int align) {
+diff --git a/clang/test/OpenMP/simd_codegen.cpp b/clang/test/OpenMP/simd_codegen.cpp
+index 3440225673c..cb53bb1aa38 100644
+--- a/clang/test/OpenMP/simd_codegen.cpp
++++ b/clang/test/OpenMP/simd_codegen.cpp
+@@ -817,9 +817,25 @@ void parallel_simd(float *a) {
+ // TERM_DEBUG: !{{[0-9]+}} = !DILocation(line: [[@LINE-11]],
+ 
+ // CHECK-LABEL: S8
++// CHECK-DAG: ptrtoint [[SS_TY]]* %{{.+}} to i64
++// CHECK-DAG: ptrtoint [[SS_TY]]* %{{.+}} to i64
++// CHECK-DAG: ptrtoint [[SS_TY]]* %{{.+}} to i64
++// CHECK-DAG: ptrtoint [[SS_TY]]* %{{.+}} to i64
++
++// CHECK-DAG: and i64 %{{.+}}, 15
++// CHECK-DAG: icmp eq i64 %{{.+}}, 0
+ // CHECK-DAG: call void @llvm.assume(i1
++
++// CHECK-DAG: and i64 %{{.+}}, 7
++// CHECK-DAG: icmp eq i64 %{{.+}}, 0
+ // CHECK-DAG: call void @llvm.assume(i1
++
++// CHECK-DAG: and i64 %{{.+}}, 15
++// CHECK-DAG: icmp eq i64 %{{.+}}, 0
+ // CHECK-DAG: call void @llvm.assume(i1
++
++// CHECK-DAG: and i64 %{{.+}}, 3
++// CHECK-DAG: icmp eq i64 %{{.+}}, 0
+ // CHECK-DAG: call void @llvm.assume(i1
+ struct SS {
+   SS(): a(0) {}
+diff --git a/clang/test/OpenMP/simd_metadata.c b/clang/test/OpenMP/simd_metadata.c
+index 18133e3b6c2..f0ae0200dd0 100644
+--- a/clang/test/OpenMP/simd_metadata.c
++++ b/clang/test/OpenMP/simd_metadata.c
+@@ -21,21 +21,30 @@ void h1(float *c, float *a, double b[], int size)
+ // CHECK-LABEL: define void @h1
+   int t = 0;
+ #pragma omp simd safelen(16) linear(t) aligned(c:32) aligned(a,b)
+-  // CHECK:         call void @llvm.assume(i1 true) [ "align"(float* [[PTR4:%.*]], {{i64|i32}} 32) ]
+-  // CHECK-NEXT:    load
+-
+-  // X86-NEXT:       call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // X86-AVX-NEXT:   call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 32) ]
+-  // X86-AVX512-NEXT:call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 64) ]
+-  // PPC-NEXT:       call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // PPC-QPX-NEXT:   call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // CHECK-NEXT:     load
+-
+-  // X86-NEXT:       call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 16) ]
+-  // X86-AVX-NEXT:   call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 32) ]
+-  // X86-AVX512-NEXT:call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 64) ]
+-  // PPC-NEXT:       call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 16) ]
+-  // PPC-QPX-NEXT:   call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 32) ]
++// CHECK:         [[C_PTRINT:%.+]] = ptrtoint
++// CHECK-NEXT:    [[C_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[C_PTRINT]], 31
++// CHECK-NEXT:    [[C_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[C_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[C_MASKCOND]])
++// CHECK:         [[A_PTRINT:%.+]] = ptrtoint
++
++// X86-NEXT:     [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++// X86-AVX-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 31
++// X86-AVX512-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 63
++// PPC-NEXT:     [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++// PPC-QPX-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++
++// CHECK-NEXT:    [[A_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[A_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[A_MASKCOND]])
++// CHECK:         [[B_PTRINT:%.+]] = ptrtoint
++
++// X86-NEXT:      [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 15
++// X86-AVX-NEXT:  [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 31
++// X86-AVX512-NEXT: [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 63
++// PPC-NEXT:      [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 15
++// PPC-QPX-NEXT:  [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 31
++
++// CHECK-NEXT:    [[B_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[B_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[B_MASKCOND]])
+   for (int i = 0; i < size; ++i) {
+     c[i] = a[i] * a[i] + b[i] * b[t];
+     ++t;
+@@ -43,21 +52,30 @@ void h1(float *c, float *a, double b[], int size)
+ // do not emit llvm.access.group metadata due to usage of safelen clause.
+ // CHECK-NOT: store float {{.+}}, float* {{.+}}, align {{.+}}, !llvm.access.group {{![0-9]+}}
+ #pragma omp simd safelen(16) linear(t) aligned(c:32) aligned(a,b) simdlen(8)
+-  // CHECK:         call void @llvm.assume(i1 true) [ "align"(float* [[PTR4:%.*]], {{i64|i32}} 32) ]
+-  // CHECK-NEXT:    load
+-
+-  // X86-NEXT:       call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // X86-AVX-NEXT:   call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 32) ]
+-  // X86-AVX512-NEXT:call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 64) ]
+-  // PPC-NEXT:       call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // PPC-QPX-NEXT:   call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // CHECK-NEXT:     load
+-
+-  // X86-NEXT:       call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 16) ]
+-  // X86-AVX-NEXT:   call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 32) ]
+-  // X86-AVX512-NEXT:call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 64) ]
+-  // PPC-NEXT:       call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 16) ]
+-  // PPC-QPX-NEXT:   call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 32) ]
++// CHECK:         [[C_PTRINT:%.+]] = ptrtoint
++// CHECK-NEXT:    [[C_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[C_PTRINT]], 31
++// CHECK-NEXT:    [[C_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[C_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[C_MASKCOND]])
++// CHECK:         [[A_PTRINT:%.+]] = ptrtoint
++
++// X86-NEXT:     [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++// X86-AVX-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 31
++// X86-AVX512-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 63
++// PPC-NEXT:     [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++// PPC-QPX-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++
++// CHECK-NEXT:    [[A_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[A_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[A_MASKCOND]])
++// CHECK:         [[B_PTRINT:%.+]] = ptrtoint
++
++// X86-NEXT:      [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 15
++// X86-AVX-NEXT:  [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 31
++// X86-AVX512-NEXT: [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 63
++// PPC-NEXT:      [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 15
++// PPC-QPX-NEXT:  [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 31
++
++// CHECK-NEXT:    [[B_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[B_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[B_MASKCOND]])
+   for (int i = 0; i < size; ++i) {
+     c[i] = a[i] * a[i] + b[i] * b[t];
+     ++t;
+@@ -65,21 +83,30 @@ void h1(float *c, float *a, double b[], int size)
+ // do not emit llvm.access.group metadata due to usage of safelen clause.
+ // CHECK-NOT: store float {{.+}}, float* {{.+}}, align {{.+}}, !llvm.access.group {{![0-9]+}}
+ #pragma omp simd linear(t) aligned(c:32) aligned(a,b) simdlen(8)
+-  // CHECK:         call void @llvm.assume(i1 true) [ "align"(float* [[PTR4:%.*]], {{i64|i32}} 32) ]
+-  // CHECK-NEXT:    load
+-
+-  // X86-NEXT:       call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // X86-AVX-NEXT:   call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 32) ]
+-  // X86-AVX512-NEXT:call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 64) ]
+-  // PPC-NEXT:       call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // PPC-QPX-NEXT:   call void @llvm.assume(i1 true) [ "align"(float* [[PTR5:%.*]], {{i64|i32}} 16) ]
+-  // CHECK-NEXT:     load
+-
+-  // X86-NEXT:       call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 16) ]
+-  // X86-AVX-NEXT:   call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 32) ]
+-  // X86-AVX512-NEXT:call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 64) ]
+-  // PPC-NEXT:       call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 16) ]
+-  // PPC-QPX-NEXT:   call void @llvm.assume(i1 true) [ "align"(double* [[PTR6:%.*]], {{i64|i32}} 32) ]
++// CHECK:         [[C_PTRINT:%.+]] = ptrtoint
++// CHECK-NEXT:    [[C_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[C_PTRINT]], 31
++// CHECK-NEXT:    [[C_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[C_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[C_MASKCOND]])
++// CHECK:         [[A_PTRINT:%.+]] = ptrtoint
++
++// X86-NEXT:     [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++// X86-AVX-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 31
++// X86-AVX512-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 63
++// PPC-NEXT:     [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++// PPC-QPX-NEXT: [[A_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[A_PTRINT]], 15
++
++// CHECK-NEXT:    [[A_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[A_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[A_MASKCOND]])
++// CHECK:         [[B_PTRINT:%.+]] = ptrtoint
++
++// X86-NEXT:      [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 15
++// X86-AVX-NEXT:  [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 31
++// X86-AVX512-NEXT: [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 63
++// PPC-NEXT:      [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 15
++// PPC-QPX-NEXT:  [[B_MASKEDPTR:%.+]] = and i{{[0-9]+}} [[B_PTRINT]], 31
++
++// CHECK-NEXT:    [[B_MASKCOND:%.+]] = icmp eq i{{[0-9]+}} [[B_MASKEDPTR]], 0
++// CHECK-NEXT:    call void @llvm.assume(i1 [[B_MASKCOND]])
+   for (int i = 0; i < size; ++i) {
+     c[i] = a[i] * a[i] + b[i] * b[t];
+     ++t;
+diff --git a/clang/test/OpenMP/target_teams_distribute_parallel_for_simd_codegen.cpp b/clang/test/OpenMP/target_teams_distribute_parallel_for_simd_codegen.cpp
+index 7192ef454d0..2fc166ed0b8 100644
+--- a/clang/test/OpenMP/target_teams_distribute_parallel_for_simd_codegen.cpp
++++ b/clang/test/OpenMP/target_teams_distribute_parallel_for_simd_codegen.cpp
+@@ -101,7 +101,10 @@ int target_teams_fun(int *g){
+ 
+   // CK1: define internal void @[[OUTL1]]({{.+}})
+   // CK1: [[ARRDECAY:%.+]] = getelementptr inbounds [1000 x i32], [1000 x i32]* %{{.+}}, i{{32|64}} 0, i{{32|64}} 0
+-  // CK1: call void @llvm.assume(i1 true) [ "align"(i32* [[ARRDECAY]], {{i64|i32}} 8) ]
++  // CK1: [[ARR_CAST:%.+]] = ptrtoint i32* [[ARRDECAY]] to i{{32|64}}
++  // CK1: [[MASKED_PTR:%.+]] = and i{{32|64}} [[ARR_CAST]], 7
++  // CK1: [[COND:%.+]] = icmp eq i{{32|64}} [[MASKED_PTR]], 0
++  // CK1: call void @llvm.assume(i1 [[COND]])
+   // CK1: call void @__kmpc_for_static_init_4(
+   // CK1: call void {{.+}} @__kmpc_fork_call(
+   // CK1: call void @__kmpc_for_static_fini(
+diff --git a/llvm/include/llvm/IR/IRBuilder.h b/llvm/include/llvm/IR/IRBuilder.h
+index 4552ca016bd..ffec4ff64ca 100644
+--- a/llvm/include/llvm/IR/IRBuilder.h
++++ b/llvm/include/llvm/IR/IRBuilder.h
+@@ -782,11 +782,7 @@ public:
+ 
+   /// Create an assume intrinsic call that allows the optimizer to
+   /// assume that the provided condition will be true.
+-  ///
+-  /// The optional argument \p OpBundles specifies operand bundles that are
+-  /// added to the call instruction.
+-  CallInst *CreateAssumption(Value *Cond,
+-                             ArrayRef<OperandBundleDef> OpBundles = llvm::None);
++  CallInst *CreateAssumption(Value *Cond);
+ 
+   /// Create a call to the experimental.gc.statepoint intrinsic to
+   /// start a new statepoint sequence.
+@@ -2506,11 +2502,13 @@ public:
+ 
+ private:
+   /// Helper function that creates an assume intrinsic call that
+-  /// represents an alignment assumption on the provided pointer \p PtrValue
+-  /// with offset \p OffsetValue and alignment value \p AlignValue.
++  /// represents an alignment assumption on the provided Ptr, Mask, Type
++  /// and Offset. It may be sometimes useful to do some other logic
++  /// based on this alignment check, thus it can be stored into 'TheCheck'.
+   CallInst *CreateAlignmentAssumptionHelper(const DataLayout &DL,
+-                                            Value *PtrValue, Value *AlignValue,
+-                                            Value *OffsetValue);
++                                            Value *PtrValue, Value *Mask,
++                                            Type *IntPtrTy, Value *OffsetValue,
++                                            Value **TheCheck);
+ 
+ public:
+   /// Create an assume intrinsic call that represents an alignment
+@@ -2519,9 +2517,13 @@ public:
+   /// An optional offset can be provided, and if it is provided, the offset
+   /// must be subtracted from the provided pointer to get the pointer with the
+   /// specified alignment.
++  ///
++  /// It may be sometimes useful to do some other logic
++  /// based on this alignment check, thus it can be stored into 'TheCheck'.
+   CallInst *CreateAlignmentAssumption(const DataLayout &DL, Value *PtrValue,
+                                       unsigned Alignment,
+-                                      Value *OffsetValue = nullptr);
++                                      Value *OffsetValue = nullptr,
++                                      Value **TheCheck = nullptr);
+ 
+   /// Create an assume intrinsic call that represents an alignment
+   /// assumption on the provided pointer.
+@@ -2530,11 +2532,15 @@ public:
+   /// must be subtracted from the provided pointer to get the pointer with the
+   /// specified alignment.
+   ///
++  /// It may be sometimes useful to do some other logic
++  /// based on this alignment check, thus it can be stored into 'TheCheck'.
++  ///
+   /// This overload handles the condition where the Alignment is dependent
+   /// on an existing value rather than a static value.
+   CallInst *CreateAlignmentAssumption(const DataLayout &DL, Value *PtrValue,
+                                       Value *Alignment,
+-                                      Value *OffsetValue = nullptr);
++                                      Value *OffsetValue = nullptr,
++                                      Value **TheCheck = nullptr);
+ };
+ 
+ /// This provides a uniform API for creating instructions and inserting
+diff --git a/llvm/include/llvm/Transforms/Scalar/AlignmentFromAssumptions.h b/llvm/include/llvm/Transforms/Scalar/AlignmentFromAssumptions.h
+index 10b6e1c6a21..be119b8ab85 100644
+--- a/llvm/include/llvm/Transforms/Scalar/AlignmentFromAssumptions.h
++++ b/llvm/include/llvm/Transforms/Scalar/AlignmentFromAssumptions.h
+@@ -37,9 +37,9 @@ struct AlignmentFromAssumptionsPass
+   ScalarEvolution *SE = nullptr;
+   DominatorTree *DT = nullptr;
+ 
+-  bool extractAlignmentInfo(CallInst *I, unsigned Idx, Value *&AAPtr,
+-                            const SCEV *&AlignSCEV, const SCEV *&OffSCEV);
+-  bool processAssumption(CallInst *I, unsigned Idx);
++  bool extractAlignmentInfo(CallInst *I, Value *&AAPtr, const SCEV *&AlignSCEV,
++                            const SCEV *&OffSCEV);
++  bool processAssumption(CallInst *I);
+ };
+ }
+ 
+diff --git a/llvm/lib/Analysis/AssumeBundleQueries.cpp b/llvm/lib/Analysis/AssumeBundleQueries.cpp
+index af81216f652..e9da1e607b4 100644
+--- a/llvm/lib/Analysis/AssumeBundleQueries.cpp
++++ b/llvm/lib/Analysis/AssumeBundleQueries.cpp
+@@ -96,17 +96,10 @@ llvm::getKnowledgeFromBundle(CallInst &Assume,
+   Result.AttrKind = Attribute::getAttrKindFromName(BOI.Tag->getKey());
+   if (bundleHasArgument(BOI, ABA_WasOn))
+     Result.WasOn = getValueFromBundleOpInfo(Assume, BOI, ABA_WasOn);
+-  auto GetArgOr1 = [&](unsigned Idx) -> unsigned {
+-    if (auto *ConstInt = dyn_cast<ConstantInt>(
+-            getValueFromBundleOpInfo(Assume, BOI, ABA_Argument + Idx)))
+-      return ConstInt->getZExtValue();
+-    return 1;
+-  };
+   if (BOI.End - BOI.Begin > ABA_Argument)
+-    Result.ArgValue = GetArgOr1(0);
+-  if (Result.AttrKind == Attribute::Alignment)
+-    if (BOI.End - BOI.Begin > ABA_Argument + 1)
+-      Result.ArgValue = MinAlign(Result.ArgValue, GetArgOr1(1));
++    Result.ArgValue =
++        cast<ConstantInt>(getValueFromBundleOpInfo(Assume, BOI, ABA_Argument))
++            ->getZExtValue();
+   return Result;
+ }
+ 
+diff --git a/llvm/lib/IR/IRBuilder.cpp b/llvm/lib/IR/IRBuilder.cpp
+index b87dfe1c8df..1fffce015f7 100644
+--- a/llvm/lib/IR/IRBuilder.cpp
++++ b/llvm/lib/IR/IRBuilder.cpp
+@@ -71,9 +71,8 @@ Value *IRBuilderBase::getCastedInt8PtrValue(Value *Ptr) {
+ static CallInst *createCallHelper(Function *Callee, ArrayRef<Value *> Ops,
+                                   IRBuilderBase *Builder,
+                                   const Twine &Name = "",
+-                                  Instruction *FMFSource = nullptr,
+-                                  ArrayRef<OperandBundleDef> OpBundles = {}) {
+-  CallInst *CI = Builder->CreateCall(Callee, Ops, OpBundles, Name);
++                                  Instruction *FMFSource = nullptr) {
++  CallInst *CI = Builder->CreateCall(Callee, Ops, Name);
+   if (FMFSource)
+     CI->copyFastMathFlags(FMFSource);
+   return CI;
+@@ -450,16 +449,14 @@ CallInst *IRBuilderBase::CreateInvariantStart(Value *Ptr, ConstantInt *Size) {
+   return createCallHelper(TheFn, Ops, this);
+ }
+ 
+-CallInst *
+-IRBuilderBase::CreateAssumption(Value *Cond,
+-                                ArrayRef<OperandBundleDef> OpBundles) {
++CallInst *IRBuilderBase::CreateAssumption(Value *Cond) {
+   assert(Cond->getType() == getInt1Ty() &&
+          "an assumption condition must be of type i1");
+ 
+   Value *Ops[] = { Cond };
+   Module *M = BB->getParent()->getParent();
+   Function *FnAssume = Intrinsic::getDeclaration(M, Intrinsic::assume);
+-  return createCallHelper(FnAssume, Ops, this, "", nullptr, OpBundles);
++  return createCallHelper(FnAssume, Ops, this);
+ }
+ 
+ /// Create a call to a Masked Load intrinsic.
+@@ -1110,37 +1107,63 @@ Value *IRBuilderBase::CreatePreserveStructAccessIndex(
+   return Fn;
+ }
+ 
+-CallInst *IRBuilderBase::CreateAlignmentAssumptionHelper(const DataLayout &DL,
+-                                                         Value *PtrValue,
+-                                                         Value *AlignValue,
+-                                                         Value *OffsetValue) {
+-  SmallVector<Value *, 4> Vals({PtrValue, AlignValue});
+-  if (OffsetValue)
+-    Vals.push_back(OffsetValue);
+-  OperandBundleDefT<Value *> AlignOpB("align", Vals);
+-  return CreateAssumption(ConstantInt::getTrue(getContext()), {AlignOpB});
++CallInst *IRBuilderBase::CreateAlignmentAssumptionHelper(
++    const DataLayout &DL, Value *PtrValue, Value *Mask, Type *IntPtrTy,
++    Value *OffsetValue, Value **TheCheck) {
++  Value *PtrIntValue = CreatePtrToInt(PtrValue, IntPtrTy, "ptrint");
++
++  if (OffsetValue) {
++    bool IsOffsetZero = false;
++    if (const auto *CI = dyn_cast<ConstantInt>(OffsetValue))
++      IsOffsetZero = CI->isZero();
++
++    if (!IsOffsetZero) {
++      if (OffsetValue->getType() != IntPtrTy)
++        OffsetValue = CreateIntCast(OffsetValue, IntPtrTy, /*isSigned*/ true,
++                                    "offsetcast");
++      PtrIntValue = CreateSub(PtrIntValue, OffsetValue, "offsetptr");
++    }
++  }
++
++  Value *Zero = ConstantInt::get(IntPtrTy, 0);
++  Value *MaskedPtr = CreateAnd(PtrIntValue, Mask, "maskedptr");
++  Value *InvCond = CreateICmpEQ(MaskedPtr, Zero, "maskcond");
++  if (TheCheck)
++    *TheCheck = InvCond;
++
++  return CreateAssumption(InvCond);
+ }
+ 
+-CallInst *IRBuilderBase::CreateAlignmentAssumption(const DataLayout &DL,
+-                                                   Value *PtrValue,
+-                                                   unsigned Alignment,
+-                                                   Value *OffsetValue) {
++CallInst *IRBuilderBase::CreateAlignmentAssumption(
++    const DataLayout &DL, Value *PtrValue, unsigned Alignment,
++    Value *OffsetValue, Value **TheCheck) {
+   assert(isa<PointerType>(PtrValue->getType()) &&
+          "trying to create an alignment assumption on a non-pointer?");
+   assert(Alignment != 0 && "Invalid Alignment");
+   auto *PtrTy = cast<PointerType>(PtrValue->getType());
+   Type *IntPtrTy = getIntPtrTy(DL, PtrTy->getAddressSpace());
+-  Value *AlignValue = ConstantInt::get(IntPtrTy, Alignment);
+-  return CreateAlignmentAssumptionHelper(DL, PtrValue, AlignValue, OffsetValue);
++
++  Value *Mask = ConstantInt::get(IntPtrTy, Alignment - 1);
++  return CreateAlignmentAssumptionHelper(DL, PtrValue, Mask, IntPtrTy,
++                                         OffsetValue, TheCheck);
+ }
+ 
+-CallInst *IRBuilderBase::CreateAlignmentAssumption(const DataLayout &DL,
+-                                                   Value *PtrValue,
+-                                                   Value *Alignment,
+-                                                   Value *OffsetValue) {
++CallInst *IRBuilderBase::CreateAlignmentAssumption(
++    const DataLayout &DL, Value *PtrValue, Value *Alignment,
++    Value *OffsetValue, Value **TheCheck) {
+   assert(isa<PointerType>(PtrValue->getType()) &&
+          "trying to create an alignment assumption on a non-pointer?");
+-  return CreateAlignmentAssumptionHelper(DL, PtrValue, Alignment, OffsetValue);
++  auto *PtrTy = cast<PointerType>(PtrValue->getType());
++  Type *IntPtrTy = getIntPtrTy(DL, PtrTy->getAddressSpace());
++
++  if (Alignment->getType() != IntPtrTy)
++    Alignment = CreateIntCast(Alignment, IntPtrTy, /*isSigned*/ false,
++                              "alignmentcast");
++
++  Value *Mask = CreateSub(Alignment, ConstantInt::get(IntPtrTy, 1), "mask");
++
++  return CreateAlignmentAssumptionHelper(DL, PtrValue, Mask, IntPtrTy,
++                                         OffsetValue, TheCheck);
+ }
+ 
+ IRBuilderDefaultInserter::~IRBuilderDefaultInserter() {}
+diff --git a/llvm/lib/IR/Verifier.cpp b/llvm/lib/IR/Verifier.cpp
+index 3c8e73a03cc..8fa87b74890 100644
+--- a/llvm/lib/IR/Verifier.cpp
++++ b/llvm/lib/IR/Verifier.cpp
+@@ -4449,32 +4449,21 @@ void Verifier::visitIntrinsicCall(Intrinsic::ID ID, CallBase &Call) {
+       Assert(Elem.Tag->getKey() == "ignore" ||
+                  Attribute::isExistingAttribute(Elem.Tag->getKey()),
+              "tags must be valid attribute names");
++      Assert(Elem.End - Elem.Begin <= 2, "to many arguments");
+       Attribute::AttrKind Kind =
+           Attribute::getAttrKindFromName(Elem.Tag->getKey());
+-      unsigned ArgCount = Elem.End - Elem.Begin;
+-      if (Kind == Attribute::Alignment) {
+-        Assert(ArgCount <= 3 && ArgCount >= 2,
+-               "alignment assumptions should have 2 or 3 arguments");
+-        Assert(Call.getOperand(Elem.Begin)->getType()->isPointerTy(),
+-               "first argument should be a pointer");
+-        Assert(Call.getOperand(Elem.Begin + 1)->getType()->isIntegerTy(),
+-               "second argument should be an integer");
+-        if (ArgCount == 3)
+-          Assert(Call.getOperand(Elem.Begin + 2)->getType()->isIntegerTy(),
+-                 "third argument should be an integer if present");
+-        return;
+-      }
+-      Assert(ArgCount <= 2, "to many arguments");
+       if (Kind == Attribute::None)
+         break;
+       if (Attribute::doesAttrKindHaveArgument(Kind)) {
+-        Assert(ArgCount == 2, "this attribute should have 2 arguments");
++        Assert(Elem.End - Elem.Begin == 2,
++               "this attribute should have 2 arguments");
+         Assert(isa<ConstantInt>(Call.getOperand(Elem.Begin + 1)),
+                "the second argument should be a constant integral value");
+       } else if (isFuncOnlyAttr(Kind)) {
+-        Assert((ArgCount) == 0, "this attribute has no argument");
++        Assert((Elem.End - Elem.Begin) == 0, "this attribute has no argument");
+       } else if (!isFuncOrArgAttr(Kind)) {
+-        Assert((ArgCount) == 1, "this attribute should have one argument");
++        Assert((Elem.End - Elem.Begin) == 1,
++               "this attribute should have one argument");
+       }
+     }
+     break;
+diff --git a/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp b/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp
+index c734c9a68fb..836af6234ad 100644
+--- a/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineCalls.cpp
+@@ -4220,16 +4220,11 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
+     break;
+   case Intrinsic::assume: {
+     Value *IIOperand = II->getArgOperand(0);
+-    SmallVector<OperandBundleDef, 4> OpBundles;
+-    II->getOperandBundlesAsDefs(OpBundles);
+-    bool HasOpBundles = !OpBundles.empty();
+     // Remove an assume if it is followed by an identical assume.
+     // TODO: Do we need this? Unless there are conflicting assumptions, the
+     // computeKnownBits(IIOperand) below here eliminates redundant assumes.
+     Instruction *Next = II->getNextNonDebugInstruction();
+-    if (HasOpBundles &&
+-        match(Next, m_Intrinsic<Intrinsic::assume>(m_Specific(IIOperand))) &&
+-        !cast<IntrinsicInst>(Next)->hasOperandBundles())
++    if (match(Next, m_Intrinsic<Intrinsic::assume>(m_Specific(IIOperand))))
+       return eraseInstFromFunction(CI);
+ 
+     // Canonicalize assume(a && b) -> assume(a); assume(b);
+@@ -4239,15 +4234,14 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
+     Value *AssumeIntrinsic = II->getCalledOperand();
+     Value *A, *B;
+     if (match(IIOperand, m_And(m_Value(A), m_Value(B)))) {
+-      Builder.CreateCall(AssumeIntrinsicTy, AssumeIntrinsic, A, OpBundles,
+-                         II->getName());
++      Builder.CreateCall(AssumeIntrinsicTy, AssumeIntrinsic, A, II->getName());
+       Builder.CreateCall(AssumeIntrinsicTy, AssumeIntrinsic, B, II->getName());
+       return eraseInstFromFunction(*II);
+     }
+     // assume(!(a || b)) -> assume(!a); assume(!b);
+     if (match(IIOperand, m_Not(m_Or(m_Value(A), m_Value(B))))) {
+       Builder.CreateCall(AssumeIntrinsicTy, AssumeIntrinsic,
+-                         Builder.CreateNot(A), OpBundles, II->getName());
++                         Builder.CreateNot(A), II->getName());
+       Builder.CreateCall(AssumeIntrinsicTy, AssumeIntrinsic,
+                          Builder.CreateNot(B), II->getName());
+       return eraseInstFromFunction(*II);
+@@ -4263,8 +4257,7 @@ Instruction *InstCombiner::visitCallInst(CallInst &CI) {
+         isValidAssumeForContext(II, LHS, &DT)) {
+       MDNode *MD = MDNode::get(II->getContext(), None);
+       LHS->setMetadata(LLVMContext::MD_nonnull, MD);
+-      if (!HasOpBundles)
+-        return eraseInstFromFunction(*II);
++      return eraseInstFromFunction(*II);
+ 
+       // TODO: apply nonnull return attributes to calls and invokes
+       // TODO: apply range metadata for range check patterns?
+diff --git a/llvm/lib/Transforms/Scalar/AlignmentFromAssumptions.cpp b/llvm/lib/Transforms/Scalar/AlignmentFromAssumptions.cpp
+index bccf94fc217..5c008585869 100644
+--- a/llvm/lib/Transforms/Scalar/AlignmentFromAssumptions.cpp
++++ b/llvm/lib/Transforms/Scalar/AlignmentFromAssumptions.cpp
+@@ -15,7 +15,6 @@
+ //
+ //===----------------------------------------------------------------------===//
+ 
+-#include "llvm/IR/Instructions.h"
+ #include "llvm/InitializePasses.h"
+ #define AA_NAME "alignment-from-assumptions"
+ #define DEBUG_TYPE AA_NAME
+@@ -204,33 +203,103 @@ static Align getNewAlignment(const SCEV *AASCEV, const SCEV *AlignSCEV,
+ }
+ 
+ bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
+-                                                        unsigned Idx,
+                                                         Value *&AAPtr,
+                                                         const SCEV *&AlignSCEV,
+                                                         const SCEV *&OffSCEV) {
+-  Type *Int64Ty = Type::getInt64Ty(I->getContext());
+-  OperandBundleUse AlignOB = I->getOperandBundleAt(Idx);
+-  if (AlignOB.getTagName() != "align")
++  // An alignment assume must be a statement about the least-significant
++  // bits of the pointer being zero, possibly with some offset.
++  ICmpInst *ICI = dyn_cast<ICmpInst>(I->getArgOperand(0));
++  if (!ICI)
+     return false;
+-  assert(AlignOB.Inputs.size() >= 2);
+-  AAPtr = AlignOB.Inputs[0].get();
+-  // TODO: Consider accumulating the offset to the base.
+-  AAPtr = AAPtr->stripPointerCastsSameRepresentation();
+-  AlignSCEV = SE->getSCEV(AlignOB.Inputs[1].get());
+-  AlignSCEV = SE->getTruncateOrZeroExtend(AlignSCEV, Int64Ty);
+-  if (AlignOB.Inputs.size() == 3)
+-    OffSCEV = SE->getSCEV(AlignOB.Inputs[2].get());
+-  else
++
++  // This must be an expression of the form: x & m == 0.
++  if (ICI->getPredicate() != ICmpInst::ICMP_EQ)
++    return false;
++
++  // Swap things around so that the RHS is 0.
++  Value *CmpLHS = ICI->getOperand(0);
++  Value *CmpRHS = ICI->getOperand(1);
++  const SCEV *CmpLHSSCEV = SE->getSCEV(CmpLHS);
++  const SCEV *CmpRHSSCEV = SE->getSCEV(CmpRHS);
++  if (CmpLHSSCEV->isZero())
++    std::swap(CmpLHS, CmpRHS);
++  else if (!CmpRHSSCEV->isZero())
++    return false;
++
++  BinaryOperator *CmpBO = dyn_cast<BinaryOperator>(CmpLHS);
++  if (!CmpBO || CmpBO->getOpcode() != Instruction::And)
++    return false;
++
++  // Swap things around so that the right operand of the and is a constant
++  // (the mask); we cannot deal with variable masks.
++  Value *AndLHS = CmpBO->getOperand(0);
++  Value *AndRHS = CmpBO->getOperand(1);
++  const SCEV *AndLHSSCEV = SE->getSCEV(AndLHS);
++  const SCEV *AndRHSSCEV = SE->getSCEV(AndRHS);
++  if (isa<SCEVConstant>(AndLHSSCEV)) {
++    std::swap(AndLHS, AndRHS);
++    std::swap(AndLHSSCEV, AndRHSSCEV);
++  }
++
++  const SCEVConstant *MaskSCEV = dyn_cast<SCEVConstant>(AndRHSSCEV);
++  if (!MaskSCEV)
++    return false;
++
++  // The mask must have some trailing ones (otherwise the condition is
++  // trivial and tells us nothing about the alignment of the left operand).
++  unsigned TrailingOnes = MaskSCEV->getAPInt().countTrailingOnes();
++  if (!TrailingOnes)
++    return false;
++
++  // Cap the alignment at the maximum with which LLVM can deal (and make sure
++  // we don't overflow the shift).
++  uint64_t Alignment;
++  TrailingOnes = std::min(TrailingOnes,
++    unsigned(sizeof(unsigned) * CHAR_BIT - 1));
++  Alignment = std::min(1u << TrailingOnes, +Value::MaximumAlignment);
++
++  Type *Int64Ty = Type::getInt64Ty(I->getParent()->getParent()->getContext());
++  AlignSCEV = SE->getConstant(Int64Ty, Alignment);
++
++  // The LHS might be a ptrtoint instruction, or it might be the pointer
++  // with an offset.
++  AAPtr = nullptr;
++  OffSCEV = nullptr;
++  if (PtrToIntInst *PToI = dyn_cast<PtrToIntInst>(AndLHS)) {
++    AAPtr = PToI->getPointerOperand();
+     OffSCEV = SE->getZero(Int64Ty);
+-  OffSCEV = SE->getTruncateOrZeroExtend(OffSCEV, Int64Ty);
++  } else if (const SCEVAddExpr* AndLHSAddSCEV =
++             dyn_cast<SCEVAddExpr>(AndLHSSCEV)) {
++    // Try to find the ptrtoint; subtract it and the rest is the offset.
++    for (SCEVAddExpr::op_iterator J = AndLHSAddSCEV->op_begin(),
++         JE = AndLHSAddSCEV->op_end(); J != JE; ++J)
++      if (const SCEVUnknown *OpUnk = dyn_cast<SCEVUnknown>(*J))
++        if (PtrToIntInst *PToI = dyn_cast<PtrToIntInst>(OpUnk->getValue())) {
++          AAPtr = PToI->getPointerOperand();
++          OffSCEV = SE->getMinusSCEV(AndLHSAddSCEV, *J);
++          break;
++        }
++  }
++
++  if (!AAPtr)
++    return false;
++
++  // Sign extend the offset to 64 bits (so that it is like all of the other
++  // expressions).
++  unsigned OffSCEVBits = OffSCEV->getType()->getPrimitiveSizeInBits();
++  if (OffSCEVBits < 64)
++    OffSCEV = SE->getSignExtendExpr(OffSCEV, Int64Ty);
++  else if (OffSCEVBits > 64)
++    return false;
++
++  AAPtr = AAPtr->stripPointerCasts();
+   return true;
+ }
+ 
+-bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall,
+-                                                     unsigned Idx) {
++bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall) {
+   Value *AAPtr;
+   const SCEV *AlignSCEV, *OffSCEV;
+-  if (!extractAlignmentInfo(ACall, Idx, AAPtr, AlignSCEV, OffSCEV))
++  if (!extractAlignmentInfo(ACall, AAPtr, AlignSCEV, OffSCEV))
+     return false;
+ 
+   // Skip ConstantPointerNull and UndefValue.  Assumptions on these shouldn't
+@@ -248,14 +317,13 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall,
+       continue;
+ 
+     if (Instruction *K = dyn_cast<Instruction>(J))
++      if (isValidAssumeForContext(ACall, K, DT))
+         WorkList.push_back(K);
+   }
+ 
+   while (!WorkList.empty()) {
+     Instruction *J = WorkList.pop_back_val();
+     if (LoadInst *LI = dyn_cast<LoadInst>(J)) {
+-      if (!isValidAssumeForContext(ACall, J, DT))
+-        continue;
+       Align NewAlignment = getNewAlignment(AASCEV, AlignSCEV, OffSCEV,
+                                            LI->getPointerOperand(), SE);
+       if (NewAlignment > LI->getAlign()) {
+@@ -263,8 +331,6 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall,
+         ++NumLoadAlignChanged;
+       }
+     } else if (StoreInst *SI = dyn_cast<StoreInst>(J)) {
+-      if (!isValidAssumeForContext(ACall, J, DT))
+-        continue;
+       Align NewAlignment = getNewAlignment(AASCEV, AlignSCEV, OffSCEV,
+                                            SI->getPointerOperand(), SE);
+       if (NewAlignment > SI->getAlign()) {
+@@ -272,8 +338,6 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall,
+         ++NumStoreAlignChanged;
+       }
+     } else if (MemIntrinsic *MI = dyn_cast<MemIntrinsic>(J)) {
+-      if (!isValidAssumeForContext(ACall, J, DT))
+-        continue;
+       Align NewDestAlignment =
+           getNewAlignment(AASCEV, AlignSCEV, OffSCEV, MI->getDest(), SE);
+ 
+@@ -305,7 +369,7 @@ bool AlignmentFromAssumptionsPass::processAssumption(CallInst *ACall,
+     Visited.insert(J);
+     for (User *UJ : J->users()) {
+       Instruction *K = cast<Instruction>(UJ);
+-      if (!Visited.count(K))
++      if (!Visited.count(K) && isValidAssumeForContext(ACall, K, DT))
+         WorkList.push_back(K);
+     }
+   }
+@@ -332,11 +396,8 @@ bool AlignmentFromAssumptionsPass::runImpl(Function &F, AssumptionCache &AC,
+ 
+   bool Changed = false;
+   for (auto &AssumeVH : AC.assumptions())
+-    if (AssumeVH) {
+-      CallInst *Call = cast<CallInst>(AssumeVH);
+-      for (unsigned Idx = 0; Idx < Call->getNumOperandBundles(); Idx++)
+-        Changed |= processAssumption(Call, Idx);
+-    }
++    if (AssumeVH)
++      Changed |= processAssumption(cast<CallInst>(AssumeVH));
+ 
+   return Changed;
+ }
+diff --git a/llvm/test/Transforms/AlignmentFromAssumptions/simple.ll b/llvm/test/Transforms/AlignmentFromAssumptions/simple.ll
+index 610fd448c3b..14e764f042c 100644
+--- a/llvm/test/Transforms/AlignmentFromAssumptions/simple.ll
++++ b/llvm/test/Transforms/AlignmentFromAssumptions/simple.ll
+@@ -4,7 +4,10 @@ target datalayout = "e-i64:64-f80:128-n8:16:32:64-S128"
+ 
+ define i32 @foo(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i32 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %0 = load i32, i32* %a, align 4
+   ret i32 %0
+ 
+@@ -15,7 +18,11 @@ entry:
+ 
+ define i32 @foo2(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i32 32, i32 24)]
++  %ptrint = ptrtoint i32* %a to i64
++  %offsetptr = add i64 %ptrint, 24
++  %maskedptr = and i64 %offsetptr, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %arrayidx = getelementptr inbounds i32, i32* %a, i64 2
+   %0 = load i32, i32* %arrayidx, align 4
+   ret i32 %0
+@@ -27,7 +34,11 @@ entry:
+ 
+ define i32 @foo2a(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i32 32, i32 28)]
++  %ptrint = ptrtoint i32* %a to i64
++  %offsetptr = add i64 %ptrint, 28
++  %maskedptr = and i64 %offsetptr, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %arrayidx = getelementptr inbounds i32, i32* %a, i64 -1
+   %0 = load i32, i32* %arrayidx, align 4
+   ret i32 %0
+@@ -39,7 +50,10 @@ entry:
+ 
+ define i32 @goo(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i32 32, i32 0)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %0 = load i32, i32* %a, align 4
+   ret i32 %0
+ 
+@@ -50,7 +64,10 @@ entry:
+ 
+ define i32 @hoo(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32, i32 0)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -81,7 +98,10 @@ for.end:                                          ; preds = %for.body
+ ;         load(a, i0+i1+i2+32)
+ define void @hoo2(i32* nocapture %a, i64 %id, i64 %num) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i8 32, i64 0)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %id.mul = shl nsw i64 %id, 6
+   %num.mul = shl nsw i64 %num, 6
+   br label %for0.body
+@@ -127,7 +147,10 @@ return:
+ 
+ define i32 @joo(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i8 32, i8 0)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -152,13 +175,16 @@ for.end:                                          ; preds = %for.body
+ 
+ define i32 @koo(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+   %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+   %r.06 = phi i32 [ 0, %entry ], [ %add, %for.body ]
+   %arrayidx = getelementptr inbounds i32, i32* %a, i64 %indvars.iv
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i8 32, i8 0)]
+   %0 = load i32, i32* %arrayidx, align 4
+   %add = add nsw i32 %0, %r.06
+   %indvars.iv.next = add i64 %indvars.iv, 4
+@@ -177,7 +203,10 @@ for.end:                                          ; preds = %for.body
+ 
+ define i32 @koo2(i32* nocapture %a) nounwind uwtable readonly {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i128 32, i128 0)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -202,7 +231,10 @@ for.end:                                          ; preds = %for.body
+ 
+ define i32 @moo(i32* nocapture %a) nounwind uwtable {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %a, i16 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %0 = bitcast i32* %a to i8*
+   tail call void @llvm.memset.p0i8.i64(i8* align 4 %0, i8 0, i64 64, i1 false)
+   ret i32 undef
+@@ -214,9 +246,15 @@ entry:
+ 
+ define i32 @moo2(i32* nocapture %a, i32* nocapture %b) nounwind uwtable {
+ entry:
+-  tail call void @llvm.assume(i1 true) ["align"(i32* %b, i32 128)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
++  %ptrint1 = ptrtoint i32* %b to i64
++  %maskedptr3 = and i64 %ptrint1, 127
++  %maskcond4 = icmp eq i64 %maskedptr3, 0
++  tail call void @llvm.assume(i1 %maskcond4)
+   %0 = bitcast i32* %a to i8*
+-  tail call void @llvm.assume(i1 true) ["align"(i8* %0, i16 32)]
+   %1 = bitcast i32* %b to i8*
+   tail call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %0, i8* align 4 %1, i64 64, i1 false)
+   ret i32 undef
+@@ -226,19 +264,6 @@ entry:
+ ; CHECK: ret i32 undef
+ }
+ 
+-define i32 @moo3(i32* nocapture %a, i32* nocapture %b) nounwind uwtable {
+-entry:
+-  %0 = bitcast i32* %a to i8*
+-  tail call void @llvm.assume(i1 true) ["align"(i8* %0, i16 32), "align"(i32* %b, i32 128)]
+-  %1 = bitcast i32* %b to i8*
+-  tail call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %0, i8* align 4 %1, i64 64, i1 false)
+-  ret i32 undef
+-
+-; CHECK-LABEL: @moo3
+-; CHECK: @llvm.memcpy.p0i8.p0i8.i64(i8* align 32 %0, i8* align 128 %1, i64 64, i1 false)
+-; CHECK: ret i32 undef
+-}
+-
+ declare void @llvm.assume(i1) nounwind
+ 
+ declare void @llvm.memset.p0i8.i64(i8* nocapture, i8, i64, i1) nounwind
+diff --git a/llvm/test/Transforms/AlignmentFromAssumptions/simple32.ll b/llvm/test/Transforms/AlignmentFromAssumptions/simple32.ll
+index 453899c15c4..3f0819e3641 100644
+--- a/llvm/test/Transforms/AlignmentFromAssumptions/simple32.ll
++++ b/llvm/test/Transforms/AlignmentFromAssumptions/simple32.ll
+@@ -7,12 +7,18 @@ define i32 @foo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@foo
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[A]], align 32
+ ; CHECK-NEXT:    ret i32 [[TMP0]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %0 = load i32, i32* %a, align 4
+   ret i32 %0
+ 
+@@ -22,13 +28,21 @@ define i32 @foo2(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@foo2
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32, i64 24) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[OFFSETPTR:%.*]] = add i64 [[PTRINT]], 24
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[OFFSETPTR]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, i32* [[A]], i64 2
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[ARRAYIDX]], align 16
+ ; CHECK-NEXT:    ret i32 [[TMP0]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32, i64 24)]
++  %ptrint = ptrtoint i32* %a to i64
++  %offsetptr = add i64 %ptrint, 24
++  %maskedptr = and i64 %offsetptr, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %arrayidx = getelementptr inbounds i32, i32* %a, i64 2
+   %0 = load i32, i32* %arrayidx, align 4
+   ret i32 %0
+@@ -39,13 +53,21 @@ define i32 @foo2a(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@foo2a
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32, i64 28) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[OFFSETPTR:%.*]] = add i64 [[PTRINT]], 28
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[OFFSETPTR]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    [[ARRAYIDX:%.*]] = getelementptr inbounds i32, i32* [[A]], i64 -1
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[ARRAYIDX]], align 32
+ ; CHECK-NEXT:    ret i32 [[TMP0]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32, i64 28)]
++  %ptrint = ptrtoint i32* %a to i64
++  %offsetptr = add i64 %ptrint, 28
++  %maskedptr = and i64 %offsetptr, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %arrayidx = getelementptr inbounds i32, i32* %a, i64 -1
+   %0 = load i32, i32* %arrayidx, align 4
+   ret i32 %0
+@@ -56,12 +78,18 @@ define i32 @goo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@goo
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load i32, i32* [[A]], align 32
+ ; CHECK-NEXT:    ret i32 [[TMP0]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %0 = load i32, i32* %a, align 4
+   ret i32 %0
+ 
+@@ -71,7 +99,10 @@ define i32 @hoo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@hoo
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
+ ; CHECK:       for.body:
+ ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 0, [[ENTRY:%.*]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY]] ]
+@@ -88,7 +119,10 @@ define i32 @hoo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-NEXT:    ret i32 [[ADD_LCSSA]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -112,7 +146,10 @@ define i32 @joo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@joo
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
+ ; CHECK:       for.body:
+ ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 4, [[ENTRY:%.*]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY]] ]
+@@ -129,7 +166,10 @@ define i32 @joo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-NEXT:    ret i32 [[ADD_LCSSA]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -153,7 +193,10 @@ define i32 @koo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@koo
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
+ ; CHECK:       for.body:
+ ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ 0, [[ENTRY:%.*]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY]] ]
+@@ -170,7 +213,10 @@ define i32 @koo(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-NEXT:    ret i32 [[ADD_LCSSA]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -194,7 +240,10 @@ define i32 @koo2(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-LABEL: define {{[^@]+}}@koo2
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    br label [[FOR_BODY:%.*]]
+ ; CHECK:       for.body:
+ ; CHECK-NEXT:    [[INDVARS_IV:%.*]] = phi i64 [ -4, [[ENTRY:%.*]] ], [ [[INDVARS_IV_NEXT:%.*]], [[FOR_BODY]] ]
+@@ -211,7 +260,10 @@ define i32 @koo2(i32* nocapture %a) nounwind uwtable readonly {
+ ; CHECK-NEXT:    ret i32 [[ADD_LCSSA]]
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   br label %for.body
+ 
+ for.body:                                         ; preds = %entry, %for.body
+@@ -235,13 +287,19 @@ define i32 @moo(i32* nocapture %a) nounwind uwtable {
+ ; CHECK-LABEL: define {{[^@]+}}@moo
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]]) #1
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    [[TMP0:%.*]] = bitcast i32* [[A]] to i8*
+ ; CHECK-NEXT:    tail call void @llvm.memset.p0i8.i64(i8* align 32 [[TMP0]], i8 0, i64 64, i1 false)
+ ; CHECK-NEXT:    ret i32 undef
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
+   %0 = bitcast i32* %a to i8*
+   tail call void @llvm.memset.p0i8.i64(i8* align 4 %0, i8 0, i64 64, i1 false)
+   ret i32 undef
+@@ -252,16 +310,28 @@ define i32 @moo2(i32* nocapture %a, i32* nocapture %b) nounwind uwtable {
+ ; CHECK-LABEL: define {{[^@]+}}@moo2
+ ; CHECK-SAME: (i32* nocapture [[A:%.*]], i32* nocapture [[B:%.*]]) #1
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[A]], i64 32) ]
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(i32* [[B]], i64 128) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint i32* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 31
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
++; CHECK-NEXT:    [[PTRINT1:%.*]] = ptrtoint i32* [[B]] to i64
++; CHECK-NEXT:    [[MASKEDPTR3:%.*]] = and i64 [[PTRINT1]], 127
++; CHECK-NEXT:    [[MASKCOND4:%.*]] = icmp eq i64 [[MASKEDPTR3]], 0
++; CHECK-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND4]])
+ ; CHECK-NEXT:    [[TMP0:%.*]] = bitcast i32* [[A]] to i8*
+ ; CHECK-NEXT:    [[TMP1:%.*]] = bitcast i32* [[B]] to i8*
+ ; CHECK-NEXT:    tail call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 32 [[TMP0]], i8* align 128 [[TMP1]], i64 64, i1 false)
+ ; CHECK-NEXT:    ret i32 undef
+ ;
+ entry:
+-  call void @llvm.assume(i1 true) ["align"(i32* %a, i64 32)]
+-  call void @llvm.assume(i1 true) ["align"(i32* %b, i64 128)]
++  %ptrint = ptrtoint i32* %a to i64
++  %maskedptr = and i64 %ptrint, 31
++  %maskcond = icmp eq i64 %maskedptr, 0
++  tail call void @llvm.assume(i1 %maskcond)
++  %ptrint1 = ptrtoint i32* %b to i64
++  %maskedptr3 = and i64 %ptrint1, 127
++  %maskcond4 = icmp eq i64 %maskedptr3, 0
++  tail call void @llvm.assume(i1 %maskcond4)
+   %0 = bitcast i32* %a to i8*
+   %1 = bitcast i32* %b to i8*
+   tail call void @llvm.memcpy.p0i8.p0i8.i64(i8* align 4 %0, i8* align 4 %1, i64 64, i1 false)
+diff --git a/llvm/test/Transforms/Inline/align.ll b/llvm/test/Transforms/Inline/align.ll
+index f3a51845648..ede6c3fa7bc 100644
+--- a/llvm/test/Transforms/Inline/align.ll
++++ b/llvm/test/Transforms/Inline/align.ll
+@@ -23,7 +23,10 @@ define void @foo(float* nocapture %a, float* nocapture readonly %c) #0 {
+ ; CHECK-LABEL: define {{[^@]+}}@foo
+ ; CHECK-SAME: (float* nocapture [[A:%.*]], float* nocapture readonly [[C:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(float* [[A]], i64 128) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint float* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 127
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load float, float* [[C]], align 4
+ ; CHECK-NEXT:    [[ARRAYIDX_I:%.*]] = getelementptr inbounds float, float* [[A]], i64 5
+ ; CHECK-NEXT:    store float [[TMP0]], float* [[ARRAYIDX_I]], align 4
+@@ -84,8 +87,14 @@ define void @foo2(float* nocapture %a, float* nocapture %b, float* nocapture rea
+ ; CHECK-LABEL: define {{[^@]+}}@foo2
+ ; CHECK-SAME: (float* nocapture [[A:%.*]], float* nocapture [[B:%.*]], float* nocapture readonly [[C:%.*]]) #0
+ ; CHECK-NEXT:  entry:
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(float* [[A]], i64 128) ]
+-; CHECK-NEXT:    call void @llvm.assume(i1 true) [ "align"(float* [[B]], i64 128) ]
++; CHECK-NEXT:    [[PTRINT:%.*]] = ptrtoint float* [[A]] to i64
++; CHECK-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 127
++; CHECK-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
++; CHECK-NEXT:    [[PTRINT1:%.*]] = ptrtoint float* [[B]] to i64
++; CHECK-NEXT:    [[MASKEDPTR2:%.*]] = and i64 [[PTRINT1]], 127
++; CHECK-NEXT:    [[MASKCOND3:%.*]] = icmp eq i64 [[MASKEDPTR2]], 0
++; CHECK-NEXT:    call void @llvm.assume(i1 [[MASKCOND3]])
+ ; CHECK-NEXT:    [[TMP0:%.*]] = load float, float* [[C]], align 4
+ ; CHECK-NEXT:    [[ARRAYIDX_I:%.*]] = getelementptr inbounds float, float* [[A]], i64 5
+ ; CHECK-NEXT:    store float [[TMP0]], float* [[ARRAYIDX_I]], align 4
+diff --git a/llvm/test/Transforms/InstCombine/assume.ll b/llvm/test/Transforms/InstCombine/assume.ll
+index b372f52a2cd..6f33e83ee33 100644
+--- a/llvm/test/Transforms/InstCombine/assume.ll
++++ b/llvm/test/Transforms/InstCombine/assume.ll
+@@ -377,7 +377,6 @@ define i32 @assumption_conflicts_with_known_bits(i32 %a, i32 %b) {
+ define void @debug_interference(i8 %x) {
+ ; CHECK-LABEL: @debug_interference(
+ ; CHECK-NEXT:    [[CMP2:%.*]] = icmp ne i8 [[X:%.*]], 0
+-; CHECK-NEXT:    tail call void @llvm.assume(i1 false)
+ ; CHECK-NEXT:    tail call void @llvm.dbg.value(metadata i32 5, metadata !7, metadata !DIExpression()), !dbg !9
+ ; CHECK-NEXT:    tail call void @llvm.assume(i1 false)
+ ; CHECK-NEXT:    tail call void @llvm.dbg.value(metadata i32 5, metadata !7, metadata !DIExpression()), !dbg !9
+diff --git a/llvm/test/Transforms/PhaseOrdering/inlining-alignment-assumptions.ll b/llvm/test/Transforms/PhaseOrdering/inlining-alignment-assumptions.ll
+index 2605701d231..61287e35005 100644
+--- a/llvm/test/Transforms/PhaseOrdering/inlining-alignment-assumptions.ll
++++ b/llvm/test/Transforms/PhaseOrdering/inlining-alignment-assumptions.ll
+@@ -41,7 +41,10 @@ define void @caller1(i1 %c, i64* align 1 %ptr) {
+ ; ASSUMPTIONS-ON-NEXT:    br i1 [[C:%.*]], label [[TRUE2_CRITEDGE:%.*]], label [[FALSE1:%.*]]
+ ; ASSUMPTIONS-ON:       false1:
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 1, i64* [[PTR:%.*]], align 8
+-; ASSUMPTIONS-ON-NEXT:    call void @llvm.assume(i1 true) [ "align"(i64* [[PTR]], i64 8) ]
++; ASSUMPTIONS-ON-NEXT:    [[PTRINT:%.*]] = ptrtoint i64* [[PTR]] to i64
++; ASSUMPTIONS-ON-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 7
++; ASSUMPTIONS-ON-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; ASSUMPTIONS-ON-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND]])
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 0, i64* [[PTR]], align 8
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 -1, i64* [[PTR]], align 8
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 -1, i64* [[PTR]], align 8
+@@ -51,7 +54,10 @@ define void @caller1(i1 %c, i64* align 1 %ptr) {
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 3, i64* [[PTR]], align 8
+ ; ASSUMPTIONS-ON-NEXT:    ret void
+ ; ASSUMPTIONS-ON:       true2.critedge:
+-; ASSUMPTIONS-ON-NEXT:    call void @llvm.assume(i1 true) [ "align"(i64* [[PTR]], i64 8) ]
++; ASSUMPTIONS-ON-NEXT:    [[PTRINT_C:%.*]] = ptrtoint i64* [[PTR]] to i64
++; ASSUMPTIONS-ON-NEXT:    [[MASKEDPTR_C:%.*]] = and i64 [[PTRINT_C]], 7
++; ASSUMPTIONS-ON-NEXT:    [[MASKCOND_C:%.*]] = icmp eq i64 [[MASKEDPTR_C]], 0
++; ASSUMPTIONS-ON-NEXT:    tail call void @llvm.assume(i1 [[MASKCOND_C]])
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 0, i64* [[PTR]], align 8
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 -1, i64* [[PTR]], align 8
+ ; ASSUMPTIONS-ON-NEXT:    store volatile i64 -1, i64* [[PTR]], align 8
+@@ -88,17 +94,26 @@ false2:
+ ; This test checks that alignment assumptions do not prevent SROA.
+ ; See PR45763.
+ 
+-define internal void @callee2(i64* noalias sret align 32 %arg) {
++define internal void @callee2(i64* noalias sret align 8 %arg) {
+   store i64 0, i64* %arg, align 8
+   ret void
+ }
+ 
+ define amdgpu_kernel void @caller2() {
+-; CHECK-LABEL: @caller2(
+-; CHECK-NEXT:    ret void
++; ASSUMPTIONS-OFF-LABEL: @caller2(
++; ASSUMPTIONS-OFF-NEXT:    ret void
++;
++; ASSUMPTIONS-ON-LABEL: @caller2(
++; ASSUMPTIONS-ON-NEXT:    [[ALLOCA:%.*]] = alloca i64, align 8, addrspace(5)
++; ASSUMPTIONS-ON-NEXT:    [[CAST:%.*]] = addrspacecast i64 addrspace(5)* [[ALLOCA]] to i64*
++; ASSUMPTIONS-ON-NEXT:    [[PTRINT:%.*]] = ptrtoint i64* [[CAST]] to i64
++; ASSUMPTIONS-ON-NEXT:    [[MASKEDPTR:%.*]] = and i64 [[PTRINT]], 7
++; ASSUMPTIONS-ON-NEXT:    [[MASKCOND:%.*]] = icmp eq i64 [[MASKEDPTR]], 0
++; ASSUMPTIONS-ON-NEXT:    call void @llvm.assume(i1 [[MASKCOND]])
++; ASSUMPTIONS-ON-NEXT:    ret void
+ ;
+   %alloca = alloca i64, align 8, addrspace(5)
+   %cast = addrspacecast i64 addrspace(5)* %alloca to i64*
+-  call void @callee2(i64* sret align 32 %cast)
++  call void @callee2(i64* sret align 8 %cast)
+   ret void
+ }
+diff --git a/llvm/test/Verifier/assume-bundles.ll b/llvm/test/Verifier/assume-bundles.ll
+index 6e260f25129..302421715c7 100644
+--- a/llvm/test/Verifier/assume-bundles.ll
++++ b/llvm/test/Verifier/assume-bundles.ll
+@@ -1,4 +1,3 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+ ; RUN: not opt -verify < %s 2>&1 | FileCheck %s
+ 
+ declare void @llvm.assume(i1)
+@@ -7,21 +6,14 @@ define void @func(i32* %P, i32 %P1, i32* %P2, i32* %P3) {
+ ; CHECK: tags must be valid attribute names
+   call void @llvm.assume(i1 true) ["adazdazd"()]
+ ; CHECK: the second argument should be a constant integral value
+-  call void @llvm.assume(i1 true) ["dereferenceable"(i32* %P, i32 %P1)]
++  call void @llvm.assume(i1 true) ["align"(i32* %P, i32 %P1)]
+ ; CHECK: to many arguments
+-  call void @llvm.assume(i1 true) ["dereferenceable"(i32* %P, i32 8, i32 8)]
++  call void @llvm.assume(i1 true) ["align"(i32* %P, i32 8, i32 8)]
+ ; CHECK: this attribute should have 2 arguments
+-  call void @llvm.assume(i1 true) ["dereferenceable"(i32* %P)]
++  call void @llvm.assume(i1 true) ["align"(i32* %P)]
+ ; CHECK: this attribute has no argument
+-  call void @llvm.assume(i1 true) ["dereferenceable"(i32* %P, i32 4), "cold"(i32* %P)]
++  call void @llvm.assume(i1 true) ["align"(i32* %P, i32 4), "cold"(i32* %P)]
+ ; CHECK: this attribute should have one argument
+   call void @llvm.assume(i1 true) ["noalias"()]
+-  call void @llvm.assume(i1 true) ["align"(i32* %P, i32 %P1, i32 4)]
+-; CHECK: alignment assumptions should have 2 or 3 arguments
+-  call void @llvm.assume(i1 true) ["align"(i32* %P, i32 %P1, i32 4, i32 4)]
+-; CHECK: second argument should be an integer
+-  call void @llvm.assume(i1 true) ["align"(i32* %P, i32* %P2)]
+-; CHECK: third argument should be an integer if present
+-  call void @llvm.assume(i1 true) ["align"(i32* %P, i32 %P1, i32* %P2)]
+   ret void
+ }
+diff --git a/llvm/unittests/Analysis/AssumeBundleQueriesTest.cpp b/llvm/unittests/Analysis/AssumeBundleQueriesTest.cpp
+index 946368e1cb9..d35a77fa379 100644
+--- a/llvm/unittests/Analysis/AssumeBundleQueriesTest.cpp
++++ b/llvm/unittests/Analysis/AssumeBundleQueriesTest.cpp
+@@ -546,41 +546,3 @@ TEST(AssumeQueryAPI, AssumptionCache) {
+   ASSERT_EQ(AR[0].Index, 1u);
+   ASSERT_EQ(AR[0].Assume, &*First);
+ }
+-
+-TEST(AssumeQueryAPI, Alignment) {
+-  LLVMContext C;
+-  SMDiagnostic Err;
+-  std::unique_ptr<Module> Mod = parseAssemblyString(
+-      "declare void @llvm.assume(i1)\n"
+-      "define void @test(i32* %P, i32* %P1, i32* %P2, i32 %I3, i1 %B) {\n"
+-      "call void @llvm.assume(i1 true) [\"align\"(i32* %P, i32 8, i32 %I3)]\n"
+-      "call void @llvm.assume(i1 true) [\"align\"(i32* %P1, i32 %I3, i32 "
+-      "%I3)]\n"
+-      "call void @llvm.assume(i1 true) [\"align\"(i32* %P2, i32 16, i32 8)]\n"
+-      "ret void\n}\n",
+-      Err, C);
+-  if (!Mod)
+-    Err.print("AssumeQueryAPI", errs());
+-
+-  Function *F = Mod->getFunction("test");
+-  BasicBlock::iterator Start = F->begin()->begin();
+-  IntrinsicInst *II;
+-  RetainedKnowledge RK;
+-  II = cast<IntrinsicInst>(&*Start);
+-  RK = getKnowledgeFromBundle(*II, II->bundle_op_info_begin()[0]);
+-  ASSERT_EQ(RK.AttrKind, Attribute::Alignment);
+-  ASSERT_EQ(RK.WasOn, F->getArg(0));
+-  ASSERT_EQ(RK.ArgValue, 1u);
+-  Start++;
+-  II = cast<IntrinsicInst>(&*Start);
+-  RK = getKnowledgeFromBundle(*II, II->bundle_op_info_begin()[0]);
+-  ASSERT_EQ(RK.AttrKind, Attribute::Alignment);
+-  ASSERT_EQ(RK.WasOn, F->getArg(1));
+-  ASSERT_EQ(RK.ArgValue, 1u);
+-  Start++;
+-  II = cast<IntrinsicInst>(&*Start);
+-  RK = getKnowledgeFromBundle(*II, II->bundle_op_info_begin()[0]);
+-  ASSERT_EQ(RK.AttrKind, Attribute::Alignment);
+-  ASSERT_EQ(RK.WasOn, F->getArg(2));
+-  ASSERT_EQ(RK.ArgValue, 8u);
+-}
+-- 
+2.28.0.236.gb10cc79966-goog
+
