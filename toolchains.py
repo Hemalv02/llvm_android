@@ -126,23 +126,3 @@ def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
     # Prebuilt toolchain doesn't have a build path. Use a temp path instead.
     return Toolchain(paths.CLANG_PREBUILT_DIR, Path('.'))
-
-
-def get_toolchain_by_name(name: str) -> Toolchain:
-    """Tet a toolchain by name."""
-    if name == 'prebuilt':
-        return get_prebuilt_toolchain()
-    return BuilderRegistry.get(name).installed_toolchain
-
-
-_RUNTIME_TOOLCHAIN: Toolchain = get_prebuilt_toolchain()
-def set_runtime_toolchain(toolchain: Toolchain) -> None:
-    """Sets the toolchain used to build runtime."""
-    global _RUNTIME_TOOLCHAIN  # pylint: disable=global-statement
-    _RUNTIME_TOOLCHAIN = toolchain
-
-
-def get_runtime_toolchain() -> Toolchain:
-    """Gets the toolchain used to build runtime."""
-    global _RUNTIME_TOOLCHAIN  # pylint: disable=global-statement
-    return _RUNTIME_TOOLCHAIN

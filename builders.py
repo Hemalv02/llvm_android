@@ -35,10 +35,6 @@ class AsanMapFileBuilder(base_builders.Builder):
     name: str = 'asan-mapfile'
     config_list: List[configs.Config] = configs.android_configs()
 
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
-
     def _build_config(self) -> None:
         arch = self._config.target_arch
         # We can not build asan_test using current CMake building system. Since
@@ -65,7 +61,6 @@ class AsanMapFileBuilder(base_builders.Builder):
 
 class Stage1Builder(base_builders.LLVMBuilder):
     name: str = 'stage1'
-    toolchain_name: str = 'prebuilt'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_android_targets: bool = False
     config_list: List[configs.Config] = [configs.host_config()]
@@ -131,7 +126,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
 class Stage2Builder(base_builders.LLVMBuilder):
     name: str = 'stage2'
-    toolchain_name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage2-install'
     config_list: List[configs.Config] = [configs.host_config()]
     remove_install_dir: bool = True
@@ -600,10 +594,6 @@ class SysrootsBuilder(base_builders.Builder):
         configs.android_configs(platform=True) +
         configs.android_configs(platform=False)
     )
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
 
     def _build_config(self) -> None:
         config: configs.AndroidConfig = cast(configs.AndroidConfig, self._config)
