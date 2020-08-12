@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2019 The Android Open Source Project
 #
@@ -100,7 +100,7 @@ def main():
     hosts = ['darwin-x86', 'linux-x86']
 
     for host in hosts:
-        prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
+        prebuilt_dir = paths.CLANG_PREBUILT_DIR.parent
         update_binutils_symlink(host, prebuilt_dir, version)
         do_commit(prebuilt_dir, use_cbr, version, bug_id)
 

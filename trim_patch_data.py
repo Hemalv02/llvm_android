@@ -21,10 +21,11 @@ import subprocess
 
 import android_version
 import hosts
+import paths
 import utils
 import source_manager
 
-_LLVM_ANDROID_PATH = utils.android_path('toolchain', 'llvm_android')
+_LLVM_ANDROID_PATH = paths.SCRIPTS_DIR
 _PATCH_DIR = os.path.join(_LLVM_ANDROID_PATH, 'patches')
 _PATCH_JSON = os.path.join(_PATCH_DIR, 'PATCHES.json')
 
@@ -47,7 +48,7 @@ def get_removed_patches(output):
 def trim_patches_json():
     """Invoke patch_manager.py with failure_mode=remove_patches
     """
-    source_dir = utils.android_path('toolchain', 'llvm-project')
+    source_dir = paths.TOOLCHAIN_LLVM_PATH
     output = source_manager.apply_patches(source_dir, _SVN_REVISION,
                                           _PATCH_JSON, _PATCH_DIR,
                                           'remove_patches')

@@ -315,7 +315,7 @@ class CMakeBuilder(Builder):
             if 'CMakeCache.txt' in files:
                 os.remove(os.path.join(dirpath, 'CMakeCache.txt'))
             if 'CMakeFiles' in dirs:
-                utils.rm_tree(os.path.join(dirpath, 'CMakeFiles'))
+                shutil.rmtree(os.path.join(dirpath, 'CMakeFiles'))
 
     def _record_cmake_command(self, cmake_cmd: List[str],
                               env: Dict[str, str]) -> None:
