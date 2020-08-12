@@ -52,7 +52,6 @@ if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
 
 # TODO (Pirama): Put all the build options in a global so it's easy to refer to
 # them instead of plumbing flags through function parameters.
-BUILD_LLDB = False
 BUILD_LLVM_NEXT = False
 
 def logger():
@@ -62,6 +61,7 @@ def logger():
 
 def build_llvm_for_windows(enable_assertions: bool,
                            build_name: str,
+                           build_lldb: bool,
                            swig_builder: Optional[builders.SwigBuilder]):
     config_list: List[configs.Config]
     if win_sdk.is_enabled():
@@ -85,9 +85,9 @@ def build_llvm_for_windows(enable_assertions: bool,
         libcxx_builder.build()
         win_builder.libcxx_path = libcxx_builder.install_dir
 
-    win_builder.build_lldb = BUILD_LLDB
+    win_builder.build_lldb = build_lldb
     lldb_bins: Optional[Set[str]] = None
-    if BUILD_LLDB:
+    if build_lldb:
         assert swig_builder is not None
         win_builder.libedit = None
         win_builder.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
@@ -113,7 +113,7 @@ def build_llvm_for_windows(enable_assertions: bool,
     return (win_builder, lldb_bins)
 
 
-def build_runtimes():
+def build_runtimes(build_lldb_server: bool):
     builders.SysrootsBuilder().build()
 
     builders.PlatformLibcxxAbiBuilder().build()
@@ -122,7 +122,7 @@ def build_runtimes():
     if hosts.build_host().is_linux:
         builders.CompilerRTHostI386Builder().build()
     builders.LibOMPBuilder().build()
-    if BUILD_LLDB:
+    if build_lldb_server:
         builders.LldbServerBuilder().build()
     # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
     # libcxx build.
@@ -612,10 +612,10 @@ def main():
     do_package = not args.skip_package
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug
+    build_lldb = 'lldb' not in args.no_build
 
     # TODO (Pirama): Avoid using global statement
-    global BUILD_LLDB, BUILD_LLVM_NEXT
-    BUILD_LLDB = 'lldb' not in args.no_build
+    global BUILD_LLVM_NEXT
     BUILD_LLVM_NEXT = args.build_llvm_next
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
@@ -641,14 +641,14 @@ def main():
     stage1.build_name = args.build_name
     stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
     # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
-    stage1.build_lldb = BUILD_LLDB
+    stage1.build_lldb = build_lldb
     stage1.build_android_targets = args.debug or instrumented
     stage1.use_goma_for_stage1 = USE_GOMA_FOR_STAGE1
     stage1.build()
     stage1_toolchain = stage1.installed_toolchain
     toolchains.set_runtime_toolchain(stage1_toolchain)
 
-    if BUILD_LLDB:
+    if build_lldb:
         # Swig is needed for both host and windows lldb.
         swig_builder = builders.SwigBuilder()
         swig_builder.build()
@@ -668,8 +668,8 @@ def main():
         stage2.build_instrumented = instrumented
         stage2.profdata_file = profdata if profdata else None
 
-        stage2.build_lldb = BUILD_LLDB
-        if BUILD_LLDB:
+        stage2.build_lldb = build_lldb
+        if build_lldb:
             stage2.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
 
             xz_builder = builders.XzBuilder()
@@ -698,7 +698,7 @@ def main():
             toolchains.set_runtime_toolchain(stage2.installed_toolchain)
 
         if hosts.build_host().is_linux and do_runtimes:
-            build_runtimes()
+            build_runtimes(build_lldb_server=build_lldb)
 
     if need_windows:
         if args.windows_sdk:
@@ -706,6 +706,7 @@ def main():
         win_builder, win_lldb_bins = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
             build_name=args.build_name,
+            build_lldb=build_lldb,
             swig_builder=swig_builder)
 
     if do_package and need_host:
