@@ -15,6 +15,7 @@
 #
 """Builders for various build tools and build systems."""
 
+import functools
 from pathlib import Path
 import logging
 import multiprocessing
@@ -63,7 +64,17 @@ class Builder:  # pylint: disable=too-few-public-methods
     name: str = ""
     config_list: List[configs.Config]
 
-    def __init__(self, config_list: Optional[Sequence[configs.Config]]=None) -> None:
+    """Use prebuilt toolchain if not specified otherwise in constructor."""
+    toolchain: toolchains.Toolchain = toolchains.get_prebuilt_toolchain()
+
+    """The toolchain to install artifacts from this LLVMRuntimeBuilder."""
+    output_toolchain: toolchains.Toolchain
+
+    def __init__(self,
+                 config_list: Optional[Sequence[configs.Config]]=None,
+                 toolchain: Optional[toolchains.Toolchain]=None) -> None:
+        if toolchain:
+            self.toolchain = toolchain
         if config_list:
             self.config_list = list(config_list)
         self._config: configs.Config = self.config_list[0]
@@ -120,18 +131,6 @@ class Builder:  # pylint: disable=too-few-public-methods
         env['PATH'] = os.pathsep.join(p for p in paths if p)
         return env
 
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        """Returns the toolchain used for this target."""
-        raise NotImplementedError()
-
-    @property
-    def output_toolchain(self) -> toolchains.Toolchain:
-        """Returns the Linux toolchain being built.  Used to install artifacts
-        from this Builder.
-        """
-        return toolchains.get_toolchain_by_name('stage2')
-
     def install(self) -> None:
         """Installs built artifacts."""
 
@@ -177,10 +176,6 @@ class AutoconfBuilder(Builder):
         cxxflags = super().cxxflags
         cxxflags.append('-stdlib=libc++')
         return cxxflags
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
 
     @property
     def config_flags(self) -> List[str]:
@@ -247,11 +242,6 @@ class CMakeBuilder(Builder):
         """Returns the path this target will be installed to."""
         output_dir = self.output_dir
         return output_dir.parent / (output_dir.name + '-install')
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        """Returns the toolchain used for this target."""
-        return toolchains.get_runtime_toolchain()
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -415,10 +405,6 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     _config: configs.AndroidConfig
 
     @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_runtime_toolchain()
-
-    @property
     def install_dir(self) -> Path:
         arch = self._config.target_arch
         if self._config.platform:
@@ -439,6 +425,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     src_dir: Path = paths.LLVM_PATH / 'llvm'
     config_list: List[configs.Config]
     build_name: str
+    build_tags: Optional[List[str]] = None
     svn_revision: str
     enable_assertions: bool = False
     toolchain_name: str
@@ -449,10 +436,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     libxml2: Optional[LibInfo] = None
     liblzma: Optional[LibInfo] = None
     libedit: Optional[LibInfo] = None
-
-    @property
-    def toolchain(self) -> toolchains.Toolchain:
-        return toolchains.get_toolchain_by_name(self.toolchain_name)
 
     @property
     def install_dir(self) -> Path:
@@ -543,8 +526,13 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
 
-        defines['CLANG_VENDOR'] = 'Android ({}, based on {})'.format(
-            self.build_name, self.svn_revision)
+        if self.build_tags:
+            tags_str = ''.join(tag + ', ' for tag in self.build_tags)
+        else:
+            tags_str = ''
+
+        defines['CLANG_VENDOR'] = 'Android ({}, {}based on {})'.format(
+            self.build_name, tags_str, self.svn_revision)
 
         defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
                                               'binutils' / 'binutils-2.27' / 'include')
@@ -564,3 +552,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         super().install_config()
         if self.build_lldb:
             self._install_lldb_deps()
+
+    @functools.cached_property
+    def installed_toolchain(self) -> toolchains.Toolchain:
+        """Gets the built Toolchain."""
+        return toolchains.Toolchain(self.install_dir, self.output_dir)

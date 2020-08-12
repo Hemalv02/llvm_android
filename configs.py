@@ -250,6 +250,7 @@ class AndroidConfig(_BaseConfig):
 
     static: bool = False
     platform: bool = False
+    suppress_libcxx_headers: bool = False
 
     @property
     def sysroot(self) -> Path:  # type: ignore
@@ -295,18 +296,19 @@ class AndroidConfig(_BaseConfig):
 
     @property
     def _libcxx_header_dirs(self) -> List[Path]:
-        if self.platform:  # pylint: disable=no-else-return
+        if self.suppress_libcxx_headers:
+            return []
+        if self.platform:
             # <prebuilts>/include/c++/v1 includes the cxxabi headers
             return [
                 paths.CLANG_PREBUILT_LIBCXX_HEADERS,
                 paths.BIONIC_HEADERS,
             ]
-        else:
-            return [
-                paths.NDK_LIBCXX_HEADERS,
-                paths.NDK_LIBCXXABI_HEADERS,
-                paths.NDK_SUPPORT_HEADERS,
-            ]
+        return [
+            paths.NDK_LIBCXX_HEADERS,
+            paths.NDK_LIBCXXABI_HEADERS,
+            paths.NDK_SUPPORT_HEADERS,
+        ]
 
     @property
     def cxxflags(self) -> List[str]:
@@ -402,8 +404,9 @@ def host_config() -> Config:
     global _HOST_CONFIG  # pylint: disable=global-statement
     return _HOST_CONFIG
 
-def android_configs(platform: bool = True,
-                    static: bool = False,
+def android_configs(platform: bool=True,
+                    static: bool=False,
+                    suppress_libcxx_headers: bool=False,
                     extra_config=None) -> List[Config]:
     """Returns a list of configs for android builds."""
     configs = [
@@ -415,6 +418,7 @@ def android_configs(platform: bool = True,
     for config in configs:
         config.static = static
         config.platform = platform
+        config.suppress_libcxx_headers = suppress_libcxx_headers
         config.extra_config = extra_config
     # List is not covariant. Explicit convert is required to make it List[Config].
     return list(configs)

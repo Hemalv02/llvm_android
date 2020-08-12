@@ -68,8 +68,3 @@ class BuilderRegistry:
             else:
                 logger().info("Skipping %s.", name)
         return wrapper
-
-    @classmethod
-    def get(cls, name: str):
-        """Gets the instance of a builder. Returns None if not found."""
-        return cls._builders.get(name)
