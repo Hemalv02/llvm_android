@@ -72,8 +72,8 @@ def pgo_profdata_filename(llvm_next: bool=False) -> str:
     return f'{base_revision}.profdata'
 
 def pgo_profdata_file(profdata_file) -> Optional[Path]:
-    profile = (PREBUILTS_DIR / 'prebuilts' / 'clang' / 'host' / 'linux-x86' /
-               'profiles' / profdata_file)
+    profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
+               profdata_file)
     return profile if profile.exists() else None
 
 def get_package_install_path(host: hosts.Host, package_name):
