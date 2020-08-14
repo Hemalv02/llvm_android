@@ -288,6 +288,12 @@
         "end_version": 400648
     },
     {
+        "comment": "[UPSTREAM] hwasan: Emit the globals note even when globals are uninstrumented.",
+        "rel_patch_path": "cherry/c201f27225857a6d0ba85df6ef7d5cbcc2c04e44.patch",
+        "start_version": 399163,
+        "end_version": 402466
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
