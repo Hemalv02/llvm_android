@@ -393,6 +393,9 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         # To prevent cmake from checking libstdcxx version.
         defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
+        # Don't depend on the host libatomic library.
+        defines['LIBCXX_HAS_ATOMIC_LIB'] = 'NO'
+
         if not self._config.target_os.is_darwin:
             defines['LLVM_ENABLE_LLD'] = 'ON'
 
