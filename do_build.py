@@ -327,6 +327,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'clang-cl' + ext,
         'clang-format' + ext,
         'clang-tidy' + ext,
+        'clangd' + ext,
         'dsymutil' + ext,
         'git-clang-format',  # No extension here
         'ld.lld' + ext,
@@ -372,6 +373,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     if host.is_windows:
         windows_exclude_bin_files = {
             'clang-' + version.major_version() + ext,
+            'clangd' + ext,
             'scan-build' + ext,
             'scan-view' + ext,
         }
