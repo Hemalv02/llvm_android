@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2017 The Android Open Source Project
 #
@@ -21,7 +21,8 @@ import re
 import subprocess
 import sys
 
-from utils import *
+import paths
+import utils
 
 
 def parse_args():
@@ -61,7 +62,7 @@ def fetch_upstream(path):
     subprocess.check_call(['git', 'fetch', 'aosp'], cwd=path)
 
 def merge_projects(sha, revision, create_new_branch, dry_run):
-    path = android_path('toolchain', 'llvm-project')
+    path = paths.TOOLCHAIN_LLVM_PATH
     if not dry_run:
         sync_branch(path)
     fetch_upstream(path)
@@ -69,12 +70,12 @@ def merge_projects(sha, revision, create_new_branch, dry_run):
 
     if create_new_branch:
         branch_name = 'merge-upstream-r%d' % revision
-        check_call_d(['repo', 'start', branch_name, '.'],
+        utils.check_call(['repo', 'start', branch_name, '.'],
                      cwd=path,
                      dry_run=dry_run)
 
     # Merge upstream revision
-    check_call_d([
+    utils.check_call([
         'git', 'merge', '--quiet', sha, '-m',
         'Merge %s for LLVM update to %d' % (sha, revision)
     ],

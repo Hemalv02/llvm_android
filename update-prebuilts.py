@@ -27,6 +27,7 @@ import subprocess
 import sys
 import utils
 
+import paths
 
 def logger():
     """Returns the module level logger."""
@@ -34,7 +35,7 @@ def logger():
 
 
 class ArgParser(argparse.ArgumentParser):
-    def __init__(self):
+    def __init__(self) -> None:
         super(ArgParser, self).__init__(
             description=inspect.getdoc(sys.modules[__name__]))
 
@@ -170,7 +171,7 @@ def format_bug(bug):
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
                  manifest, overwrite, do_validity_check):
-    prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
+    prebuilt_dir = paths.CLANG_PREBUILT_DIR.parent
     os.chdir(prebuilt_dir)
 
     if not use_current_branch:
@@ -242,7 +243,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
 
 
 def repo_upload(host: str, topic: str, is_testing: bool):
-    prebuilt_dir = utils.android_path('prebuilts/clang/host', host)
+    prebuilt_dir = paths.CLANG_PREBUILT_DIR.parent
     cmd = ['repo', 'upload', '.',
            '--current-branch',
            '--yes', # Answer yes to all safe prompts
@@ -279,7 +280,7 @@ def main():
 
     branch = args.branch
     if branch is None:
-        git_dir = utils.android_path('toolchain', 'llvm_android', '.git')
+        git_dir = paths.SCRIPTS_DIR / '.git'
         o = utils.check_output(['git', '--git-dir=' + git_dir, 'branch', '-av'])
         branch = o.split(' ')[-1].strip().replace('/', '-')
         # aosp/llvm-toolchain uses the branch 'aosp-master', but we really only

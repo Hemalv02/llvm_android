@@ -25,6 +25,7 @@ import sys
 
 import android_version
 import hosts
+import paths
 import utils
 
 
@@ -38,12 +39,11 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
 
     patch_manager_cmd = [
         sys.executable,
-        utils.android_path('external', 'toolchain-utils', 'llvm_tools',
-                          'patch_manager.py'),
-        '--svn_version', svn_version,
-        '--patch_metadata_file', patch_json,
-        '--filesdir_path', patch_dir,
-        '--src_path', source_dir,
+        str(paths.TOOLCHAIN_UTILS_DIR / 'llvm_tools' / 'patch_manager.py'),
+        '--svn_version', str(svn_version),
+        '--patch_metadata_file', str(patch_json),
+        '--filesdir_path', str(patch_dir),
+        '--src_path', str(source_dir),
         '--use_src_head',
         '--failure_mode', failure_mode
     ]
@@ -60,12 +60,12 @@ def setup_sources(source_dir, build_llvm_next):
     source_dir only if necessary to avoid recompiles during incremental builds.
     """
 
-    copy_from = utils.android_path('toolchain', 'llvm-project')
+    copy_from = paths.TOOLCHAIN_LLVM_PATH
 
     # Copy llvm source tree to a temporary directory.
-    tmp_source_dir = source_dir.rstrip('/') + '.tmp'
+    tmp_source_dir = source_dir.parent / (source_dir.name + '.tmp')
     if os.path.exists(tmp_source_dir):
-        utils.rm_tree(tmp_source_dir)
+        shutil.rmtree(tmp_source_dir)
 
     # mkdir parent of tmp_source_dir if necessary - so we can call 'cp' below.
     tmp_source_parent = os.path.dirname(tmp_source_dir)
@@ -87,7 +87,7 @@ def setup_sources(source_dir, build_llvm_next):
       subprocess.check_call(cmd)
 
     # patch source tree
-    patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
+    patch_dir = paths.SCRIPTS_DIR / 'patches'
     patch_json = os.path.join(patch_dir, 'PATCHES.json')
     svn_version = android_version.get_svn_revision(build_llvm_next)
     # strip the leading 'r' and letter suffix, e.g., r377782b => 377782
@@ -104,13 +104,13 @@ def setup_sources(source_dir, build_llvm_next):
     else:
         # Without a trailing '/' in $SRC, rsync copies $SRC to
         # $DST/BASENAME($SRC) instead of $DST.
-        tmp_source_dir = tmp_source_dir.rstrip('/') + '/'
+        tmp_source_dir_str = str(tmp_source_dir) + '/'
 
         # rsync to update only changed files.  Use '-c' to use checksums to find
         # if files have changed instead of only modification time and size -
         # which could have inconsistencies.  Use '--delete' to ensure files not
         # in tmp_source_dir are deleted from $source_dir.
         subprocess.check_call(['rsync', '-r', '--delete', '--links', '-c',
-                               tmp_source_dir, source_dir])
+                               tmp_source_dir_str, source_dir])
 
-        utils.rm_tree(tmp_source_dir)
+        shutil.rmtree(tmp_source_dir)

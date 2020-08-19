@@ -116,15 +116,18 @@ class GerritChange():
 
     def is_merged(self) -> bool:
         """Return if this topic is merged"""
-        return self.gerrit_info and (self.gerrit_info['status'] == 'MERGED')
+        if self.gerrit_info:
+            return self.gerrit_info['status'] == 'MERGED'
+        return False
 
-    def set_topic(self, topic) -> None:
-        if not self.gerrit_info:
+    def set_topic(self, topic: str) -> None:
+        change_number = self.change_number()
+        if not change_number:
             raise RuntimeError(f'{self} doesn\'t exist on gerrit.')
         if self.topic() == topic:
             return
         payload = json.dumps({'topic': topic})
-        output = gerrit_set_property(self.change_number(), 'topic', payload)
+        output = gerrit_set_property(change_number, 'topic', payload)
         if output != topic:
             raise RuntimeError(f'Set topic to {topic} for "{self}" failed')
 
@@ -236,7 +239,7 @@ class SoongSwitchoverChange(GerritChange):
         #   - repo start
         #   - update clang version in soong
         #   - git commit
-        with chdir_context(utils.android_path(self.project)):
+        with chdir_context(paths.ANDROID_DIR / self.project):
             utils.unchecked_call(['repo', 'abandon', branch, '.'])
             utils.check_call(['repo', 'start', branch, '.'])
 

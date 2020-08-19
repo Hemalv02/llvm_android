@@ -18,6 +18,7 @@
 import logging
 import os
 import re
+import shutil
 import sys
 
 import android_version
@@ -41,7 +42,7 @@ def build_llvm() -> builders.Stage2Builder:
     #   - LTO is unnecessary.
     #   - skip lldb since it depends on several other libraries.
     #   - extra targets so we get cross-references for more sources.
-    stage2.src_dir = paths.ANDROID_DIR / 'toolchain' / 'llvm-project' / 'llvm'
+    stage2.src_dir = paths.TOOLCHAIN_LLVM_PATH / 'llvm'
     stage2.enable_assertions = True
     stage2.lto = False
     stage2.build_lldb = False
@@ -58,7 +59,7 @@ EXPECTED_ERROR_DIRS = [
 def build_kythe_corpus(builder: builders.Stage2Builder) -> None:
     kythe_out_dir = paths.KYTHE_OUTPUT_DIR
     if paths.KYTHE_OUTPUT_DIR.exists():
-        utils.rm_tree(paths.KYTHE_OUTPUT_DIR)
+        shutil.rmtree(paths.KYTHE_OUTPUT_DIR)
     os.makedirs(paths.KYTHE_OUTPUT_DIR)
 
     json = builder.output_dir / 'compile_commands.json'
@@ -103,18 +104,18 @@ def package(build_name: str) -> None:
                       '--build-mode', '--all-modules',
                       f'--dir={paths.ANDROID_DIR}',
                       '-k', 'merge_zips'])
-    merge_zips_path = utils.out_path('soong', 'host', hosts.build_host().os_tag,
-                                     'bin', 'merge_zips')
+    merge_zips_path = (paths.OUT_DIR / 'soong' / 'host' / hosts.build_host().os_tag /
+                       'bin' / 'merge_zips')
 
     # Call: merge_zips $DIST_DIR/<build_name>.kzip <kzip files>
-    output = os.path.join(ORIG_ENV.get('DIST_DIR', utils.out_path()),
+    output = os.path.join(ORIG_ENV.get('DIST_DIR', paths.OUT_DIR),
                           build_name + '.kzip')
 
     kythe_out_dir = paths.KYTHE_OUTPUT_DIR
     kzip_files = [os.path.join(kythe_out_dir, kzip)
                   for kzip in os.listdir(kythe_out_dir)]
 
-    utils.check_call([merge_zips_path, output] + kzip_files)
+    utils.check_call([str(merge_zips_path), output] + kzip_files)
 
 
 def main():
@@ -125,8 +126,8 @@ def main():
         sys.exit(1)
     build_name = sys.argv[1] if len(sys.argv) == 2 else 'dev'
 
-    if not os.path.exists(utils.android_path('build', 'soong')):
-        raise RuntimeError('build/soong does not exist.  ' +\
+    if not (paths.ANDROID_DIR / 'build' / 'soong').exists():
+        raise RuntimeError('build/soong does not exist.  ' +
                            'Execute this script in master-plus-llvm branch.')
 
     builder = build_llvm()

@@ -87,7 +87,7 @@ def prepare_ab_test_topic(
 
 def do_prechecks():
     # ensure build/soong is present.
-    if not os.path.exists(utils.android_path('build', 'soong')):
+    if (paths.ANDROID_DIR / 'build' / 'soong').exists():
         raise RuntimeError('build/soong does not exist.  ' +\
                            'Execute this script in master-plus-llvm branch.')
 

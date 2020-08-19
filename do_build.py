@@ -25,7 +25,7 @@ import shutil
 import string
 import sys
 import textwrap
-from typing import cast, List, Optional, Set
+from typing import cast, List, Optional, Set, Tuple
 
 import android_version
 from base_builders import Builder, LLVMBuilder
@@ -135,10 +135,9 @@ def build_runtimes(build_lldb_server: bool):
     builders.AsanMapFileBuilder().build()
 
 
-def install_wrappers(llvm_install_path):
-    wrapper_path = utils.out_path('llvm_android_wrapper')
-    wrapper_build_script = utils.android_path('external', 'toolchain-utils',
-                                              'compiler_wrapper', 'build.py')
+def install_wrappers(llvm_install_path: Path) -> None:
+    wrapper_path = paths.OUT_DIR / 'llvm_android_wrapper'
+    wrapper_build_script = paths.TOOLCHAIN_UTILS_DIR / 'compiler_wrapper' / 'build.py'
     # Note: The build script automatically determines the architecture
     # based on the host.
     go_env = dict(os.environ)
@@ -147,28 +146,31 @@ def install_wrappers(llvm_install_path):
                       '--config=android',
                       '--use_ccache=false',
                       '--use_llvm_next=' + str(BUILD_LLVM_NEXT).lower(),
-                      '--output_file=' + wrapper_path], env=go_env)
+                      f'--output_file={wrapper_path}'], env=go_env)
 
-    bisect_path = utils.android_path('toolchain', 'llvm_android',
-                                     'bisect_driver.py')
-    bin_path = os.path.join(llvm_install_path, 'bin')
-    clang_path = os.path.join(bin_path, 'clang')
-    clangxx_path = os.path.join(bin_path, 'clang++')
-    clang_tidy_path = os.path.join(bin_path, 'clang-tidy')
+    bisect_path = paths.SCRIPTS_DIR / 'bisect_driver.py'
+    bin_path = llvm_install_path / 'bin'
+    clang_path = bin_path / 'clang'
+    clang_real_path = bin_path / 'clang.real'
+    clangxx_path = bin_path / 'clang++'
+    clangxx_real_path = bin_path / 'clang++.real'
+    clang_tidy_path = bin_path / 'clang-tidy'
+    clang_tidy_real_path = bin_path / 'clang-tidy.real'
 
     # Rename clang and clang++ to clang.real and clang++.real.
     # clang and clang-tidy may already be moved by this script if we use a
     # prebuilt clang. So we only move them if clang.real and clang-tidy.real
     # doesn't exist.
-    if not os.path.exists(clang_path + '.real'):
-        shutil.move(clang_path, clang_path + '.real')
-    if not os.path.exists(clang_tidy_path + '.real'):
-        shutil.move(clang_tidy_path, clang_tidy_path + '.real')
-    utils.remove(clang_path)
-    utils.remove(clangxx_path)
-    utils.remove(clang_tidy_path)
-    utils.remove(clangxx_path + '.real')
-    os.symlink('clang.real', clangxx_path + '.real')
+    if not clang_real_path.exists():
+        clang_path.rename(clang_real_path)
+    clang_tidy_real_path = clang_tidy_path.parent / (clang_tidy_path.name + '.real')
+    if not clang_tidy_real_path.exists():
+        clang_tidy_path.rename(clang_tidy_real_path)
+    clang_path.unlink(missing_ok=True)
+    clangxx_path.unlink(missing_ok=True)
+    clang_tidy_path.unlink(missing_ok=True)
+    clangxx_real_path.unlink(missing_ok=True)
+    clangxx_real_path.symlink_to('clang.real')
 
     shutil.copy2(wrapper_path, clang_path)
     shutil.copy2(wrapper_path, clangxx_path)
@@ -178,7 +180,7 @@ def install_wrappers(llvm_install_path):
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
-def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
+def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Version) -> None:
     if host.is_linux:
         libs = {'libLLVM': 'libLLVM-{version}git.so',
                 'libclang': 'libclang.so.{version}git',
@@ -191,7 +193,7 @@ def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
                 'libc++abi': 'libc++abi.{version}.dylib'
                }
 
-    def getVersions(libname):
+    def getVersions(libname: str) -> Tuple[str, str]:
         if not libname.startswith('libc++'):
             return version.short_version(), version.major
         else:
@@ -233,7 +235,7 @@ def normalize_llvm_host_libs(install_dir, host: hosts.Host, version):
                 os.remove(lib)
 
 
-def install_license_files(install_dir):
+def install_license_files(install_dir: Path) -> None:
     projects = (
         'llvm',
         'compiler-rt',
@@ -246,36 +248,28 @@ def install_license_files(install_dir):
     )
 
     # Get generic MODULE_LICENSE_* files from our android subdirectory.
-    llvm_android_path = utils.android_path('toolchain', 'llvm_android')
-    license_pattern = os.path.join(llvm_android_path, 'MODULE_LICENSE_*')
-    for license_file in glob.glob(license_pattern):
+    for license_file in paths.SCRIPTS_DIR.glob('MODULE_LICENSE_*'):
         shutil.copy2(license_file, install_dir)
 
     # Fetch all the LICENSE.* files under our projects and append them into a
     # single NOTICE file for the resulting prebuilts.
     notices = []
     for project in projects:
-        license_pattern = utils.llvm_path(project, 'LICENSE.*')
-        for license_file in glob.glob(license_pattern):
-            with open(license_file) as notice_file:
+        for license_file in (paths.LLVM_PATH / project).glob('LICENSE.*'):
+            with license_file.open() as notice_file:
                 notices.append(notice_file.read())
-    with open(os.path.join(install_dir, 'NOTICE'), 'w') as notice_file:
+    with (install_dir / 'NOTICE').open('w') as notice_file:
         notice_file.write('\n'.join(notices))
 
 
-def install_winpthreads(bin_dir, lib_dir):
+def install_winpthreads(bin_dir: Path, lib_dir: Path) -> None:
     """Installs the winpthreads runtime to the Windows bin and lib directory."""
     lib_name = 'libwinpthread-1.dll'
-    mingw_dir = utils.android_path(
-        'prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8',
-        'x86_64-w64-mingw32')
-    lib_path = os.path.join(mingw_dir, 'bin', lib_name)
+    mingw_dir = paths.MINGW_ROOT / 'x86_64-w64-mingw32'
+    lib_path = mingw_dir / 'bin' / lib_name
 
-    lib_install = os.path.join(lib_dir, lib_name)
-    shutil.copy2(lib_path, lib_install)
-
-    bin_install = os.path.join(bin_dir, lib_name)
-    shutil.copy2(lib_path, bin_install)
+    shutil.copy2(lib_path, lib_dir / lib_name)
+    shutil.copy2(lib_path, bin_dir / lib_name)
 
 
 def remove_static_libraries(static_lib_dir, necessary_libs=None):
@@ -301,11 +295,11 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     package_name = 'clang-' + build_name
 
     install_dir = paths.get_package_install_path(host, package_name)
-    install_host_dir = os.path.realpath(os.path.join(install_dir, '../'))
+    install_host_dir = install_dir.parent
 
     # Remove any previously installed toolchain so it doesn't pollute the
     # build.
-    if os.path.exists(install_host_dir):
+    if install_host_dir.exists():
         shutil.rmtree(install_host_dir)
 
     # First copy over the entire set of output objects.
@@ -387,16 +381,15 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'lldb' + script_ext,
     }
 
-    bin_dir = os.path.join(install_dir, 'bin')
-    lib_dir = os.path.join(install_dir, 'lib64')
+    bin_dir = install_dir / 'bin'
+    lib_dir = install_dir / 'lib64'
     strip_cmd = Builder.toolchain.strip
 
-    for bin_filename in os.listdir(bin_dir):
-        binary = os.path.join(bin_dir, bin_filename)
-        if os.path.isfile(binary):
-            if bin_filename not in necessary_bin_files:
-                os.remove(binary)
-            elif strip and bin_filename not in script_bins:
+    for binary in bin_dir.iterdir():
+        if binary.is_file():
+            if binary.name not in necessary_bin_files:
+                binary.unlink()
+            elif strip and binary.name not in script_bins:
                 # Strip all non-global symbols and debug info.
                 # These specific flags prevent Darwin executables from being
                 # stripped of additional global symbols that might be used
@@ -405,8 +398,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
-        if not os.path.isfile(os.path.join(bin_dir, necessary_bin_file)):
-            raise RuntimeError('Did not find %s in %s' % (necessary_bin_file, bin_dir))
+        if not (bin_dir / necessary_bin_file).is_file():
+            raise RuntimeError(f'Did not find {necessary_bin_file} in {bin_dir}')
 
     necessary_lib_files = set()
     if not (host.is_windows and win_sdk.is_enabled()):
@@ -432,37 +425,33 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Check necessary lib files exist.
     for necessary_lib_file in necessary_lib_files:
-        if not os.path.isfile(os.path.join(lib_dir, necessary_lib_file)):
-            raise RuntimeError('Did not find %s in %s' % (necessary_lib_file, lib_dir))
+        if not (lib_dir / necessary_lib_file).is_file():
+            raise RuntimeError(f'Did not find {necessary_lib_file} in {lib_dir}')
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
-    libc_include_path = utils.android_path('bionic', 'libc', 'include')
-    resdir_top = os.path.join(lib_dir, 'clang')
-    header_path = os.path.join(resdir_top, version.long_version(), 'include')
+    libc_include_path = paths.ANDROID_DIR / 'bionic' / 'libc' / 'include'
+    header_path = lib_dir / 'clang' / version.long_version() / 'include'
 
-    stdatomic_path = utils.android_path(libc_include_path, 'stdatomic.h')
-    shutil.copy2(stdatomic_path, header_path)
+    shutil.copy2(libc_include_path / 'stdatomic.h', header_path)
 
-    bits_install_path = os.path.join(header_path, 'bits')
-    if not os.path.isdir(bits_install_path):
-        os.mkdir(bits_install_path)
-    bits_stdatomic_path = utils.android_path(libc_include_path, 'bits', 'stdatomic.h')
+    bits_install_path = header_path / 'bits'
+    bits_install_path.mkdir(parents=True, exist_ok=True)
+    bits_stdatomic_path = libc_include_path / 'bits' / 'stdatomic.h'
     shutil.copy2(bits_stdatomic_path, bits_install_path)
-
 
     # Install license files as NOTICE in the toolchain install dir.
     install_license_files(install_dir)
 
     # Add an AndroidVersion.txt file.
-    version_file_path = os.path.join(install_dir, 'AndroidVersion.txt')
-    with open(version_file_path, 'w') as version_file:
-        version_file.write('{}\n'.format(version.long_version()))
+    version_file_path = install_dir / 'AndroidVersion.txt'
+    with version_file_path.open('w') as version_file:
+        version_file.write(f'{version.long_version()}\n')
         svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-        version_file.write('based on {}\n'.format(svn_revision))
+        version_file.write(f'based on {svn_revision}\n')
 
     # Create RBE input files.
     if host.is_linux:
-        with open(os.path.join(install_dir, 'bin', 'remote_toolchain_inputs'), 'w') as inputs_file:
+        with (install_dir / 'bin' / 'remote_toolchain_inputs').open('w') as inputs_file:
             dependencies = ('clang\n'
                             'clang++\n'
                             'clang.real\n'
@@ -473,17 +462,16 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                             'lld\n'
                             'ld64.lld\n'
                             'ld.lld\n'
+                            f'../lib64/clang/{version.long_version()}/share\n'
+                            f'../lib64/clang/{version.long_version()}/lib/linux\n'
                            )
-            exclude_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'share\n')
-            libs_dir = os.path.join('../', 'lib64', 'clang', version.long_version(), 'lib', 'linux\n')
-            dependencies += (exclude_dir + libs_dir)
             inputs_file.write(dependencies)
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
-        tarball_name = package_name + '-' + host.os_tag
-        package_path = os.path.join(dist_dir, tarball_name) + '.tar.bz2'
-        logger().info('Packaging %s', package_path)
+        tarball_name = package_name + '-' + host.os_tag + '.tar.bz2'
+        package_path = dist_dir / tarball_name
+        logger().info(f'Packaging {package_path}')
         args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
         utils.check_call(args)
 
@@ -638,7 +626,7 @@ def main():
                   do_runtimes, do_package, need_windows))
 
     # Clone sources to be built and apply patches.
-    source_manager.setup_sources(source_dir=utils.llvm_path(),
+    source_manager.setup_sources(source_dir=paths.LLVM_PATH,
                                  build_llvm_next=args.build_llvm_next)
 
     # Build the stage1 Clang for the build host

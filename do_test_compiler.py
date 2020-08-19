@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
-from typing import List
+from typing import Dict, List, Optional
 
 import hosts
 import paths
@@ -72,22 +72,22 @@ DISABLED_WARNINGS = [
 class ClangProfileHandler(object):
 
     def __init__(self):
-        self.profiles_dir = utils.out_path('clang-profiles')
+        self.profiles_dir = paths.OUT_DIR / 'clang-profiles'
         self.profiles_format = os.path.join(self.profiles_dir, '%4m.profraw')
 
     def getProfileFileEnvVar(self):
         return ('LLVM_PROFILE_FILE', self.profiles_format)
 
     def mergeProfiles(self):
-        stage1_install = utils.out_path('stage1-install')
-        profdata = os.path.join(stage1_install, 'bin', 'llvm-profdata')
+        stage1_install = paths.OUT_DIR / 'stage1-install'
+        profdata = stage1_install / 'bin' / 'llvm-profdata'
 
         profdata_file = paths.pgo_profdata_filename()
 
-        dist_dir = os.environ.get('DIST_DIR', utils.out_path())
-        out_file = os.path.join(dist_dir, profdata_file)
+        dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
+        out_file = dist_dir / profdata_file
 
-        cmd = [profdata, 'merge', '-o', out_file, self.profiles_dir]
+        cmd = [str(profdata), 'merge', '-o', str(out_file), str(self.profiles_dir)]
         subprocess.check_call(cmd)
 
 
@@ -177,15 +177,17 @@ def parse_args():
     return args
 
 
-def link_clang(android_base, clang_path):
-    android_clang_path = os.path.join(android_base, 'prebuilts',
-                                      'clang', 'host',
-                                      hosts.build_host().os_tag, 'clang-dev')
-    utils.remove(android_clang_path)
-    os.symlink(os.path.abspath(clang_path), android_clang_path)
+def link_clang(android_base: Path, clang_path: Path) -> None:
+    android_clang_path = (android_base / 'prebuilts' / 'clang' / 'host' /
+                          hosts.build_host().os_tag / 'clang-dev')
+    if android_clang_path.is_symlink() or android_clang_path.is_file():
+        android_clang_path.unlink()
+    elif android_clang_path.is_dir():
+        shutil.rmtree(android_clang_path)
+    android_clang_path.symlink_to(clang_path.resolve())
 
 
-def get_connected_device_list():
+def get_connected_device_list() -> List[List[str]]:
     try:
         # Get current connected device list.
         out = subprocess.check_output(['adb', 'devices', '-l'], text=True)
@@ -198,7 +200,9 @@ def get_connected_device_list():
 
 def rm_current_product_out():
     if 'ANDROID_PRODUCT_OUT' in os.environ:
-        utils.remove(os.environ['ANDROID_PRODUCT_OUT'])
+        product_out = Path(os.environ['ANDROID_PRODUCT_OUT'])
+        if product_out.isdir():
+            shutil.rmtree(product_out)
 
 
 def extract_clang_version(clang_install: Path) -> version.Version:
@@ -207,8 +211,9 @@ def extract_clang_version(clang_install: Path) -> version.Version:
     return version.Version(version_file)
 
 
-def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
-                 with_tidy, profiler=None):
+def build_target(android_base: Path, clang_version: version.Version, target : str,
+                 max_jobs: int, redirect_stderr: bool, with_tidy: bool,
+                 profiler: Optional[ClangProfileHandler]=None) -> None:
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
     try:
         env_out = subprocess.check_output(
@@ -221,7 +226,7 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
     except subprocess.CalledProcessError:
         raise RuntimeError('Failed to lunch ' + target)
 
-    env = {}
+    env: Dict[str, str] = {}
     for line in env_out.splitlines():
         if not line:
             continue
@@ -237,13 +242,11 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
     if redirect_stderr:
         redirect_key = STDERR_REDIRECT_KEY
         if 'DIST_DIR' in env:
-            redirect_path = os.path.join(env['DIST_DIR'], 'logs',
-                                         'clang-error.log')
+            redirect_path = Path(env['DIST_DIR']) / 'logs' / 'clang-error.log'
         else:
-            redirect_path = os.path.abspath(
-                os.path.join(android_base, 'out', 'clang-error.log'))
-            utils.remove(redirect_path)
-        env[redirect_key] = redirect_path
+            redirect_path = (android_base / 'out' / 'clang-error.log').resolve()
+            redirect_path.unlink(missing_ok=True)
+        env[redirect_key] = str(redirect_path)
         fallback_path = str(paths.CLANG_PREBUILT_DIR / 'bin')
         env[PREBUILT_COMPILER_PATH_KEY] = fallback_path
         env[DISABLED_WARNINGS_KEY] = ' '.join(DISABLED_WARNINGS)
@@ -275,8 +278,9 @@ def build_target(android_base, clang_version, target, max_jobs, redirect_stderr,
         env=env)
 
 
-def test_device(android_base, clang_version, device, max_jobs, clean_output,
-                flashall_path, redirect_stderr, with_tidy):
+def test_device(android_base: Path, clang_version: version.Version, device: List[str],
+                max_jobs: int, clean_output: str, flashall_path: Optional[Path],
+                redirect_stderr: bool, with_tidy: bool) -> bool:
     [label, target] = device[-1].split(':')
     # If current device is not connected correctly we will just skip it.
     if label != 'device':
@@ -288,8 +292,8 @@ def test_device(android_base, clang_version, device, max_jobs, clean_output,
         build_target(android_base, clang_version, target, max_jobs,
                      redirect_stderr, with_tidy)
         if flashall_path is None:
-            bin_path = os.path.join(android_base, 'out', 'host',
-                                    hosts.build_host().os_tag, 'bin')
+            bin_path = (android_base / 'out' / 'host' /
+                        hosts.build_host().os_tag / 'bin')
             subprocess.check_call(
                 ['./adb', '-s', device[0], 'reboot', 'bootloader'],
                 cwd=bin_path)
@@ -343,26 +347,23 @@ def main():
     args = parse_args()
     if args.clang_path is not None:
         clang_path = Path(args.clang_path)
-        clang_version = extract_clang_version(clang_path)
     elif args.clang_package_path is not None:
         clang_path = extract_packaged_clang(Path(args.clang_package_path))
-        clang_version = extract_clang_version(clang_path)
     else:
-        cmd = [paths.ANDROID_DIR / 'toolchain' / 'llvm_android' / 'build.py',
-               '--no-build=windows,lldb',]
+        cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb']
         if args.profile:
             cmd.append('--build-instrumented')
         utils.check_call(cmd)
         clang_path = paths.get_package_install_path(hosts.build_host(), 'clang-dev')
-        clang_version = extract_clang_version(clang_path)
-    link_clang(args.android_path, clang_path)
+    clang_version = extract_clang_version(clang_path)
+    link_clang(Path(args.android_path), clang_path)
 
     if args.build_only:
         profiler = ClangProfileHandler() if args.profile else None
 
         targets = [args.target] if args.target else TARGETS
         for target in targets:
-            build_target(args.android_path, clang_version, target, args.jobs,
+            build_target(Path(args.android_path), clang_version, target, args.jobs,
                          args.redirect_stderr, args.with_tidy, profiler)
 
         if profiler is not None:
@@ -373,9 +374,10 @@ def main():
         if len(devices) == 0:
             print("You don't have any devices connected.")
         for device in devices:
-            result = test_device(args.android_path, clang_version, device,
+            result = test_device(Path(args.android_path), clang_version, device,
                                  args.jobs, args.clean_built_target,
-                                 args.flashall_path, args.redirect_stderr,
+                                 Path(args.flashall_path) if args.flashall_path else None,
+                                 args.redirect_stderr,
                                  args.with_tidy)
             if not result and not args.keep_going:
                 break

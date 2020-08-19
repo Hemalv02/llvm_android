@@ -25,8 +25,8 @@ class Version():
         self._parse_version_file(version_file)
 
     @staticmethod
-    def _parse(text, key) -> str:
-        return re.findall(r'%s\s+(\d+)' % key, text)[0]
+    def _parse(text: str, key: str) -> str:
+        return re.findall(rf'{key}\s+(\d+)', text)[0]
 
     def _parse_version_file(self, version_file: Path) -> None:
         with version_file.open() as vfile:
