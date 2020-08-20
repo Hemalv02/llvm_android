@@ -288,6 +288,12 @@
         "end_version": 400648
     },
     {
+        "comment": "[UPSTREAM] [ELF] Change tombstone values to (.debug_ranges/.debug_loc) 1 and (other .debug_*) 0",
+        "rel_patch_path": "cherry/004be4037e1e9c6092323c5c9268acb3ecf9176c.patch",
+        "start_version": 399163,
+        "end_version": 401729
+    },
+    {
         "comment": "[UPSTREAM] hwasan: Emit the globals note even when globals are uninstrumented.",
         "rel_patch_path": "cherry/c201f27225857a6d0ba85df6ef7d5cbcc2c04e44.patch",
         "start_version": 399163,
