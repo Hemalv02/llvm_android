@@ -171,7 +171,7 @@ def format_bug(bug):
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
                  manifest, overwrite, do_validity_check):
-    prebuilt_dir = paths.CLANG_PREBUILT_DIR.parent
+    prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
     os.chdir(prebuilt_dir)
 
     if not use_current_branch:
@@ -219,7 +219,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         if not validity_check(host, install_subdir, clang_version.split('.')[0]):
             sys.exit(1)
 
-    shutil.copy(manifest_file, prebuilt_dir + '/' + install_subdir)
+    shutil.copy(manifest_file, str(prebuilt_dir / install_subdir))
 
     utils.check_call(['git', 'add', install_subdir])
 
@@ -243,7 +243,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
 
 
 def repo_upload(host: str, topic: str, is_testing: bool):
-    prebuilt_dir = paths.CLANG_PREBUILT_DIR.parent
+    prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
     cmd = ['repo', 'upload', '.',
            '--current-branch',
            '--yes', # Answer yes to all safe prompts
@@ -280,7 +280,7 @@ def main():
 
     branch = args.branch
     if branch is None:
-        git_dir = paths.SCRIPTS_DIR / '.git'
+        git_dir = str(paths.SCRIPTS_DIR / '.git')
         o = utils.check_output(['git', '--git-dir=' + git_dir, 'branch', '-av'])
         branch = o.split(' ')[-1].strip().replace('/', '-')
         # aosp/llvm-toolchain uses the branch 'aosp-master', but we really only
