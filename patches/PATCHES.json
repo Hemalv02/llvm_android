@@ -288,6 +288,12 @@
         "end_version": 400648
     },
     {
+        "comment": "[UPSTREAM] [GlobalISel][InlineAsm] Fix matching input constraint to physreg",
+        "rel_patch_path": "cherry/d893278bba01b0e1209e8b8accbdd5cfa75a0932.patch",
+        "start_version": 399163,
+        "end_version": 401652
+    },
+    {
         "comment": "[UPSTREAM] [ELF] Change tombstone values to (.debug_ranges/.debug_loc) 1 and (other .debug_*) 0",
         "rel_patch_path": "cherry/004be4037e1e9c6092323c5c9268acb3ecf9176c.patch",
         "start_version": 399163,
