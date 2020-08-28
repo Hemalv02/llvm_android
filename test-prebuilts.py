@@ -25,6 +25,7 @@ import os
 import sys
 import subprocess
 
+import paths
 import gerrit
 import utils
 
@@ -87,14 +88,14 @@ def prepare_ab_test_topic(
 
 def do_prechecks():
     # ensure build/soong is present.
-    if (paths.ANDROID_DIR / 'build' / 'soong').exists():
+    if not (paths.ANDROID_DIR / 'build' / 'soong').exists():
         raise RuntimeError('build/soong does not exist.  ' +\
                            'Execute this script in master-plus-llvm branch.')
 
-    # ensure prodcertstatus
+    # ensure gcertstatus
     try:
         utils.check_call(
-            ['prodcertstatus', '-q', '--check_remaining_hours', '1'])
+            ['gcertstatus', '-quiet', '-check_remaining=1h'])
     except subprocess.CalledProcessError:
         print('Run prodaccess before executing this script.')
         sys.exit(1)
