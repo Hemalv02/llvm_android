@@ -17,13 +17,7 @@
 # Validate known failures.
 #   grep "listed below" windows-test-dir/*/*.txt | sed "s/32\// /g" | \
 #     sed "s/64\// /g" | sort -k 2
-# The above command should output the following:
-#   windows-test-dir/ libbase_test32.exe.txt:[  FAILED  ] 2 tests, listed below:
-#   windows-test-dir/ libbase_test64.exe.txt:[  FAILED  ] 2 tests, listed below:
-#   windows-test-dir/ ziparchive-tests.exe.txt:[  FAILED  ] 13 tests, listed
-#   below:
-#   windows-test-dir/ ziparchive-tests.exe.txt:[  FAILED  ] 13 tests, listed
-#   below:
+# See go/android-llvm-windows-testing for the current list of failing tests.
 
 
 panic ()
@@ -66,7 +60,7 @@ make_tmp_dirs() {
 copy_dlls() {
   local dlls_32=(
     prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/lib32/libwinpthread-1.dll
-    out/soong/.intermediates/system/core/base/libbase/windows_x86_shared/libbase.dll
+    out/soong/.intermediates/system/libbase/libbase/windows_x86_shared/libbase.dll
     out/host/windows-x86/obj/SHARED_LIBRARIES/AdbWinApi_intermediates/AdbWinApi.dll
     out/soong/.intermediates/external/clang/libclang_android/windows_x86_shared/libclang_android.dll
     out/soong/.intermediates/external/llvm/libLLVM_android/windows_x86_shared/libLLVM_android.dll
@@ -81,7 +75,7 @@ copy_dlls() {
   )
   local dlls_64=(
     prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/bin/libwinpthread-1.dll
-    out/soong/.intermediates/system/core/base/libbase/windows_x86_64_shared/libbase.dll
+    out/soong/.intermediates/system/libbase/libbase/windows_x86_64_shared/libbase.dll
     out/soong/.intermediates/system/core/liblog/liblog/windows_x86_64_shared/liblog.dll
 
     out/host/windows-x86/obj64/SHARED_LIBRARIES/libziparchive_intermediates/libziparchive.dll
@@ -104,8 +98,8 @@ copy_dlls() {
     fail_panic "Failed to copy " $dll
   done
 
-  cp -rf system/core/libziparchive/testdata $TMP_DIR_32
-  cp -rf system/core/libziparchive/testdata $TMP_DIR_64
+  cp -rf system/libziparchive/testdata $TMP_DIR_32
+  cp -rf system/libziparchive/testdata $TMP_DIR_64
 }
 
 run_smoke_tests() {
@@ -130,7 +124,7 @@ run_smoke_tests() {
     "out/soong/.intermediates/dalvik/tools/hprof-conv/hprof-conv/windows_x86/hprof-conv.exe;2"
     "out/soong/.intermediates/art/tools/jfuzz/jfuzz/windows_x86/jfuzz.exe;1"
     "out/soong/.intermediates/frameworks/base/tools/aapt/libaapt_tests/windows_x86/libaapt_tests.exe;0"
-    "out/soong/.intermediates/system/core/base/libbase_test/windows_x86/libbase_test32.exe;0"
+    "out/soong/.intermediates/system/libbase/libbase_test/windows_x86/libbase_test32.exe;0"
     "out/soong/.intermediates/frameworks/base/tools/split-select/libsplit-select_tests/windows_x86/libsplit-select_tests.exe;0"
     "out/soong/.intermediates/frameworks/compile/slang/llvm-rs-as/windows_x86/llvm-rs-as.exe;0"
     "out/soong/.intermediates/frameworks/compile/slang/llvm-rs-cc/windows_x86/llvm-rs-cc.exe;0"
@@ -142,15 +136,15 @@ run_smoke_tests() {
     "out/soong/.intermediates/frameworks/base/tools/split-select/split-select/windows_x86/split-select.exe;0"
     "out/soong/.intermediates/external/sqlite/dist/sqlite3/windows_x86/sqlite3.exe;1"
     "out/soong/.intermediates/build/make/tools/zipalign/zipalign/windows_x86/zipalign.exe;2"
-    "out/soong/.intermediates/system/core/libziparchive/ziparchive-tests/windows_x86/ziparchive-tests.exe;0"
+    "out/soong/.intermediates/system/libziparchive/ziparchive-tests/windows_x86/ziparchive-tests.exe;0"
     "out/soong/.intermediates/build/make/tools/ziptime/ziptime/windows_x86/ziptime.exe;1"
   )
 
   local exes_64=(
     "out/soong/.intermediates/frameworks/base/tools/aapt2/aapt2_tests/windows_x86_64/aapt2_tests.exe;0"
-    "out/soong/.intermediates/system/core/libziparchive/ziparchive-tests/windows_x86_64/ziparchive-tests.exe;0"
+    "out/soong/.intermediates/system/libziparchive/ziparchive-tests/windows_x86_64/ziparchive-tests.exe;0"
     "out/soong/.intermediates/frameworks/base/tools/split-select/libsplit-select_tests/windows_x86_64/libsplit-select_tests.exe;0"
-    "out/soong/.intermediates/system/core/base/libbase_test/windows_x86_64/libbase_test64.exe;0"
+    "out/soong/.intermediates/system/libbase/libbase_test/windows_x86_64/libbase_test64.exe;0"
     "out/soong/.intermediates/frameworks/base/tools/aapt/libaapt_tests/windows_x86_64/libaapt_tests.exe;0"
     "out/soong/.intermediates/build/soong/cc/libbuildversion/tests/build_version_test/windows_x86_64/build_version_test.exe;0"
     "out/host/windows-x86/obj64/EXECUTABLES/simpleperf_ndk_intermediates/simpleperf_ndk64.exe;0"
@@ -181,24 +175,22 @@ run_smoke_tests() {
 run_gtests() {
   # TODO Check if we add more executables
   local exes_32=(
-    # http://b/145154677 - aapt2_tests.exe fails with a segfault
-    # "out/soong/.intermediates/frameworks/base/tools/aapt2/aapt2_tests/windows_x86/aapt2_tests.exe;1"
+    "out/soong/.intermediates/frameworks/base/tools/aapt2/aapt2_tests/windows_x86/aapt2_tests.exe;1"
     # http://b/145154677 - adb is not using wmain and fails with an error.
     # "out/soong/.intermediates/system/core/adb/adb_test/windows_x86/adb_test.exe;0"
     "out/soong/.intermediates/build/soong/cc/libbuildversion/tests/build_version_test/windows_x86/build_version_test.exe;0"
     "out/soong/.intermediates/system/core/fastboot/fastboot_test/windows_x86/fastboot_test.exe;0"
     "out/soong/.intermediates/frameworks/base/tools/aapt/libaapt_tests/windows_x86/libaapt_tests.exe;0"
-    "out/soong/.intermediates/system/core/base/libbase_test/windows_x86/libbase_test32.exe;1"
+    "out/soong/.intermediates/system/libbase/libbase_test/windows_x86/libbase_test32.exe;1"
     "out/soong/.intermediates/frameworks/base/tools/split-select/libsplit-select_tests/windows_x86/libsplit-select_tests.exe;0"
-    "out/soong/.intermediates/system/core/libziparchive/ziparchive-tests/windows_x86/ziparchive-tests.exe;1"
+    "out/soong/.intermediates/system/libziparchive/ziparchive-tests/windows_x86/ziparchive-tests.exe;1"
   )
 
   local exes_64=(
-    # http://b/145154677 - aapt2_tests.exe fails with a segfault
-    # "out/soong/.intermediates/frameworks/base/tools/aapt2/aapt2_tests/windows_x86_64/aapt2_tests.exe;1"
-    "out/soong/.intermediates/system/core/libziparchive/ziparchive-tests/windows_x86_64/ziparchive-tests.exe;1"
+    "out/soong/.intermediates/frameworks/base/tools/aapt2/aapt2_tests/windows_x86_64/aapt2_tests.exe;1"
+    "out/soong/.intermediates/system/libziparchive/ziparchive-tests/windows_x86_64/ziparchive-tests.exe;1"
     "out/soong/.intermediates/frameworks/base/tools/split-select/libsplit-select_tests/windows_x86_64/libsplit-select_tests.exe;0"
-    "out/soong/.intermediates/system/core/base/libbase_test/windows_x86_64/libbase_test64.exe;1"
+    "out/soong/.intermediates/system/libbase/libbase_test/windows_x86_64/libbase_test64.exe;1"
     "out/soong/.intermediates/frameworks/base/tools/aapt/libaapt_tests/windows_x86_64/libaapt_tests.exe;0"
     "out/soong/.intermediates/build/soong/cc/libbuildversion/tests/build_version_test/windows_x86_64/build_version_test.exe;0"
   )
@@ -226,11 +218,11 @@ run_gtests() {
    Path=$TMP_DIR_32 wine out/host/windows-x86/obj/NATIVE_TESTS/simpleperf_unit_test_intermediates/simpleperf_unit_test.exe -t system/extras/simpleperf/testdata 2> /dev/null > $TMP_DIR_32/simpleperf_unit_test.exe.txt
    Path=$TMP_DIR_64 wine out/host/windows-x86/obj64/NATIVE_TESTS/simpleperf_unit_test_intermediates/simpleperf_unit_test.exe -t system/extras/simpleperf/testdata 2> /dev/null > $TMP_DIR_64/simpleperf_unit_test.exe.txt
 
-  local test=out/soong/.intermediates/system/core/libziparchive/ziparchive-tests/windows_x86/ziparchive-tests.exe
+  local test=out/soong/.intermediates/system/libziparchive/ziparchive-tests/windows_x86/ziparchive-tests.exe
   cp $test $TMP_DIR_32
   Path=$TMP_DIR_32 wine $TMP_DIR_32/`basename $test` 2> /dev/null > $TMP_DIR_32/`basename $test`.txt
 
-  local test=out/soong/.intermediates/system/core/libziparchive/ziparchive-tests/windows_x86_64/ziparchive-tests.exe
+  local test=out/soong/.intermediates/system/libziparchive/ziparchive-tests/windows_x86_64/ziparchive-tests.exe
   cp $test $TMP_DIR_64
   Path=$TMP_DIR_64 wine $TMP_DIR_64/`basename $test` 2> /dev/null > $TMP_DIR_64/`basename $test`.txt
 }
