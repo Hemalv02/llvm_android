@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 #
 # Copyright (C) 2020 The Android Open Source Project
 #
@@ -152,7 +151,7 @@ class ClangPrebuiltChange(GerritChange):
         if self.gerrit_info:
             return
 
-        utils.check_call([str(paths.SCRIPTS_DIR / 'update-prebuilts.py'),
+        utils.check_call([str(paths.LLVM_ANDROID_DIR / 'update-prebuilts.py'),
                           '-br', 'aosp-llvm-toolchain-testing',
                           '--overwrite',
                           '--host', 'linux-x86',

@@ -22,11 +22,15 @@ import argparse
 import inspect
 import logging
 import os
+import pathlib
 import sys
 import subprocess
 
-import paths
+sys.path.append(str(
+        pathlib.Path(__file__).resolve().parents[2]))
+
 import gerrit
+import paths
 import utils
 
 
