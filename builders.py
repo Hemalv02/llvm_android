@@ -65,7 +65,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
     build_android_targets: bool = False
     config_list: List[configs.Config] = [configs.host_config()]
-    use_goma_for_stage1: bool = False
 
     @property
     def llvm_targets(self) -> Set[str]:
@@ -116,13 +115,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
         return defines
-
-    @property
-    def env(self) -> Dict[str, str]:
-        env = super().env
-        if self.use_goma_for_stage1:
-            env['USE_GOMA'] = 'true'
-        return env
 
 
 class Stage2Builder(base_builders.LLVMBuilder):

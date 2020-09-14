@@ -43,13 +43,6 @@ import win_sdk
 
 ORIG_ENV = dict(os.environ)
 
-# Remove GOMA from our environment for building anything from stage2 onwards,
-# since it is using a non-GOMA compiler (from stage1) to do the compilation.
-USE_GOMA_FOR_STAGE1 = False
-if ('USE_GOMA' in ORIG_ENV) and (ORIG_ENV['USE_GOMA'] == 'true'):
-    USE_GOMA_FOR_STAGE1 = True
-    del ORIG_ENV['USE_GOMA']
-
 # TODO (Pirama): Put all the build options in a global so it's easy to refer to
 # them instead of plumbing flags through function parameters.
 BUILD_LLVM_NEXT = False
@@ -638,7 +631,6 @@ def main():
     # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
     stage1.build_lldb = build_lldb
     stage1.build_android_targets = args.debug or instrumented
-    stage1.use_goma_for_stage1 = USE_GOMA_FOR_STAGE1
     stage1.build()
     set_default_toolchain(stage1.installed_toolchain)
 
