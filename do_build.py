@@ -104,7 +104,7 @@ def build_llvm_for_windows(enable_assertions: bool,
         }
 
     win_builder.build_name = build_name
-    win_builder.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+    win_builder.svn_revision = android_version.get_svn_revision()
     win_builder.enable_assertions = enable_assertions
     win_builder.build()
 
@@ -439,7 +439,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     version_file_path = install_dir / 'AndroidVersion.txt'
     with version_file_path.open('w') as version_file:
         version_file.write(f'{version.long_version()}\n')
-        svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+        svn_revision = android_version.get_svn_revision()
         version_file.write(f'based on {svn_revision}\n')
 
     # Create RBE input files.
@@ -605,6 +605,7 @@ def main():
     # TODO (Pirama): Avoid using global statement
     global BUILD_LLVM_NEXT
     BUILD_LLVM_NEXT = args.build_llvm_next
+    android_version.set_llvm_next(BUILD_LLVM_NEXT)
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
@@ -627,7 +628,7 @@ def main():
 
     stage1 = builders.Stage1Builder()
     stage1.build_name = args.build_name
-    stage1.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+    stage1.svn_revision = android_version.get_svn_revision()
     # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
     stage1.build_lldb = build_lldb
     stage1.build_android_targets = args.debug or instrumented
@@ -642,12 +643,12 @@ def main():
         swig_builder = None
 
     if need_host:
-        profdata_filename = paths.pgo_profdata_filename(BUILD_LLVM_NEXT)
+        profdata_filename = paths.pgo_profdata_filename()
         profdata = paths.pgo_profdata_file(profdata_filename)
 
         stage2 = builders.Stage2Builder()
         stage2.build_name = args.build_name
-        stage2.svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
+        stage2.svn_revision = android_version.get_svn_revision()
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = not args.no_lto

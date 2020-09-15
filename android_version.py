@@ -14,12 +14,28 @@
 # limitations under the License.
 #
 
-patch_level = '4'
+_llvm_next = False
+_version_read = False
+
+_patch_level = '4'
 _svn_revision = 'r399163'
 # svn_revision_next will be newer than the official svn_revision in the future.
 _svn_revision_next = 'r400163'
 
-def get_svn_revision(build_llvm_next=False):
-    if build_llvm_next:
+def set_llvm_next(llvm_next: bool):
+    if _version_read:
+        raise RuntimeError('set_llvm_next() after earlier read of versions')
+    global _llvm_next
+    _llvm_next = llvm_next
+
+def get_svn_revision():
+    _version_read = True
+    if _llvm_next:
         return _svn_revision_next
     return _svn_revision
+
+def get_patch_level():
+    _version_read = True
+    if _llvm_next:
+        return None
+    return _patch_level

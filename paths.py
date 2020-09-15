@@ -68,8 +68,8 @@ KYTHE_CXX_EXTRACTOR = (PREBUILTS_DIR / 'clang-tools' / hosts.build_host().os_tag
                        'cxx_extractor')
 KYTHE_OUTPUT_DIR = OUT_DIR / 'kythe-files'
 
-def pgo_profdata_filename(llvm_next: bool=False) -> str:
-    svn_revision = android_version.get_svn_revision(llvm_next)
+def pgo_profdata_filename() -> str:
+    svn_revision = android_version.get_svn_revision()
     base_revision = svn_revision.rstrip(string.ascii_lowercase)
     return f'{base_revision}.profdata'
 

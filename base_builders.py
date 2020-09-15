@@ -376,8 +376,8 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['LLVM_ENABLE_THREADS'] = 'ON'
         defines['LLVM_USE_NEWPM'] = 'ON'
         defines['LLVM_LIBDIR_SUFFIX'] = '64'
-        defines['LLVM_VERSION_PATCH'] = android_version.patch_level
-        defines['CLANG_VERSION_PATCHLEVEL'] = android_version.patch_level
+        if patch_level := android_version.get_patch_level():
+            defines['LLVM_VERSION_PATCH'] = patch_level
         defines['CLANG_REPOSITORY_STRING'] = (
             'https://android.googlesource.com/toolchain/llvm-project')
         defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
