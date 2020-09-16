@@ -312,6 +312,12 @@
         "end_version": 402304
     },
     {
+        "comment": "[libc++] Build the dylib with -faligned-allocation",
+        "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
+        "start_version": 400107,
+        "end_version": 400234
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
