@@ -85,6 +85,10 @@ class ArgParser(argparse.ArgumentParser):
             '--repo-upload', action='store_true',
             help='Upload prebuilts CLs to gerrit using \'repo upload\'')
 
+        self.add_argument(
+            '--hashtag', metavar='HASHTAGS',
+            help='Extra hashtags (comma separated) during \'repo upload\'')
+
 
 def fetch_artifact(branch, target, build, pattern):
     fetch_artifact_path = '/google/data/ro/projects/android/fetch_artifact'
@@ -242,13 +246,17 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     utils.check_call(['git', 'commit', '-m', message])
 
 
-def repo_upload(host: str, topic: str, is_testing: bool):
+def repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
     prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
+    if hashtag:
+        hashtag = hashtag + ',' + topic
+    else:
+        hashtag = topic
     cmd = ['repo', 'upload', '.',
            '--current-branch',
            '--yes', # Answer yes to all safe prompts
            f'--push-option=topic={topic}',
-           f'--hashtag={topic}',]
+           f'--hashtag={hashtag}',]
     if is_testing:
         # -2 a testing prebuilt so we don't accidentally submit it.
         cmd.append('--label=Code-Review-2')
@@ -308,7 +316,7 @@ def main():
                 topic = topic.replace('prebuilt', 'testing-prebuilt')
 
             for host in hosts:
-                repo_upload(host, topic, is_testing)
+                repo_upload(host, topic, args.hashtag, is_testing)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
