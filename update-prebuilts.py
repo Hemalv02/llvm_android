@@ -174,7 +174,7 @@ def format_bug(bug):
 
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
-                 manifest, overwrite, do_validity_check):
+                 manifest, overwrite, do_validity_check, is_testing):
     prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
     os.chdir(prebuilt_dir)
 
@@ -238,6 +238,8 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         '',
         f'clang {clang_version} (based on {svn_revision}) from build {build_number}.'
     ]
+    if is_testing:
+        message_lines.append('Note: This prebuilt is from testing branch.')
     if bug is not None:
         message_lines.append('')
         message_lines.append(f'Bug: {format_bug(bug)}')
@@ -288,15 +290,17 @@ def main():
 
     branch = args.branch
     if branch is None:
-        git_dir = str(paths.SCRIPTS_DIR / '.git')
-        o = utils.check_output(['git', '--git-dir=' + git_dir, 'branch', '-av'])
-        branch = o.split(' ')[-1].strip().replace('/', '-')
-        # aosp/llvm-toolchain uses the branch 'aosp-master', but we really only
-        # pull prebuilts from 'aosp-llvm-toolchain' or other release branches.
-        if branch == 'aosp-master':
-            branch = 'aosp-llvm-toolchain'
+        output = utils.check_output(['/google/data/ro/projects/android/ab',
+                                     'get',
+                                     '--raw', # prevent color text
+                                     '--bid', args.build,
+                                     '--target', 'linux'])
+        # Example output is:
+        #   aosp-llvm-toolchain linux 6732143 complete True
+        branch = output.split()[0]
 
     logger().info('Using branch: %s', branch)
+    is_testing = (branch == 'aosp-llvm-toolchain-testing')
 
     try:
         if do_fetch:
@@ -307,10 +311,9 @@ def main():
         for host in hosts:
             update_clang(host, args.build, args.use_current_branch,
                          download_dir, args.bug, manifest, args.overwrite,
-                         not args.no_validity_check)
+                         not args.no_validity_check, is_testing)
 
         if args.repo_upload:
-            is_testing = (branch == 'aosp-llvm-toolchain-testing')
             topic = f'clang-prebuilt-{args.build}'
             if is_testing:
                 topic = topic.replace('prebuilt', 'testing-prebuilt')
