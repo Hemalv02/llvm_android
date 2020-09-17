@@ -17,8 +17,12 @@
 
 from pathlib import Path
 
-SCRIPTS_DIR: Path = Path(__file__).resolve().parent
-LLVM_ANDROID_DIR: Path = SCRIPTS_DIR.parents[1]
-ANDROID_DIR: Path = SCRIPTS_DIR.parents[3]
+TEST_SCRIPTS_DIR: Path = Path(__file__).resolve().parent
+LLVM_ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[1]
+ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[3]
 
-FORREST: Path = '/google/data/ro/teams/android-test/tools/forrest'
+FORREST: Path = Path('/google/data/ro/teams/android-test/tools/forrest')
+CNS_KEY_FILE: Path = Path('/google/data/ro/teams/android-llvm/tests/cns_key_file.txt')
+
+SOONG_CSV: str = 'soong_cls.csv'
+PREBUILT_CSV: str = 'prebuilt_cls.csv'

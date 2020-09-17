@@ -13,13 +13,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# pylint: disable=not-callable
+# pylint: disable=invalid-name
 """Upload and query CLs on Gerrit"""
 
-from typing import Optional, Tuple
+from typing import Any, Dict, NamedTuple
+import base64
 import contextlib
 import json
 import os
+import random
+import re
+import string
 import urllib.parse
 
 import paths
@@ -28,180 +32,136 @@ import utils
 AOSP_GERRIT_ENDPOINT = 'https://android-review.googlesource.com'
 
 
+def gerrit_request(request: str) -> str:
+    """Return JSON output of gerrit REST request.
+
+    (https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html)
+    """
+    return utils.check_output(
+        ['gob-curl', '--request', 'GET', f'{AOSP_GERRIT_ENDPOINT}/{request}'])
+
+
+def gerrit_request_json(request: str):
+    """Make gerrit request and parse the result into JSON."""
+    return json.loads(gerrit_request(request)[5:])
+
+
 def gerrit_query_change(query: str):
     """Return JSON output of gerrit changes that match 'query'.
+
     (https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html#list-changes)
     """
     quoted = urllib.parse.quote(query)
-    output = utils.check_output(['gob-curl', '--request', 'GET',
-                                 f'{AOSP_GERRIT_ENDPOINT}/changes/?q={quoted}'])
-    return json.loads(output[5:])
+    return gerrit_request_json(f'changes/?q={quoted}')
 
 
-def gerrit_set_property(cl_number: str, prop: str, payload: str):
-    """Return JSON output after updating 'prop' property of gerrit CL
-    'cl_number'.  'prop' can be any gerrit PUT endpoint
-    (https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html).
-    """
-    output = utils.check_output(['gob-curl', '--request', 'PUT',
-                                 '-H', 'Content-Type: application/json; charset=UTF-8',
-                                 '--data', payload,
-                                 f'{AOSP_GERRIT_ENDPOINT}/changes/{cl_number}/{prop}',])
-    return json.loads(output[5:])
+def gerrit_change_info(cl_number) -> Dict[str, Any]:
+    """Return JSON output for gerrit change number"""
+    json_output = gerrit_query_change(f'change:{cl_number}')
+    if len(json_output) != 1:
+        raise RuntimeError(f'Expected one output for change {cl_number}.' +
+                           'Got: ' + json.dumps(json_output, indent=4))
+    return json_output[0]
 
 
-class GerritChange():
-    """Base class for a gerrit change that is uniquely identified by a gerrit
-    change query.
-    """
-
-    def __init__(self, project: str):
-        self.project = project
-        self._ensure_exists()
-
-    def __str__(self):
-        raise NotImplementedError
-
-    def _gerrit_query(self) -> str:
-        # gerrit query that uniquely identifies the change.
-        raise NotImplementedError
-
-    def _gerrit_base_query(self) -> str:
-        # Generic parts of the gerrit search query.
-        return (f'project:platform/{self.project} ' +
-                '(status: open OR status: merged)')
-
-    def _update_gerrit_info(self) -> None:
-        json_output = gerrit_query_change(self._gerrit_query())
-        if len(json_output) > 1:
-            raise RuntimeError('Found more than one CL.\n' +
-                               json.dumps(json_output, indent=4))
-        if len(json_output) == 0:
-            self.gerrit_info = None
-        else:
-            self.gerrit_info = json_output[0]
-
-    def upload_change(self) -> None:
-        """Create and upload a change to gerrit."""
-        raise NotImplementedError
-
-    def exists(self) -> bool:
-        """Does this change exist on gerrit?"""
-        return self.gerrit_info is not None
-
-    def _ensure_exists(self) -> None:
-        """Upload change to gerrit if not present."""
-        self._update_gerrit_info()
-        if self.exists():
-            return
-
-        self.upload_change()
-        self._update_gerrit_info()
-        if not self.exists():
-            raise RuntimeError(f'Upload of {self} succeeded ' +
-                               'but unable to find it in Gerrit')
-
-    def topic(self) -> Optional[str]:
-        """Return topic of this change (or None)."""
-        if self.gerrit_info and 'topic' in self.gerrit_info:
-            return self.gerrit_info['topic']
-        return None
-
-    def change_number(self) -> Optional[str]:
-        """Return the CL number of this change (or None)."""
-        if self.gerrit_info:
-            return self.gerrit_info['_number']
-        return None
-
-    def is_merged(self) -> bool:
-        """Return if this topic is merged"""
-        if self.gerrit_info:
-            return self.gerrit_info['status'] == 'MERGED'
-        return False
-
-    def set_topic(self, topic: str) -> None:
-        change_number = self.change_number()
-        if not change_number:
-            raise RuntimeError(f'{self} doesn\'t exist on gerrit.')
-        if self.topic() == topic:
-            return
-        payload = json.dumps({'topic': topic})
-        output = gerrit_set_property(change_number, 'topic', payload)
-        if output != topic:
-            raise RuntimeError(f'Set topic to {topic} for "{self}" failed')
+PREBUILTS_PROJECT = 'platform/prebuilts/clang/host/linux-x86'
+SOONG_PROJECT = 'platform/build/soong'
 
 
-class ClangPrebuiltChange(GerritChange):
-    """Change updating clang prebuilts"""
-    PROJECT = 'prebuilts/clang/host/linux-x86'
+class PrebuiltCL(NamedTuple):
+    """Gerrit CL info for clang prebuilts for linux-x86."""
+    revision: str
+    version: str
+    build_number: str
+    cl_number: str
+    merged: bool
 
-    def __init__(self, build: str):
-        self.build = build
-        super().__init__(self.PROJECT)
+    @staticmethod
+    def getExistingCL(cl_number):
+        """Extract prebuilt CL info from an existing CL."""
+        info = gerrit_change_info(cl_number)
 
-    def __str__(self):
-        return f'Clang prebuilt from build {self.build}'
+        # Validate that the CL is in the correct project and doesn't have merge
+        # conflicts.  (It's OK for the CL to be merged though.)
+        if not info['project'].startswith(PREBUILTS_PROJECT):
+            raise RuntimeError(
+                f'Prebuilt CL {cl_number} not in {PREBUILTS_PROJECT}')
 
-    def _gerrit_query(self):
-        # commit message added by update-prebuilts.py has the string
-        # "from build <build>."
-        return self._gerrit_base_query() + f' "from build {self.build}."'
+        if info['status'] != 'MERGED':
+            mergeable_info = gerrit_request_json(
+                f'changes/{cl_number}/revisions/current/mergeable')
+            if not mergeable_info['mergeable']:
+                raise RuntimeError(
+                    f'Prebuilt CL {cl_number} has merge conflicts')
 
-    def upload_change(self):
-        if self.gerrit_info:
-            return
+        # Extract the revision, version, build from the commit message.  The
+        # prebuilts are uploaded using the update-prebuilts.py script so we can
+        # rely on it's commit message format.
+        commit = gerrit_request_json(
+            f'changes/{cl_number}/revisions/current/commit')
+        clang_info = re.search(
+            r'clang (?P<ver>\d\d.\d.\d) \(based on (?P<rev>r\d+[a-z]?)\) ' +
+            r'from build (?P<bld>\d+).', commit['message'])
+        if not clang_info:
+            raise RuntimeError('Cannot parse clang details from following ' +
+                               'commit message for CL {cl_number}:\n' +
+                               commit['message'])
+        return PrebuiltCL(
+            revision=clang_info.group('rev'),
+            version=clang_info.group('ver'),
+            build_number=clang_info.group('bld'),
+            cl_number=cl_number,
+            merged=(info['status'] == 'MERGED'))
 
-        utils.check_call([str(paths.LLVM_ANDROID_DIR / 'update-prebuilts.py'),
-                          '-br', 'aosp-llvm-toolchain-testing',
-                          '--overwrite',
-                          '--host', 'linux-x86',
-                          '--repo-upload',
-                          self.build,
-                          ])
+    @staticmethod
+    def getNewCL(build_number, branch):
+        """Upload prebuilts from a particular build number."""
 
-    def clang_info(self) -> Tuple[str, str]:
-        if not self.gerrit_info:
-            raise RuntimeError(f'{self} doesn\'t exist on gerrit.')
-        # Extract svn revision from subject, whose format is
-        # 'Update prebuilt Clang to r123456 (x.y.z).'
-        subject = self.gerrit_info['subject'].split()
-        revision = subject[4]
-        clang_version = subject[5][1:-2]
-        return (revision, clang_version)
+        # Add a random hashtag so we can discover the CL number.
+        hashtag = 'chk-' + ''.join(random.sample(string.digits, 8))
+        utils.check_call([
+            str(paths.LLVM_ANDROID_DIR / 'update-prebuilts.py'),
+            f'--branch={branch}',
+            '--overwrite',
+            '--host=linux-x86',
+            '--repo-upload',
+            f'--hashtag={hashtag}',
+            build_number,
+        ])
+
+        json_output = gerrit_query_change(f'hashtag:{hashtag}')
+        if len(json_output) != 1:
+            raise RuntimeError('Upload failed; or hashtag not unique.  ' +
+                               f'Gerrit query returned {json_output}')
+        return PrebuiltCL.getExistingCL(json_output[0]['_number'])
+
+    def equals(self, other) -> bool:
+        return self.build_number == other.build_number and \
+            self.revision == other.revision and \
+            self.version == other.version and \
+            self.build_number == other.build_number and \
+            self.cl_number == other.cl_number
 
 
-class SoongSwitchoverChange(GerritChange):
-    """Change updating clang version used in soong"""
+class SoongCL(NamedTuple):
 
-    def __init__(self, clang_build: str, clang_info: Tuple[str, str]):
-        self.clang_revision, self.clang_version = clang_info
-        self.clang_build = clang_build
-        super().__init__('build/soong')
+    revision: str
+    version: str
+    cl_number: int
 
-    def __str__(self):
-        return f'Soong switchover to build {self.clang_build} ' +\
-               f'({self.clang_revision})'
+    @staticmethod
+    def _switch_clang_version(soong_filepath, revision, version) -> None:
+        """Set Clang versions in soong_filepath."""
 
-    def _gerrit_query(self):
-        # Look for clang_build in commit message since we might test different
-        # prebuilts for the same clang_revision.
-        return (super()._gerrit_base_query() +
-                f' "Switch to clang {self.clang_revision} ' +
-                f'({self.clang_build})."')
-
-    def _switch_clang_version(self, soong_filepath) -> None:
-        """Set ClangDefaultVersion and ClangDefaultShortVersion in
-        soong_filepath
-        """
         def rewrite(line):
             # Rewrite clang info in go initialization code of the form
             # ClangDefaultVersion           = "clang-r399163"
             # ClangDefaultShortVersion      = "11.0.4"
             replace = None
             if 'ClangDefaultVersion' in line and '=' in line:
-                replace = 'clang-' + self.clang_revision
+                replace = 'clang-' + revision
             elif 'ClangDefaultShortVersion' in line and '=' in line:
-                replace = self.clang_version
+                replace = version
             if replace:
                 prefix, _, post = line.split('"')
                 return f'{prefix}"{replace}"{post}'
@@ -213,17 +173,13 @@ class SoongSwitchoverChange(GerritChange):
         with open(soong_filepath, 'w') as soong_file:
             soong_file.write(''.join(contents))
 
-    def upload_change(self):
-        if self.gerrit_info:
-            return
-
-        branch = f'clang-prebuilt-{self.clang_build}'
-        # Add clang_build in commit message since we might test different
-        # prebuilts for the same clang_revision.
-        message = (f'[DO NOT SUBMIT] Switch to clang {self.clang_revision} ' +
-                   f'({self.clang_build}).\n\n' +
-                   'For testing\n' +
-                   'Test: N/A\n')
+    @staticmethod
+    def getNewCL(revision, version):
+        """Create and upload a build/soong switchover CL."""
+        branch = f'clang-prebuilt-{revision}'
+        message = (f'[DO NOT SUBMIT] Switch to clang {revision} ' +
+                   f'{version}.\n\n' + 'For testing\n' + 'Test: N/A\n')
+        hashtag = 'chk-' + ''.join(random.sample(string.digits, 8))
 
         @contextlib.contextmanager
         def chdir_context(directory):
@@ -238,27 +194,79 @@ class SoongSwitchoverChange(GerritChange):
         #   - repo start
         #   - update clang version in soong
         #   - git commit
-        with chdir_context(paths.ANDROID_DIR / self.project):
+        with chdir_context(paths.ANDROID_DIR / 'build' / 'soong'):
             utils.unchecked_call(['repo', 'abandon', branch, '.'])
             utils.check_call(['repo', 'start', branch, '.'])
 
             soong_filepath = 'cc/config/global.go'
-            self._switch_clang_version(soong_filepath)
+            SoongCL._switch_clang_version(soong_filepath, revision, version)
             utils.check_call(['git', 'add', soong_filepath])
             utils.check_call(['git', 'commit', '-m', message])
 
-            utils.check_call(['repo', 'upload', '.',
-                              '--current-branch',
-                              '--yes', # Answer yes to all safe prompts
-                              '--wip', # work in progress
-                              '--label=Code-Review-2', # code-review -2
-                              ])
+            utils.check_call([
+                'repo',
+                'upload',
+                '.',
+                '--current-branch',
+                '--yes',  # Answer yes to all safe prompts
+                '--wip',  # work in progress
+                '--label=Code-Review-2',  # code-review -2
+                f'--hashtag={hashtag}',
+            ])
 
+        json_output = gerrit_query_change(f'hashtag:{hashtag}')
+        if len(json_output) != 1:
+            raise RuntimeError('Upload failed; or hashtag not unique.  ' +
+                               f'Gerrit query returned {json_output}')
+        return SoongCL.getExistingCL(json_output[0]['_number'], revision,
+                                     version)
 
-def get_soong_change(build: str,
-                     clang_info: Tuple[str, str]) -> SoongSwitchoverChange:
-    return SoongSwitchoverChange(build, clang_info)
+    @staticmethod
+    def _parse_clang_info(cl_number: str):
+        """Parse clang info for a CL.
 
+        Unlike prebuilts, the switchover CL may be created manually and the
+        commit message may not have the info in a deterministic format.  Use the
+        diff to cc/config/global.go to extract this info.
+        """
+        regex_rev = r'\+\tClangDefaultVersion\s+= "clang-(?P<rev>r\d+)"'
+        regex_ver = r'\+\tClangDefaultShortVersion\s+= "(?P<ver>\d\d.\d.\d)"'
 
-def get_prebuilt_change(build: str) -> ClangPrebuiltChange:
-    return ClangPrebuiltChange(build)
+        go_file = 'cc/config/global.go'
+        diff_b64 = gerrit_request(
+            f'changes/{cl_number}/revisions/current/patch?path={go_file}')
+        diff = base64.b64decode(diff_b64).decode('utf-8')
+
+        match_rev = re.search(regex_rev, diff)
+        match_ver = re.search(regex_ver, diff)
+        if match_rev is None or match_ver is None:
+            raise RuntimeError(f'Parsing clang info failed for {cl_number}')
+        return match_rev.group('rev'), match_ver.group('ver')
+
+    @staticmethod
+    def getExistingCL(cl_number, revision=None, version=None):
+        """Find/parse build/soong switchover CL info from a gerrit CL."""
+        info = gerrit_change_info(cl_number)
+
+        # Validate that the CL is in the correct project and doesn't have merge
+        # conflicts.  The CL should not be merged either.
+        if info['project'] != SOONG_PROJECT:
+            raise RuntimeError(
+                f'Switchover CL {cl_number} not in {SOONG_PROJECT}')
+
+        if info['status'] == 'MERGED':
+            raise RuntimeError(f'Switchover CL {cl_number} already merged.')
+
+        mergeable_info = gerrit_request_json(
+            f'changes/{cl_number}/revisions/current/mergeable')
+        if not mergeable_info['mergeable']:
+            raise RuntimeError(f'Soong CL {cl_number} has merge conflicts')
+
+        if revision is None or version is None:
+            revision, version = SoongCL._parse_clang_info(cl_number)
+        return SoongCL(revision=revision, version=version, cl_number=cl_number)
+
+    def equals(self, other) -> bool:
+        return self.revision == other.revision and \
+            self.version == other.version and \
+            self.cl_number == other.cl_number
