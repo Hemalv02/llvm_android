@@ -51,7 +51,7 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
     return utils.check_output(patch_manager_cmd)
 
 
-def setup_sources(source_dir, build_llvm_next):
+def setup_sources(source_dir):
     """Setup toolchain sources into source_dir.
 
     Copy toolchain/llvm-project into source_dir.

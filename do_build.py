@@ -43,10 +43,6 @@ import win_sdk
 
 ORIG_ENV = dict(os.environ)
 
-# TODO (Pirama): Put all the build options in a global so it's easy to refer to
-# them instead of plumbing flags through function parameters.
-BUILD_LLVM_NEXT = False
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -128,7 +124,7 @@ def build_runtimes(build_lldb_server: bool):
     builders.AsanMapFileBuilder().build()
 
 
-def install_wrappers(llvm_install_path: Path) -> None:
+def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
     wrapper_path = paths.OUT_DIR / 'llvm_android_wrapper'
     wrapper_build_script = paths.TOOLCHAIN_UTILS_DIR / 'compiler_wrapper' / 'build.py'
     # Note: The build script automatically determines the architecture
@@ -138,7 +134,7 @@ def install_wrappers(llvm_install_path: Path) -> None:
     utils.check_call([sys.executable, wrapper_build_script,
                       '--config=android',
                       '--use_ccache=false',
-                      '--use_llvm_next=' + str(BUILD_LLVM_NEXT).lower(),
+                      '--use_llvm_next=' + str(llvm_next).lower(),
                       f'--output_file={wrapper_path}'], env=go_env)
 
     bisect_path = paths.SCRIPTS_DIR / 'bisect_driver.py'
@@ -278,7 +274,7 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
 
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
-                      strip=True, create_tar=True):
+                      strip=True, create_tar=True, llvm_next=False):
     dist_dir = Path(ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     build_dir = toolchain_builder.install_dir
     host = toolchain_builder.config_list[0].target_os
@@ -413,7 +409,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     remove_static_libraries(lib_dir, necessary_lib_files)
 
     if not host.is_windows:
-        install_wrappers(install_dir)
+        install_wrappers(install_dir, llvm_next)
         normalize_llvm_host_libs(install_dir, host, version)
 
     # Check necessary lib files exist.
@@ -602,10 +598,7 @@ def main():
     do_strip_host_package = do_strip and not args.debug
     build_lldb = 'lldb' not in args.no_build
 
-    # TODO (Pirama): Avoid using global statement
-    global BUILD_LLVM_NEXT
-    BUILD_LLVM_NEXT = args.build_llvm_next
-    android_version.set_llvm_next(BUILD_LLVM_NEXT)
+    android_version.set_llvm_next(args.build_llvm_next)
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
@@ -620,8 +613,7 @@ def main():
                   do_runtimes, do_package, need_windows))
 
     # Clone sources to be built and apply patches.
-    source_manager.setup_sources(source_dir=paths.LLVM_PATH,
-                                 build_llvm_next=args.build_llvm_next)
+    source_manager.setup_sources(source_dir=paths.LLVM_PATH)
 
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
@@ -676,7 +668,7 @@ def main():
         if profdata is None:
             stage2_tags.append('NO PGO PROFILE')
         # Annotate the version string if this is an llvm-next build.
-        if BUILD_LLVM_NEXT:
+        if args.build_llvm_next:
             stage2_tags.append('ANDROID_LLVM_NEXT')
         stage2.build_tags = stage2_tags
 
@@ -701,7 +693,8 @@ def main():
         package_toolchain(
             stage2,
             strip=do_strip_host_package,
-            create_tar=args.create_tar)
+            create_tar=args.create_tar,
+            llvm_next=args.build_llvm_next)
 
     if do_package and need_windows:
         package_toolchain(
