@@ -29,9 +29,8 @@ _LLVM_ANDROID_PATH = paths.SCRIPTS_DIR
 _PATCH_DIR = os.path.join(_LLVM_ANDROID_PATH, 'patches')
 _PATCH_JSON = os.path.join(_PATCH_DIR, 'PATCHES.json')
 
-# strip the leading 'r' and letter suffix, e.g., r377782b => 377782
 _SVN_REVISION = (
-    android_version.get_svn_revision()[1:].rstrip(string.ascii_lowercase))
+    android_version.get_svn_revision_number()
 
 
 def get_removed_patches(output):
