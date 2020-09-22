@@ -89,9 +89,7 @@ def setup_sources(source_dir, build_llvm_next):
     # patch source tree
     patch_dir = utils.android_path('toolchain', 'llvm_android', 'patches')
     patch_json = os.path.join(patch_dir, 'PATCHES.json')
-    svn_version = android_version.get_svn_revision(build_llvm_next)
-    # strip the leading 'r' and letter suffix, e.g., r377782b => 377782
-    svn_version = svn_version[1:].rstrip(string.ascii_lowercase)
+    svn_version = android_version.get_svn_revision_number(build_llvm_next)
 
     patch_output = apply_patches(tmp_source_dir, svn_version, patch_json,
                                  patch_dir)

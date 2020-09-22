@@ -14,6 +14,8 @@
 # limitations under the License.
 #
 
+import re
+
 patch_level = '2'
 _svn_revision = 'r383902b'
 # svn_revision_next will be newer than the official svn_revision in the future.
@@ -23,3 +25,14 @@ def get_svn_revision(build_llvm_next=False):
     if build_llvm_next:
         return _svn_revision_next
     return _svn_revision
+
+
+# Get the numeric portion of the version number we are working with.
+# Strip the leading 'r' and possible letter (and number) suffix,
+# e.g., r383902b1 => 383902
+def get_svn_revision_number(build_llvm_next=False):
+    svn_version = get_svn_revision(build_llvm_next)
+    found = re.match(r'r(\d+)([a-z]\d*)?$', svn_version)
+    if not found:
+        raise RuntimeError(f'Invalid svn revision: {svn_version}')
+    return found.group(1)
