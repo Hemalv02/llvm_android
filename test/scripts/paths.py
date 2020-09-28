@@ -20,9 +20,13 @@ from pathlib import Path
 TEST_SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 LLVM_ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[1]
 ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[3]
+CONFIGS_JSON: Path = TEST_SCRIPTS_DIR / 'test_configs.json'
 
 FORREST: Path = Path('/google/data/ro/teams/android-test/tools/forrest')
-CNS_KEY_FILE: Path = Path('/google/data/ro/teams/android-llvm/tests/cns_key_file.txt')
+CNS_KEY_FILE: Path = Path(
+    '/google/data/ro/teams/android-llvm/tests/cns_key_file.txt')
 
 SOONG_CSV: str = 'soong_cls.csv'
 PREBUILT_CSV: str = 'prebuilt_cls.csv'
+FORREST_PENDING_CSV: str = 'forrest_pending.csv'
+FORREST_CSV: str = 'forrest.csv'

@@ -20,15 +20,16 @@
 from typing import NamedTuple
 import argparse
 import inspect
+import json
 import logging
 import pathlib
+import re
 import sys
 import subprocess
 
-sys.path.append(str(
-        pathlib.Path(__file__).resolve().parents[2]))
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
-from data import CNSData, PrebuiltCLRecord, SoongCLRecord
+from data import CNSData, PrebuiltCLRecord, SoongCLRecord, ForrestPendingRecord
 import gerrit
 import paths
 import utils
@@ -137,7 +138,55 @@ def prepareCLs(args):
             cl_number=soongCL.cl_number)
         CNSData.SoongCLs.addCL(soongRow)
 
-    print(f'CLs ready to test.  {prebuiltCL}\n{soongCL}')
+    cls = [soongCL]
+    if not prebuiltCL.merged:
+        cls.append(prebuiltCL)
+    return cls
+
+
+def invokeForrestRun(branch, target, cl_numbers):
+    """Submit a build/test to forrest.
+
+    TODO(pirama) Handle tests
+    """
+    cl_arg = ','.join(cl_numbers)
+    output = utils.check_output([
+        paths.FORREST,
+        '--force_cherry_pick',
+        '--gerrit_hostname=android',
+        'build',
+        f'th:cl:{cl_arg}:{target}:{branch}',
+    ])
+    match = re.search(r'http://go/forrest-run/(L[0-9]*)\x1b', output)
+    if not match:
+        raise RuntimeError('Forrest invocation id not found in output,' +
+                           f'which is\n{output}\n<END_OF_FORREST_OUTPUT>')
+    return match.group(1)
+
+
+def invokeForrestRuns(cls, args):
+    """Submit builds/tests to Forrest for provided CLs and args."""
+    build, tag = args.build, args.tag
+
+    all_configs = json.load(open(paths.CONFIGS_JSON))
+    cl_numbers = [cl.cl_number for cl in cls]
+
+    for config in all_configs:
+        branch = config['branch']
+        target = config['target']
+        if CNSData.ForrestPending.find(build, tag, branch, target) or \
+           CNSData.Forrest.find(build, tag, branch, target):
+            # Skip if this was previously scheduled.
+            print(f'Skipping already-submitted config {config}.')
+            continue
+        invocation_id = invokeForrestRun(branch, target, cl_numbers)
+        record = ForrestPendingRecord(
+            prebuilt_build_number=build,
+            invocation_id=invocation_id,
+            tag=tag,
+            branch=branch,
+            target=target)
+        CNSData.ForrestPending.addInvocation(record)
 
 
 def parse_args():
@@ -156,7 +205,17 @@ def parse_args():
         action='store_true',
         help='Prepare/validate CLs.  Don\'t initiate tests')
 
-    return parser.parse_args()
+    parser.add_argument(
+        '--tag',
+        help=('Tag to group Forrest invocations for this test ' +
+              '(and avoid duplicate submissions).'))
+
+    args = parser.parse_args()
+    if not args.prepare_only and not args.tag:
+        raise RuntimeError('Provide a --tag argument for Forrest invocations' +
+                           ' or use --prepare-only to only prepare Gerrit CLs.')
+
+    return args
 
 
 def main():
@@ -164,7 +223,11 @@ def main():
     do_prechecks()
 
     args = parse_args()
-    prepareCLs(args)
+    cls = prepareCLs(args)
+    if args.prepare_only:
+        return
+
+    invokeForrestRuns(cls, args)
 
 
 if __name__ == '__main__':
