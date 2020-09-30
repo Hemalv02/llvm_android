@@ -22,7 +22,7 @@ import io
 import subprocess
 
 import utils
-import paths
+import test_paths
 
 GFS_GROUP = 'android-llvm-toolchain'
 FILEUTIL_CMD_PREFIX = ['fileutil', '-gfs_user', GFS_GROUP]
@@ -256,9 +256,10 @@ class CNSData():
     @staticmethod
     def loadCNSData() -> None:
         """Load CSV data from CNS."""
-        cns_dir = open(paths.CNS_KEY_FILE).read().strip()
-        CNSData.Prebuilts = PrebuiltsTable(f'{cns_dir}/{paths.PREBUILT_CSV}')
-        CNSData.SoongCLs = SoongCLTable(f'{cns_dir}/{paths.SOONG_CSV}')
+        cns_dir = open(test_paths.CNS_KEY_FILE).read().strip()
+        CNSData.Prebuilts = PrebuiltsTable(
+            f'{cns_dir}/{test_paths.PREBUILT_CSV}')
+        CNSData.SoongCLs = SoongCLTable(f'{cns_dir}/{test_paths.SOONG_CSV}')
         CNSData.ForrestPending = ForrestPendingTable(
-            f'{cns_dir}/{paths.FORREST_PENDING_CSV}')
-        CNSData.Forrest = ForrestTable(f'{cns_dir}/{paths.FORREST_CSV}')
+            f'{cns_dir}/{test_paths.FORREST_PENDING_CSV}')
+        CNSData.Forrest = ForrestTable(f'{cns_dir}/{test_paths.FORREST_CSV}')

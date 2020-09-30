@@ -30,7 +30,7 @@ sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
 from data import CNSData, PrebuiltCLRecord, SoongCLRecord, ForrestPendingRecord
 import gerrit
-import paths
+import test_paths
 import utils
 
 
@@ -65,7 +65,7 @@ def do_prechecks():
     # ensure build/soong is present.
     # TODO(pirama) build/soong is only necessary if we're uploading a new CL.
     # Consider moving this deeper.
-    if not (paths.ANDROID_DIR / 'build' / 'soong').exists():
+    if not (test_paths.ANDROID_DIR / 'build' / 'soong').exists():
         raise RuntimeError('build/soong does not exist.  ' +\
                            'Execute this script in master-plus-llvm branch.')
 
@@ -145,7 +145,7 @@ def invokeForrestRun(branch, target, cl_numbers):
     """
     cl_arg = ','.join(cl_numbers)
     output = utils.check_output([
-        paths.FORREST,
+        test_paths.FORREST,
         '--force_cherry_pick',
         '--gerrit_hostname=android',
         'build',
@@ -162,7 +162,7 @@ def invokeForrestRuns(cls, args):
     """Submit builds/tests to Forrest for provided CLs and args."""
     build, tag = args.build, args.tag
 
-    all_configs = json.load(open(paths.CONFIGS_JSON))
+    all_configs = json.load(open(test_paths.CONFIGS_JSON))
     cl_numbers = [cl.cl_number for cl in cls]
 
     for config in all_configs:
