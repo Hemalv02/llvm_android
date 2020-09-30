@@ -1,0 +1,27 @@
+From 68444b06f02dc361aecdea97eccaf169ad082662 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Wed, 5 Aug 2020 16:28:44 -0700
+Subject: [PATCH 3/3] [ELF][test] Add REQUIES: x86 and -triple=x86_64 to
+ linkorder-mixed.s
+
+(cherry picked from commit eb45b978b7d646a7fb96a2734e44d03b2a066dfa)
+---
+ lld/test/ELF/linkorder-mixed.s | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/lld/test/ELF/linkorder-mixed.s b/lld/test/ELF/linkorder-mixed.s
+index 37f1f649e50..6cba0468022 100644
+--- a/lld/test/ELF/linkorder-mixed.s
++++ b/lld/test/ELF/linkorder-mixed.s
+@@ -1,6 +1,7 @@
++# REQUIRES: x86
+ ## Test that we allow SHF_LINK_ORDER sections with sh_link=0.
+ ## SHF_LINK_ORDER sections with sh_link!=0 are ordered before others.
+-# RUN: llvm-mc -filetype=obj %s -o %t.o
++# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
+ # RUN: ld.lld %t.o -o %t
+ # RUN: llvm-readelf -S -x .linkorder %t | FileCheck %s
+ 
+-- 
+2.28.0.806.g8561365e88-goog
+

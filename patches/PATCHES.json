@@ -300,6 +300,24 @@
         "end_version": 400648
     },
     {
+        "comment": "[UPSTREAM] [MC] Set sh_link to 0 if the associated symbol is undefined",
+        "rel_patch_path": "cherry/11bb7c220ccdff1ffec4780ff92fb5acec8f6f0b.patch",
+        "start_version": 399163,
+        "end_version": 401257
+    },
+    {
+        "comment": "[UPSTREAM] [ELF] Allow SHF_LINK_ORDER sections to have sh_link=0",
+        "rel_patch_path": "cherry/b216c80cc2496b87bf827260ce7e24dc62247d71.patch",
+        "start_version": 399163,
+        "end_version": 401581
+    },
+    {
+        "comment": "[UPSTREAM] [ELF][test] Add REQUIES: x86 and -triple=x86_64 to linkorder-mixed.s",
+        "rel_patch_path": "cherry/eb45b978b7d646a7fb96a2734e44d03b2a066dfa.patch",
+        "start_version": 399163,
+        "end_version": 401583
+    },
+    {
         "comment": "[UPSTREAM] [GlobalISel][InlineAsm] Fix matching input constraint to physreg",
         "rel_patch_path": "cherry/d893278bba01b0e1209e8b8accbdd5cfa75a0932.patch",
         "start_version": 399163,

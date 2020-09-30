@@ -1,0 +1,180 @@
+From 58f33db86b2f23637dc773608c3c1a2d442c9b6f Mon Sep 17 00:00:00 2001
+From: Fangrui Song <maskray@google.com>
+Date: Wed, 5 Aug 2020 16:09:41 -0700
+Subject: [PATCH 2/3] [ELF] Allow SHF_LINK_ORDER sections to have sh_link=0
+
+Part of https://bugs.llvm.org/show_bug.cgi?id=41734
+
+The semantics of SHF_LINK_ORDER have been extended to represent metadata
+sections associated with some other sections (usually text).
+
+The associated text section may be discarded (e.g. LTO) and we want the
+metadata section to have sh_link=0 (D72899, D76802).
+
+Normally the metadata section is only referenced by the associated text
+section. sh_link=0 means the associated text section is discarded, and
+the metadata section will be garbage collected. If there is another
+section (.gc_root) referencing the metadata section, the metadata
+section will be retained. It's the .gc_root consumer's job to validate
+the metadata sections.
+
+  # This creates a SHF_LINK_ORDER .meta with sh_link=0
+  .section .meta,"awo",@progbits,0
+  1:
+  .section .meta,"awo",@progbits,foo
+  2:
+
+  .section .gc_root,"a",@progbits
+  .quad 1b
+  .quad 2b
+
+Reviewed By: pcc, jhenderson
+
+Differential Revision: https://reviews.llvm.org/D72904
+
+(cherry picked from commit b216c80cc2496b87bf827260ce7e24dc62247d71)
+---
+ lld/ELF/InputFiles.cpp                        |  8 ++--
+ lld/ELF/InputSection.cpp                      |  3 +-
+ lld/ELF/Writer.cpp                            |  5 ++-
+ .../ELF/invalid/linkorder-invalid-sec2.test   | 16 --------
+ lld/test/ELF/linkorder-mixed.s                | 39 +++++++++++++++++++
+ 5 files changed, 50 insertions(+), 21 deletions(-)
+ delete mode 100644 lld/test/ELF/invalid/linkorder-invalid-sec2.test
+ create mode 100644 lld/test/ELF/linkorder-mixed.s
+
+diff --git a/lld/ELF/InputFiles.cpp b/lld/ELF/InputFiles.cpp
+index c2f1830a981..82c86614472 100644
+--- a/lld/ELF/InputFiles.cpp
++++ b/lld/ELF/InputFiles.cpp
+@@ -656,17 +656,19 @@ void ObjFile<ELFT>::initializeSections(bool ignoreComdats) {
+     if (sec.sh_type == SHT_REL || sec.sh_type == SHT_RELA)
+       this->sections[i] = createInputSection(sec);
+ 
+-    if (!(sec.sh_flags & SHF_LINK_ORDER))
++    // A SHF_LINK_ORDER section with sh_link=0 is handled as if it did not have
++    // the flag.
++    if (!(sec.sh_flags & SHF_LINK_ORDER) || !sec.sh_link)
+       continue;
+ 
+-    // .ARM.exidx sections have a reverse dependency on the InputSection they
+-    // have a SHF_LINK_ORDER dependency, this is identified by the sh_link.
+     InputSectionBase *linkSec = nullptr;
+     if (sec.sh_link < this->sections.size())
+       linkSec = this->sections[sec.sh_link];
+     if (!linkSec)
+       fatal(toString(this) + ": invalid sh_link index: " + Twine(sec.sh_link));
+ 
++    // A SHF_LINK_ORDER section is discarded if its linked-to section is
++    // discarded.
+     InputSection *isec = cast<InputSection>(this->sections[i]);
+     linkSec->dependentSections.push_back(isec);
+     if (!isa<InputSection>(linkSec))
+diff --git a/lld/ELF/InputSection.cpp b/lld/ELF/InputSection.cpp
+index 7a7ebd97490..8f475308d20 100644
+--- a/lld/ELF/InputSection.cpp
++++ b/lld/ELF/InputSection.cpp
+@@ -275,8 +275,9 @@ void InputSectionBase::parseCompressedHeader() {
+ }
+ 
+ InputSection *InputSectionBase::getLinkOrderDep() const {
+-  assert(link);
+   assert(flags & SHF_LINK_ORDER);
++  if (!link)
++    return nullptr;
+   return cast<InputSection>(file->getSections()[link]);
+ }
+ 
+diff --git a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+index b9fd03bc2ed..c0fbfd5abfe 100644
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -1606,6 +1606,9 @@ template <class ELFT> void Writer<ELFT>::sortSections() {
+ static bool compareByFilePosition(InputSection *a, InputSection *b) {
+   InputSection *la = a->getLinkOrderDep();
+   InputSection *lb = b->getLinkOrderDep();
++  // SHF_LINK_ORDER sections with non-zero sh_link are ordered before others.
++  if (!la || !lb)
++    return la && !lb;
+   OutputSection *aOut = la->getParent();
+   OutputSection *bOut = lb->getParent();
+ 
+@@ -1646,7 +1649,7 @@ template <class ELFT> void Writer<ELFT>::resolveShfLinkOrder() {
+             sections.push_back(isec);
+ 
+             InputSection *link = isec->getLinkOrderDep();
+-            if (!link->getParent())
++            if (link && !link->getParent())
+               error(toString(isec) + ": sh_link points to discarded section " +
+                     toString(link));
+           }
+diff --git a/lld/test/ELF/invalid/linkorder-invalid-sec2.test b/lld/test/ELF/invalid/linkorder-invalid-sec2.test
+deleted file mode 100644
+index f78df3fb089..00000000000
+--- a/lld/test/ELF/invalid/linkorder-invalid-sec2.test
++++ /dev/null
+@@ -1,16 +0,0 @@
+-# REQUIRES: x86
+-# RUN: yaml2obj %s -o %t.o
+-# RUN: not ld.lld %t.o -o /dev/null 2>&1 | FileCheck %s
+-# CHECK: invalid sh_link index: 0
+-
+---- !ELF
+-FileHeader:
+-  Class:           ELFCLASS64
+-  Data:            ELFDATA2LSB
+-  Type:            ET_REL
+-  Machine:         EM_X86_64
+-Sections:
+-  - Name:          .linkorder
+-    Type:          SHT_PROGBITS
+-    Flags:         [ SHF_ALLOC, SHF_EXECINSTR, SHF_LINK_ORDER ]
+-    Link:          0
+diff --git a/lld/test/ELF/linkorder-mixed.s b/lld/test/ELF/linkorder-mixed.s
+new file mode 100644
+index 00000000000..37f1f649e50
+--- /dev/null
++++ b/lld/test/ELF/linkorder-mixed.s
+@@ -0,0 +1,39 @@
++## Test that we allow SHF_LINK_ORDER sections with sh_link=0.
++## SHF_LINK_ORDER sections with sh_link!=0 are ordered before others.
++# RUN: llvm-mc -filetype=obj %s -o %t.o
++# RUN: ld.lld %t.o -o %t
++# RUN: llvm-readelf -S -x .linkorder %t | FileCheck %s
++
++# CHECK:      [Nr] Name       {{.*}} Size   ES Flg Lk Inf
++# CHECK-NEXT: [ 0]            {{.*}}
++# CHECK-NEXT: [ 1] .linkorder {{.*}} 000004 00  AL  3   0
++# CHECK-NEXT: [ 2] .ignore    {{.*}}
++# CHECK-NEXT: [ 3] .text      {{.*}}
++
++# CHECK:      Hex dump of section '.linkorder':
++# CHECK-NEXT:   [[#%x,ADDR:]] 01020003
++
++## TODO Allow non-contiguous SHF_LINK_ORDER sections in an output section.
++# RUN: llvm-mc --filetype=obj --defsym EXTRA=1 %s -o %t.o
++# RUN: not ld.lld %t.o -o /dev/null
++
++.section .text,"ax",@progbits,unique,0
++.Ltext0:
++.section .text,"ax",@progbits,unique,1
++.Ltext1:
++.section .linkorder,"ao",@progbits,0,unique,0
++  .byte 0
++.section .linkorder,"ao",@progbits,.Ltext0
++  .byte 1
++.section .linkorder,"ao",@progbits,.Ltext1
++  .byte 2
++
++.ifdef EXTRA
++.section .linkorder,"a",@progbits
++  .byte 4
++.else
++.section .ignore,"ao",@progbits,.Ltext1
++.endif
++
++.section .linkorder,"ao",@progbits,0,unique,3
++  .byte 3
+-- 
+2.28.0.806.g8561365e88-goog
+
