@@ -270,10 +270,22 @@
         "end_version": 399285
     },
     {
+        "comment": "[UPSTREAM] Remove TwoAddressInstructionPass::sink3AddrInstruction.",
+        "rel_patch_path": "cherry/60433c63acb71935111304d71e41b7ee982398f8.patch",
+        "start_version": 399163,
+        "end_version": 399458
+    },
+    {
         "comment": "[UPSTREAM] Temporarily Revert \"[AssumeBundles] Use operand bundles to encode alignment assumptions\" due to the performance bugs filed in https://bugs.llvm.org/show_bug.cgi?id=46753.",
         "rel_patch_path": "cherry/7bfaa40086359ed7e41c862ab0a65e0bb1be0aeb.patch",
         "start_version": 399163,
         "end_version": 399514
+    },
+    {
+        "comment": "[UPSTREAM] [llvm] Add contains(KeyType) -> bool methods to SmallPtrSet",
+        "rel_patch_path": "cherry/a0385bd7acd6e1d16224b4257f4cb50e59f1d75e.patch",
+        "start_version": 399163,
+        "end_version": 399638
     },
     {
         "comment": "[UPSTREAM] Revert \"[AddressSanitizer] Don't use weak linkage for __{start,stop}_asan_globals\"",
@@ -316,6 +328,12 @@
         "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
         "start_version": 400107,
         "end_version": 400234
+    },
+    {
+        "comment": "[UPSTREAM] PR47468: Fix findPHICopyInsertPoint, so that copies aren't incorrectly inserted after an INLINEASM_BR.",
+        "rel_patch_path": "cherry/f7a53d82c0902147909f28a9295a9d00b4b27d38.patch",
+        "start_version": 399163,
+        "end_version": 405613
     },
     {
         "comment": "Revert two changes that break Android builds.",
