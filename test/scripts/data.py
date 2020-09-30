@@ -57,7 +57,30 @@ class SoongCLRecord(NamedTuple):
     cl_number: str
 
 
-RecordType = TypeVar('RecordType', PrebuiltCLRecord, SoongCLRecord)
+class ForrestPendingRecord(NamedTuple):
+    """CSV Record for an in-progress forrest invocation."""
+    prebuilt_build_number: str
+    invocation_id: str
+    tag: str
+    branch: str
+    target: str
+
+
+class ForrestRecord(NamedTuple):
+    """CSV Record for a completed forrest invocation."""
+    prebuilt_build_number: str
+    invocation_id: str
+    tag: str
+    branch: str
+    target: str
+    build_number: str
+    result: str
+
+
+ForrestRecordType = TypeVar('ForrestRecordType', ForrestPendingRecord,
+                            ForrestRecord)
+RecordType = TypeVar('RecordType', PrebuiltCLRecord, SoongCLRecord,
+                     ForrestPendingRecord, ForrestRecord)
 
 
 class CSVTable(Generic[RecordType]):
@@ -74,18 +97,36 @@ class CSVTable(Generic[RecordType]):
         for row in reader:
             self.records.append(self.makeRow(row))
 
-    def add(self, record: RecordType) -> None:
-        """Add a record and write to CSV file."""
+    def add(self, record: RecordType, writeBack: bool = True) -> None:
+        """Add a record and optionally write immediately to CNS.
+
+        writeBack: CSV file in CNS is updated if this parameter is True.  Set to
+        False if updates are batched for a writeback at the end.  NOTE: Data is
+        written only if CSVTable.write() is called.
+        """
         self.records.append(record)
-        self.write()
+        if writeBack:
+            self.write()
+
+    def remove(self, record: RecordType, writeBack: bool = True) -> None:
+        """Remove a record and optionally write immediately to CNS.
+
+        writeBack: CSV file in CNS is updated if this parameter is True.  Set to
+        False if updates are batched for a writeback at the end.  NOTE: Data is
+        written only if CSVTable.write() is called.
+        """
+        if record not in self.records:
+            raise RuntimeError(f'Cannot remove non-existent record {record}')
+        self.records.remove(record)
+        if writeBack:
+            self.write()
 
     def write(self) -> None:
         """Write records back to CSV file."""
-        sorted_records = sorted(self.records)
         output = io.StringIO()
         writer = csv.writer(output, lineterminator='\n')
         writer.writerow(self.header)
-        writer.writerows(sorted_records)
+        writer.writerows(self.records)
 
         _write_cns_file(self.csvfile, output.getvalue())
 
@@ -93,8 +134,8 @@ class CSVTable(Generic[RecordType]):
         """Return records that match a filter."""
         return [r for r in self.records if filter_fn(r)]
 
-    def getOne(self,
-               filter_fn: Callable[[RecordType], bool])-> Optional[RecordType]:
+    def getOne(self, filter_fn: Callable[[RecordType],
+                                         bool]) -> Optional[RecordType]:
         """Return zero or one record that matches a filter.
 
         Raise an exception if there's more than one match.
@@ -172,10 +213,45 @@ class SoongCLTable(CSVTable[SoongCLRecord]):
         return row
 
 
+class ForrestTableBase(CSVTable[ForrestRecordType]):
+    """Base CSV table for pending and completed Forrest invocations."""
+
+    def addInvocation(self,
+                      record: ForrestRecordType,
+                      writeBack=True) -> None:
+        """Add invocation to CSV Table and optionally write back."""
+        if self.get(lambda that: that.invocation_id == record.invocation_id):
+            raise RuntimeError(f'Invocation {record} already exists')
+        self.add(record, writeBack)
+
+    def find(self, prebuilt_build_number, tag, branch,
+             target) -> Optional[ForrestRecordType]:
+        """Find Forrest invocation based on (prebuilt, tag, branch, target)."""
+        return self.getOne(lambda that:
+            that.prebuilt_build_number == prebuilt_build_number and \
+            that.branch == branch and \
+            that.target == target and \
+            that.tag == tag)
+
+    def findByInvocation(self, invocation_id) -> Optional[ForrestRecordType]:
+        """Find Forrest invocation based on invocation_id."""
+        return self.getOne(lambda that: that.invocation_id == invocation_id)
+
+
+class ForrestPendingTable(ForrestTableBase[ForrestPendingRecord]):
+    """CSV table for bookkeeping pending Forrest invocations."""
+    makeRow = ForrestPendingRecord._make
+
+class ForrestTable(ForrestTableBase[ForrestRecord]):
+    """CSV table for bookkeeping completed Forrest invocations."""
+    makeRow = ForrestRecord._make
+
 class CNSData():
     """Wrapper for CSV Data stored in CNS."""
     Prebuilts: PrebuiltsTable
     SoongCLs: SoongCLTable
+    ForrestPending: ForrestPendingTable
+    Forrest: ForrestTable
 
     @staticmethod
     def loadCNSData() -> None:
@@ -183,3 +259,6 @@ class CNSData():
         cns_dir = open(paths.CNS_KEY_FILE).read().strip()
         CNSData.Prebuilts = PrebuiltsTable(f'{cns_dir}/{paths.PREBUILT_CSV}')
         CNSData.SoongCLs = SoongCLTable(f'{cns_dir}/{paths.SOONG_CSV}')
+        CNSData.ForrestPending = ForrestPendingTable(
+            f'{cns_dir}/{paths.FORREST_PENDING_CSV}')
+        CNSData.Forrest = ForrestTable(f'{cns_dir}/{paths.FORREST_CSV}')

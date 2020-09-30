@@ -1,0 +1,51 @@
+[
+    {
+        "branch": "git_master",
+        "target": "cf_x86_phone-userdebug",
+        "groups": "x86 smoke",
+        "tests": [
+        ]
+    },
+    {
+        "branch": "git_master",
+        "target": "crosshatch-userdebug",
+        "groups": "arm64 smoke",
+        "tests": [
+        ]
+    },
+    {
+        "branch": "git_master",
+        "target": "crosshatch_hwasan-userdebug",
+        "groups": "arm64 hwasan",
+        "tests": [
+        ]
+    },
+    {
+        "branch": "git_master",
+        "target": "cf_x86_phone-userdebug_coverage",
+        "groups": "x86 coverage",
+        "tests": [
+        ]
+    },
+    {
+        "branch": "aosp-master",
+        "target": "aosp_cf_x86_phone-userdebug",
+        "groups": "x86 smoke",
+        "tests": [
+        ]
+    },
+    {
+        "branch": "aosp-master",
+        "target": "aosp_x86_64-eng",
+        "groups": "x86_64 checkbuild host_asan",
+        "tests": [
+        ]
+    },
+    {
+        "branch": "git_stage-aosp-master",
+        "target": "aosp_crosshatch-userdebug",
+        "groups": "arm64 smoke",
+        "tests": [
+        ]
+    }
+]
