@@ -25,7 +25,6 @@ import logging
 import pathlib
 import re
 import sys
-import subprocess
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -70,12 +69,7 @@ def do_prechecks():
         raise RuntimeError('build/soong does not exist.  ' +\
                            'Execute this script in master-plus-llvm branch.')
 
-    # ensure gcertstatus
-    try:
-        utils.check_call(['gcertstatus', '-quiet', '-check_remaining=1h'])
-    except subprocess.CalledProcessError:
-        print('Run prodaccess before executing this script.')
-        sys.exit(1)
+    utils.ensure_gcertstatus()
 
 
 def prepareCLs(args):

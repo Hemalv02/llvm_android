@@ -272,6 +272,9 @@ def main():
     do_fetch = not args.skip_fetch
     do_cleanup = not args.skip_cleanup
 
+    if do_fetch or args.repo_upload:
+        utils.check_gcertstatus()
+
     download_dir = os.path.realpath('.download')
     if do_fetch:
         if os.path.isdir(download_dir):

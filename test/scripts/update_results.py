@@ -87,6 +87,8 @@ class AndroidBuildClient():
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    utils.check_gcertstatus()
+
     if len(sys.argv) > 1:
         print(f'{sys.argv[0]} doesn\'t accept any arguments')
         sys.exit(1)
