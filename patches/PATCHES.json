@@ -330,6 +330,12 @@
         "end_version": 400234
     },
     {
+        "comment": "[UPSTREAM] [ARM] Skip combining base updates for vld1x NEON intrinsics",
+        "rel_patch_path": "cherry/5f1cad4d296a20025f0b3ea30d82b278ddb8779b.patch",
+        "start_version": 399163,
+        "end_version": 403816
+    },
+    {
         "comment": "[UPSTREAM] PR47468: Fix findPHICopyInsertPoint, so that copies aren't incorrectly inserted after an INLINEASM_BR.",
         "rel_patch_path": "cherry/f7a53d82c0902147909f28a9295a9d00b4b27d38.patch",
         "start_version": 399163,
