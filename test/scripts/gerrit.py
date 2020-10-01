@@ -26,7 +26,7 @@ import re
 import string
 import urllib.parse
 
-import paths
+import test_paths
 import utils
 
 AOSP_GERRIT_ENDPOINT = 'https://android-review.googlesource.com'
@@ -120,7 +120,7 @@ class PrebuiltCL(NamedTuple):
         # Add a random hashtag so we can discover the CL number.
         hashtag = 'chk-' + ''.join(random.sample(string.digits, 8))
         utils.check_call([
-            str(paths.LLVM_ANDROID_DIR / 'update-prebuilts.py'),
+            str(test_paths.LLVM_ANDROID_DIR / 'update-prebuilts.py'),
             f'--branch={branch}',
             '--overwrite',
             '--host=linux-x86',
@@ -194,7 +194,7 @@ class SoongCL(NamedTuple):
         #   - repo start
         #   - update clang version in soong
         #   - git commit
-        with chdir_context(paths.ANDROID_DIR / 'build' / 'soong'):
+        with chdir_context(test_paths.ANDROID_DIR / 'build' / 'soong'):
             utils.unchecked_call(['repo', 'abandon', branch, '.'])
             utils.check_call(['repo', 'start', branch, '.'])
 

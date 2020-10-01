@@ -74,3 +74,12 @@ def list2cmdline(args: List[str]) -> str:
     escaping rather than MSVCRT escaping.
     """
     return ' '.join([shlex.quote(os.fsdecode(arg)) for arg in args])
+
+
+def check_gcertstatus() -> None:
+    """Ensure gcert valid for > 1 hour."""
+    try:
+        check_call(['gcertstatus', '-quiet', '-check_remaining=1h'])
+    except subprocess.CalledProcessError:
+        print('Run prodaccess before executing this script.')
+        raise
