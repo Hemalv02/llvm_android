@@ -79,9 +79,8 @@ def extract_clang_version(clang_install) -> Version:
 
 
 def pgo_profdata_filename():
-    svn_revision = android_version.get_svn_revision(BUILD_LLVM_NEXT)
-    base_revision = svn_revision.rstrip(string.ascii_lowercase)
-    return '%s.profdata' % base_revision
+    svn_revision = android_version.get_svn_revision_number(BUILD_LLVM_NEXT)
+    return 'r%s.profdata' % svn_revision
 
 def pgo_profdata_file(profdata_file):
     profile = utils.android_path('prebuilts', 'clang', 'host', 'linux-x86',
