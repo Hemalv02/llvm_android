@@ -167,10 +167,9 @@ def format_bug(bug):
     formatted. If not, assume the user knows what they're doing and just return
     the string as-is.
     """
-    try:
+    if bug.isnumeric():
         return f'http://b/{bug}'
-    except ValueError:
-        return bug
+    return bug
 
 
 def update_clang(host, build_number, use_current_branch, download_dir, bug,
