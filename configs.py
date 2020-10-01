@@ -89,7 +89,7 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
 
     @property
     def cflags(self) -> List[str]:
-        cflags: List[str] = [f'-fdebug-prefix-map={paths.ANDROID_DIR}=']
+        cflags: List[str] = [f'-ffile-prefix-map={paths.ANDROID_DIR}/=']
         cflags.extend(f'-B{d}' for d in self.bin_dirs)
         return cflags
 
