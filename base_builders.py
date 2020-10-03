@@ -495,8 +495,6 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         if self.libxml2:
             defines['LLDB_ENABLE_LIBXML2'] = 'ON'
-            defines['LIBXML2_INCLUDE_DIR'] = str(self.libxml2.include_dir)
-            defines['LIBXML2_LIBRARY'] = str(self.libxml2.link_library)
         else:
             defines['LLDB_ENABLE_LIBXML2'] = 'OFF'
 
@@ -546,6 +544,11 @@ class LLVMBuilder(LLVMBaseBuilder):
                 raise RuntimeError('libcompression can be enabled for macOS 10.11 and above.')
             defines['HAVE_LIBCOMPRESSION'] = '0'
 
+        # libxml2 is used by lld and lldb.
+        if self.libxml2:
+            defines['LIBXML2_INCLUDE_DIR'] = str(self.libxml2.include_dir)
+            defines['LIBXML2_LIBRARY'] = str(self.libxml2.link_library)
+
         if self.build_lldb:
             self._set_lldb_flags(self._config.target_os, defines)
 
@@ -553,8 +556,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def install_config(self) -> None:
         super().install_config()
-        if self.build_lldb:
-            self._install_lldb_deps()
+        self._install_lldb_deps()
 
     @functools.cached_property
     def installed_toolchain(self) -> toolchains.Toolchain:
