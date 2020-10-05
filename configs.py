@@ -286,10 +286,9 @@ class AndroidConfig(_BaseConfig):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         toolchain_bin = paths.GCC_ROOT / self._toolchain_path / 'bin'
-        api_level = 10000 if self.platform else self.api_level
         cflags.append(f'--target={self.target_arch.llvm_triple}')
         cflags.append(f'-B{toolchain_bin}')
-        cflags.append(f'-D__ANDROID_API__={api_level}')
+        cflags.append(f'-D__ANDROID_API__={self.api_level}')
         cflags.append('-ffunction-sections')
         cflags.append('-fdata-sections')
         return cflags
@@ -321,6 +320,8 @@ class AndroidConfig(_BaseConfig):
     @property
     def api_level(self) -> int:
         if self.static or self.platform:
+            # Set API level for platform to to 29 since these runtimes can be
+            # used for apexes targeting that API level.
             return 29
         if self.target_arch in [hosts.Arch.ARM, hosts.Arch.I386]:
             return 16
