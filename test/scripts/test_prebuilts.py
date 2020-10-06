@@ -69,7 +69,7 @@ def do_prechecks():
         raise RuntimeError('build/soong does not exist.  ' +\
                            'Execute this script in master-plus-llvm branch.')
 
-    utils.ensure_gcertstatus()
+    utils.check_gcertstatus()
 
 
 def prepareCLs(args):
@@ -214,9 +214,9 @@ def parse_args():
 
 def main():
     logging.basicConfig(level=logging.INFO)
+    args = parse_args()
     do_prechecks()
 
-    args = parse_args()
     cls = prepareCLs(args)
     if args.prepare_only:
         return

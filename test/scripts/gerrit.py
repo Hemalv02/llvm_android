@@ -133,7 +133,7 @@ class PrebuiltCL(NamedTuple):
         if len(json_output) != 1:
             raise RuntimeError('Upload failed; or hashtag not unique.  ' +
                                f'Gerrit query returned {json_output}')
-        return PrebuiltCL.getExistingCL(json_output[0]['_number'])
+        return PrebuiltCL.getExistingCL(str(json_output[0]['_number']))
 
     def equals(self, other) -> bool:
         return self.build_number == other.build_number and \
@@ -147,7 +147,7 @@ class SoongCL(NamedTuple):
 
     revision: str
     version: str
-    cl_number: int
+    cl_number: str
 
     @staticmethod
     def _switch_clang_version(soong_filepath, revision, version) -> None:
@@ -174,11 +174,17 @@ class SoongCL(NamedTuple):
             soong_file.write(''.join(contents))
 
     @staticmethod
-    def getNewCL(revision, version):
-        """Create and upload a build/soong switchover CL."""
+    def uploadCL(revision, version, changeId=None):
+        """Upload switchover CL with provided parameters.
+
+        If changeId is not none, any existing CL with that ChangeId gets
+        updated.
+        """
         branch = f'clang-prebuilt-{revision}'
         message = (f'[DO NOT SUBMIT] Switch to clang {revision} ' +
                    f'{version}.\n\n' + 'For testing\n' + 'Test: N/A\n')
+        if changeId is not None:
+            message += (f'\nChange-Id: {changeId}\n')
         hashtag = 'chk-' + ''.join(random.sample(string.digits, 8))
 
         @contextlib.contextmanager
@@ -196,6 +202,7 @@ class SoongCL(NamedTuple):
         #   - git commit
         with chdir_context(test_paths.ANDROID_DIR / 'build' / 'soong'):
             utils.unchecked_call(['repo', 'abandon', branch, '.'])
+            utils.check_call(['repo', 'sync', '-c', '.'])
             utils.check_call(['repo', 'start', branch, '.'])
 
             soong_filepath = 'cc/config/global.go'
@@ -218,8 +225,28 @@ class SoongCL(NamedTuple):
         if len(json_output) != 1:
             raise RuntimeError('Upload failed; or hashtag not unique.  ' +
                                f'Gerrit query returned {json_output}')
-        return SoongCL.getExistingCL(json_output[0]['_number'], revision,
-                                     version)
+        return SoongCL.getExistingCL(str(json_output[0]['_number']), revision,
+                                     version, try_resolve_conflict=False)
+
+    @staticmethod
+    def _is_trivial_switchover(cl_number: str):
+        """Does this change only switch clang version strings?
+
+        Return true if every changed line contains either
+        'ClangDefaultShortVersion' or 'ClangDefaultVersion'.
+        """
+        diff_b64 = gerrit_request(
+            f'changes/{cl_number}/revisions/current/patch')
+        diff = base64.b64decode(diff_b64).decode('utf-8')
+
+        for line in diff.splitlines():
+            if line.startswith('-') or line.startswith('+'):
+                if line.startswith('---') or line.startswith('+++'):
+                    continue
+                if 'ClangDefaultVersion' not in line and \
+                    'ClangDefaultShortVersion' not in line:
+                    return False
+        return True
 
     @staticmethod
     def _parse_clang_info(cl_number: str):
@@ -244,7 +271,13 @@ class SoongCL(NamedTuple):
         return match_rev.group('rev'), match_ver.group('ver')
 
     @staticmethod
-    def getExistingCL(cl_number, revision=None, version=None):
+    def getNewCL(revision, version):
+        """Create and upload a build/soong switchover CL."""
+        return uploadCL(revision, version)
+
+    @staticmethod
+    def getExistingCL(cl_number, revision=None, version=None,
+                      try_resolve_conflict=True):
         """Find/parse build/soong switchover CL info from a gerrit CL."""
         info = gerrit_change_info(cl_number)
 
@@ -257,13 +290,24 @@ class SoongCL(NamedTuple):
         if info['status'] == 'MERGED':
             raise RuntimeError(f'Switchover CL {cl_number} already merged.')
 
+        if revision is None or version is None:
+            revision, version = SoongCL._parse_clang_info(cl_number)
+
         mergeable_info = gerrit_request_json(
             f'changes/{cl_number}/revisions/current/mergeable')
         if not mergeable_info['mergeable']:
-            raise RuntimeError(f'Soong CL {cl_number} has merge conflicts')
+            resolvable = SoongCL._is_trivial_switchover(cl_number)
+            if resolvable and try_resolve_conflict:
+                newCL = SoongCL.uploadCL(revision, version,
+                                         changeId=info['change_id'])
+                if newCL.cl_number != cl_number:
+                    raise RuntimeError(
+                        f'CL number changed from {cl_number} to ' +
+                        f'{newCL.cl_number} when resolving conflicts')
+                return newCL
+            else:
+                raise RuntimeError(f'Soong CL {cl_number} has merge conflicts')
 
-        if revision is None or version is None:
-            revision, version = SoongCL._parse_clang_info(cl_number)
         return SoongCL(revision=revision, version=version, cl_number=cl_number)
 
     def equals(self, other) -> bool:
