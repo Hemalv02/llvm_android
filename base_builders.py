@@ -58,6 +58,11 @@ class LibInfo:
         """Path to the library to install. Returns None for static library."""
         raise NotImplementedError()
 
+    @property
+    def symlinks(self) -> List[Path]:
+        """List of symlinks to the library that may need to be installed."""
+        return []
+
 
 class Builder:  # pylint: disable=too-few-public-methods
     """Base builder type."""
@@ -517,6 +522,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         for lib in (self.liblzma, self.libedit, self.libxml2):
             if lib and lib.install_library:
                 shutil.copy2(lib.install_library, lib_dir)
+                for link in lib.symlinks:
+                    shutil.copy2(link, lib_dir, follow_symlinks=False)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:

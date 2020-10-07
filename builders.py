@@ -396,7 +396,7 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         shutil.copy2(src_lib, dst_dir / libname)
 
 
-class LibEditBuilder(base_builders.AutoconfBuilder):
+class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     name: str = 'libedit'
     src_dir: Path = paths.LIBEDIT_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
@@ -517,6 +517,13 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
         if self._config.target_os.is_windows:
             return self.install_dir / 'bin' / 'libxml2.dll'
         return self.link_library
+
+    @property
+    def symlinks(self) -> List[Path]:
+        if self._config.target_os.is_windows:
+            return []
+        ext = 'so' if self._config.target_os.is_linux else 'dylib'
+        return [self.install_dir / 'lib' / f'libxml2.{ext}']
 
 
 class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
