@@ -20,7 +20,9 @@
 
 import argparse
 import inspect
+import logging
 import os
+import paths
 import subprocess
 import sys
 import utils
@@ -43,31 +45,12 @@ class ArgParser(argparse.ArgumentParser):
             help='Do not repo start a new branch for the update.')
 
 
-def update_binutils_symlink(host, prebuilt_dir, version):
-    binutils = [
-        'llvm-addr2line',
-        'llvm-ar',
-        'llvm-as',
-        'llvm-cov',
-        'llvm-dis',
-        'llvm-dwarfdump',
-        'llvm-link',
-        'llvm-modextract',
-        'llvm-nm',
-        'llvm-objcopy',
-        'llvm-objdump',
-        'llvm-profdata',
-        'llvm-ranlib',
-        'llvm-readelf',
-        'llvm-readobj',
-        'llvm-size',
-        'llvm-strings',
-        'llvm-strip',
-        'llvm-symbolizer',
-    ]
+def update_binutils_symlink(prebuilt_dir, version):
+    binutils_dir = os.path.join(prebuilt_dir, 'llvm-binutils-stable')
+    binutils = os.listdir(binutils_dir)
 
     for b in binutils:
-        symlink_path = os.path.join(prebuilt_dir, 'llvm-binutils-stable', b)
+        symlink_path = os.path.join(binutils_dir, b)
         util_rela_path = os.path.join('..', 'clang-' + version, 'bin', b)
         if os.path.exists(symlink_path):
             os.remove(symlink_path)
@@ -92,6 +75,7 @@ def do_commit(prebuilt_dir, use_cbr, version, bug_id):
 
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     args = ArgParser().parse_args()
     bug_id = args.bug
     use_cbr = args.use_current_branch
@@ -100,8 +84,8 @@ def main():
     hosts = ['darwin-x86', 'linux-x86']
 
     for host in hosts:
-        prebuilt_dir = paths.CLANG_PREBUILT_DIR.parent
-        update_binutils_symlink(host, prebuilt_dir, version)
+        prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
+        update_binutils_symlink(prebuilt_dir, version)
         do_commit(prebuilt_dir, use_cbr, version, bug_id)
 
     return 0
