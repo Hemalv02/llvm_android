@@ -23,12 +23,12 @@ import inspect
 import json
 import logging
 import pathlib
-import re
 import sys
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
 from data import CNSData, PrebuiltCLRecord, SoongCLRecord, ForrestPendingRecord
+import forrest
 import gerrit
 import test_paths
 import utils
@@ -138,26 +138,6 @@ def prepareCLs(args):
     return cls
 
 
-def invokeForrestRun(branch, target, cl_numbers):
-    """Submit a build/test to forrest.
-
-    TODO(pirama) Handle tests
-    """
-    cl_arg = ','.join(cl_numbers)
-    output = utils.check_output([
-        test_paths.FORREST,
-        '--force_cherry_pick',
-        '--gerrit_hostname=android',
-        'build',
-        f'th:cl:{cl_arg}:{target}:{branch}',
-    ])
-    match = re.search(r'http://go/forrest-run/(L[0-9]*)\x1b', output)
-    if not match:
-        raise RuntimeError('Forrest invocation id not found in output,' +
-                           f'which is\n{output}\n<END_OF_FORREST_OUTPUT>')
-    return match.group(1)
-
-
 def invokeForrestRuns(cls, args):
     """Submit builds/tests to Forrest for provided CLs and args."""
     build, tag = args.build, args.tag
@@ -168,12 +148,14 @@ def invokeForrestRuns(cls, args):
     for config in all_configs:
         branch = config['branch']
         target = config['target']
+        tests = config['tests']
         if CNSData.ForrestPending.find(build, tag, branch, target) or \
            CNSData.Forrest.find(build, tag, branch, target):
             # Skip if this was previously scheduled.
             print(f'Skipping already-submitted config {config}.')
             continue
-        invocation_id = invokeForrestRun(branch, target, cl_numbers)
+        invocation_id = forrest.invokeForrestRun(branch, target, cl_numbers,
+                                                 tests, args.tag)
         record = ForrestPendingRecord(
             prebuilt_build_number=build,
             invocation_id=invocation_id,

@@ -256,10 +256,10 @@ class CNSData():
     @staticmethod
     def loadCNSData() -> None:
         """Load CSV data from CNS."""
-        cns_dir = open(test_paths.CNS_KEY_FILE).read().strip()
+        cns_path = test_paths.cns_path()
         CNSData.Prebuilts = PrebuiltsTable(
-            f'{cns_dir}/{test_paths.PREBUILT_CSV}')
-        CNSData.SoongCLs = SoongCLTable(f'{cns_dir}/{test_paths.SOONG_CSV}')
+            f'{cns_path}/{test_paths.PREBUILT_CSV}')
+        CNSData.SoongCLs = SoongCLTable(f'{cns_path}/{test_paths.SOONG_CSV}')
         CNSData.ForrestPending = ForrestPendingTable(
-            f'{cns_dir}/{test_paths.FORREST_PENDING_CSV}')
-        CNSData.Forrest = ForrestTable(f'{cns_dir}/{test_paths.FORREST_CSV}')
+            f'{cns_path}/{test_paths.FORREST_PENDING_CSV}')
+        CNSData.Forrest = ForrestTable(f'{cns_path}/{test_paths.FORREST_CSV}')

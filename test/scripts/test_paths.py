@@ -21,12 +21,30 @@ TEST_SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 LLVM_ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[1]
 ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[3]
 CONFIGS_JSON: Path = TEST_SCRIPTS_DIR / 'test_configs.json'
+CLUSTER_INFO_YAML: Path = TEST_SCRIPTS_DIR / 'cluster_info.yaml'
 
 FORREST: Path = Path('/google/data/ro/teams/android-test/tools/forrest')
 CNS_KEY_FILE: Path = Path(
     '/google/data/ro/teams/android-llvm/tests/cns_key_file.txt')
+GCL_KEY_FILE: Path = Path(
+    '/google/data/ro/teams/android-llvm/tests/gcl_key_file.txt')
 
 SOONG_CSV: str = 'soong_cls.csv'
 PREBUILT_CSV: str = 'prebuilt_cls.csv'
 FORREST_PENDING_CSV: str = 'forrest_pending.csv'
 FORREST_CSV: str = 'forrest.csv'
+
+
+def _read_key_file(key_file: Path) -> str:
+    with open(key_file) as infile:
+        return infile.read().strip()
+
+
+def cns_path() -> str:
+    """Read path to CNS testdata from CNS_KEY_FILE."""
+    return _read_key_file(CNS_KEY_FILE)
+
+
+def gcl_path() -> str:
+    """Read path to testbench GCLs from GCL_KEY_FILE."""
+    return _read_key_file(GCL_KEY_FILE)
