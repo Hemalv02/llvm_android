@@ -15,6 +15,7 @@
 #
 # pylint: disable=not-callable
 
+import contextlib
 import datetime
 import logging
 import os
@@ -83,3 +84,13 @@ def check_gcertstatus() -> None:
     except subprocess.CalledProcessError:
         print('Run prodaccess before executing this script.')
         raise
+
+
+@contextlib.contextmanager
+def chdir_context(directory):
+    prev_dir = os.getcwd()
+    try:
+        os.chdir(directory)
+        yield
+    finally:
+        os.chdir(prev_dir)
