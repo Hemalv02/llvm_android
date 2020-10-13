@@ -83,9 +83,11 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
-        # Point CMake to the libc++.so from the prebuilts.  Install an rpath
-        # to prevent linking with the newly-built libc++.so
-        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        # Use -static-libstdc++ to statically link the c++ runtime [1].  This
+        # avoids specifying self.toolchain.lib_dir in rpath to find libc++ at
+        # runtime.
+        # [1] libc++ in our case, despite the flag saying -static-libstdc++.
+        ldflags.append('-static-libstdc++')
         return ldflags
 
     @property
