@@ -27,11 +27,13 @@ diff --git a/clang/tools/CMakeLists.txt b/clang/tools/CMakeLists.txt
 index 223f1f74f3f..1197b5793de 100644
 --- a/clang/tools/CMakeLists.txt
 +++ b/clang/tools/CMakeLists.txt
-@@ -39,3 +39,4 @@ add_llvm_external_project(clang-tools-extra extra)
+@@ -39,3 +39,6 @@ add_llvm_external_project(clang-tools-extra extra)
  
  # libclang may require clang-tidy in clang-tools-extra.
  add_clang_subdirectory(libclang)
-+add_clang_subdirectory(libclang-cxx)
++if(NOT (CMAKE_SYSTEM_NAME MATCHES "Windows"))
++  add_clang_subdirectory(libclang-cxx)
++endif()
 diff --git a/clang/tools/libclang-cxx/CMakeLists.txt b/clang/tools/libclang-cxx/CMakeLists.txt
 new file mode 100644
 index 00000000000..04cf404b667

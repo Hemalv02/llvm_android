@@ -405,6 +405,12 @@
         "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
         "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v2.patch",
         "start_version": 390410,
+        "end_version": 404259
+    },
+    {
+        "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
+        "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v3.patch",
+        "start_version": 404259,
         "end_version": null
     },
     {
