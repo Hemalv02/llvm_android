@@ -1,0 +1,8 @@
+crosshatch:
+    cluster: apct
+    run_target: crosshatch
+    test_bench_gcl: apct/crosshatch.gcl
+cf_x86_phone:
+    cluster: dockerized-tf-gke
+    run_target: TcpDevice
+    test_bench_gcl: cloud_tf/avd-cf.gcl
