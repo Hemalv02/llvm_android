@@ -619,7 +619,7 @@ def main():
     instrumented = hosts.build_host().is_linux and args.build_instrumented
 
     stage1 = builders.Stage1Builder()
-    stage1.build_name = args.build_name
+    stage1.build_name = 'stage1'
     stage1.svn_revision = android_version.get_svn_revision()
     # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
     stage1.build_lldb = build_lldb

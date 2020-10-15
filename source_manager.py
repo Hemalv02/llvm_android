@@ -17,6 +17,7 @@
 Package to manage LLVM sources when building a toolchain.
 """
 
+from pathlib import Path
 import os
 import shutil
 import string
@@ -112,3 +113,42 @@ def setup_sources(source_dir):
                                tmp_source_dir_str, source_dir])
 
         shutil.rmtree(tmp_source_dir)
+    try_set_git_remote(source_dir)
+
+
+def try_set_git_remote(source_dir):
+    AOSP_URL = 'https://android.googlesource.com/toolchain/llvm-project'
+
+    def get_git_remote_url(remote=None):
+        try:
+            if not remote:
+                remote = utils.check_output([
+                    'git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name',
+                    '@{upstream}'
+                ]).strip()
+                remote = remote.split('/')[0]
+            url = utils.check_output(['git', 'remote', 'get-url',
+                                      remote]).strip()
+            return (remote, url)
+        except:
+            return (remote, None)
+
+    with utils.chdir_context(source_dir / '.git'):
+        remote, url = get_git_remote_url()
+        if url != AOSP_URL:
+            if not remote:
+                remote = 'origin'
+            try:
+                if Path('config').is_symlink():
+                    link = utils.check_output(['readlink', 'config']).strip()
+                    utils.check_call(['rm', '-f', 'config'])
+                    utils.check_call(['cp', link, 'config'])
+                if remote:
+                    utils.check_call(
+                        ['git', 'remote', 'set-url', remote, AOSP_URL])
+                else:
+                    utils.check_call(['git', 'remote', 'add', remote, AOSP_URL])
+                remote, url = get_git_remote_url(remote)
+            except:
+                pass
+    print(f'git remote for {remote} is {url}')
