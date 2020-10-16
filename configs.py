@@ -113,6 +113,11 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
         """Paths to libraries used in ldflags."""
         return []
 
+    def get_linker(self, toolchain: toolchains.Toolchain) -> Optional[Path]:
+        if self.use_lld:
+            return toolchain.lld
+        return None
+
 
 class DarwinConfig(_BaseConfig):
     """Configuration for Darwin targets."""
@@ -204,7 +209,7 @@ class MSVCConfig(Config):
         return toolchain.cl
 
     def get_linker(self, toolchain: toolchains.Toolchain) -> Optional[Path]:
-        return toolchain.path / 'bin' / 'lld-link'
+        return toolchain.lld_link
 
     @functools.cached_property
     def _read_env_setting(self) -> Dict[str, str]:

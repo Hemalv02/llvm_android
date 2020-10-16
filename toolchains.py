@@ -53,6 +53,16 @@ class Toolchain:
         return self.path / 'bin' / 'llvm-ar'
 
     @property
+    def lld(self) -> Path:
+        """Returns the path to ld.lld."""
+        return self.path / 'bin' / 'ld.lld'
+
+    @property
+    def lld_link(self) -> Path:
+        """Returns the path to lld-link."""
+        return self.path / 'bin' / 'lld-link'
+
+    @property
     def rc(self) -> Path:
         """
         Returns the path to MinGW windres.
