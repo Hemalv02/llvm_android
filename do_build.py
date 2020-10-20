@@ -377,6 +377,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         if binary.is_file():
             if binary.name not in necessary_bin_files:
                 binary.unlink()
+            elif binary.is_symlink():
+                continue
             elif strip and binary.name not in script_bins:
                 # Strip all non-global symbols and debug info.
                 # These specific flags prevent Darwin executables from being
