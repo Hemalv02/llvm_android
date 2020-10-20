@@ -360,6 +360,12 @@
         "end_version": 405613
     },
     {
+        "comment": "Driver: Add integer sanitizers to trapping group automatically.",
+        "rel_patch_path": "cherry/c5acd3490b79703426931f7b88b544fe7c6e1ef2.patch",
+        "start_version": 403758,
+        "end_version": 408516
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
