@@ -96,7 +96,6 @@ def build_llvm_for_windows(enable_assertions: bool,
         win_builder.liblzma = xz_builder
 
         lldb_bins.add('liblldb.dll')
-        lldb_bins.add('python38.dll')
 
     win_builder.build_name = build_name
     win_builder.svn_revision = android_version.get_svn_revision()

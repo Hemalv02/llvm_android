@@ -226,10 +226,13 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def install_config(self) -> None:
         super().install_config()
         lldb_wrapper_path = self.install_dir / 'bin' / 'lldb.sh'
-        lldb_wrapper_path.write_text(textwrap.dedent("""\
+        lib_path_env = 'LD_LIBRARY_PATH' if self._config.target_os.is_linux else 'DYLD_LIBRARY_PATH'
+        lldb_wrapper_path.write_text(textwrap.dedent(f"""\
             #!/bin/bash
             CURDIR=$(cd $(dirname $0) && pwd)
-            PYTHONHOME="$CURDIR/../python3" "$CURDIR/lldb" "$@"
+            export PYTHONHOME="$CURDIR/../python3"
+            export {lib_path_env}="$CURDIR/../python3/lib:${lib_path_env}"
+            "$CURDIR/lldb" "$@"
         """))
         lldb_wrapper_path.chmod(0o755)
 
@@ -861,6 +864,7 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         lldb_wrapper_path.write_text(textwrap.dedent("""\
             @ECHO OFF
             SET PYTHONHOME=%~dp0..\python3
+            SET PATH=%~dp0..\python3;%PATH%
             %~dp0lldb.exe %*
-            IF NOT [%ERRORLEVEL%] == [0] EXIT /B 1
+            EXIT /B %ERRORLEVEL%
         """))
