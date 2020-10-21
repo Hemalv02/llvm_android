@@ -519,11 +519,6 @@ class LLVMBuilder(LLVMBaseBuilder):
                             ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
                                                           '.git', '.gitignore'))
 
-            py_lib = paths.get_python_dynamic_lib(self._config.target_os).relative_to(python_prebuilt_dir)
-            dest_py_lib = python_dest_dir / py_lib
-            py_lib_rel = os.path.relpath(dest_py_lib, lib_dir)
-            os.symlink(py_lib_rel, lib_dir / py_lib.name)
-
         for lib in (self.liblzma, self.libedit, self.libxml2):
             if lib and lib.install_library:
                 shutil.copy2(lib.install_library, lib_dir)
