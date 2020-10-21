@@ -24,7 +24,8 @@ package main
 
 // TODO: Enable test in config_test.go, once we have new llvm-next flags.
 var llvmNextFlags = []string{
-	"-fcommon", // http://b/151457797
 }
 
-var llvmNextPostFlags = []string{}
+var llvmNextPostFlags = []string{
+	"-fno-sanitize=unsigned-shift-base", // http://b/171275751
+}
