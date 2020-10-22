@@ -17,6 +17,7 @@
 Package to manage LLVM sources when building a toolchain.
 """
 
+import logging
 from pathlib import Path
 import os
 import shutil
@@ -28,6 +29,11 @@ import android_version
 import hosts
 import paths
 import utils
+
+
+def logger():
+    """Returns the module level logger."""
+    return logging.getLogger(__name__)
 
 
 def apply_patches(source_dir, svn_version, patch_json, patch_dir,
@@ -94,7 +100,7 @@ def setup_sources(source_dir):
 
     patch_output = apply_patches(tmp_source_dir, svn_version, patch_json,
                                  patch_dir)
-    print(patch_output)
+    logger().info(patch_output)
 
     # Copy tmp_source_dir to source_dir if they are different.  This avoids
     # invalidating prior build outputs.
@@ -113,7 +119,8 @@ def setup_sources(source_dir):
                                tmp_source_dir_str, source_dir])
 
         shutil.rmtree(tmp_source_dir)
-    try_set_git_remote(source_dir)
+    remote, url = try_set_git_remote(source_dir)
+    logger().info(f'git remote url: remote: {remote} url: {url}')
 
 
 def try_set_git_remote(source_dir):
@@ -133,7 +140,11 @@ def try_set_git_remote(source_dir):
         except:
             return (remote, None)
 
-    with utils.chdir_context(source_dir / '.git'):
+    git_dir = source_dir / '.git'
+    if not git_dir.is_dir():
+        return (None, None)
+
+    with utils.chdir_context(git_dir):
         remote, url = get_git_remote_url()
         if url != AOSP_URL:
             if not remote:
@@ -151,4 +162,4 @@ def try_set_git_remote(source_dir):
                 remote, url = get_git_remote_url(remote)
             except:
                 pass
-    print(f'git remote for {remote} is {url}')
+    return (remote, url)
