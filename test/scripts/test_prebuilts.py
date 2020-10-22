@@ -34,6 +34,18 @@ import test_paths
 import utils
 
 
+def _find_groups(all_configs):
+    groups = set()
+    for config in all_configs:
+        for group in config['groups'].split():
+            groups.add(group)
+    return groups
+
+
+TEST_CONFIGS = json.load(open(test_paths.CONFIGS_JSON))
+TEST_GROUPS = _find_groups(TEST_CONFIGS)
+
+
 class ToolchainBuild(NamedTuple):
     """Record of a toolchain build."""
     build_number: str
@@ -142,10 +154,22 @@ def invokeForrestRuns(cls, args):
     """Submit builds/tests to Forrest for provided CLs and args."""
     build, tag = args.build, args.tag
 
-    all_configs = json.load(open(test_paths.CONFIGS_JSON))
     cl_numbers = [cl.cl_number for cl in cls]
 
-    for config in all_configs:
+    to_run = set(args.groups) if args.groups else set()
+
+    def _should_run(test_groups):
+        if not to_run:
+            # if args.groups is empty, run all tests (note: some tests may not
+            # be part of any group.)
+            return True
+        # Run test if it is a part of a group specified in args.groups
+        return any(g in to_run for g in test_groups.split())
+
+    for config in TEST_CONFIGS:
+        if not _should_run(config['groups']):
+            print(f'Skipping disabled config {config}')
+            continue
         branch = config['branch']
         target = config['target']
         tests = config['tests']
@@ -185,6 +209,14 @@ def parse_args():
         '--tag',
         help=('Tag to group Forrest invocations for this test ' +
               '(and avoid duplicate submissions).'))
+
+    parser.add_argument(
+        '--groups',
+        metavar='GROUP',
+        choices=TEST_GROUPS,
+        nargs='+',
+        action='extend',
+        help=f'Run tests from specified groups.  Choices: {TEST_GROUPS}')
 
     args = parser.parse_args()
     if not args.prepare_only and not args.tag:
