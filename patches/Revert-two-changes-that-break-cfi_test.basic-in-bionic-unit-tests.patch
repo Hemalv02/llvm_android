@@ -1,0 +1,322 @@
+From e09c6303af2037206d4333c6bf007dd21912b656 Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Sun, 25 Oct 2020 21:30:12 -0700
+Subject: Revert two changes that break cfi_test.basic in bionic-unit-tests
+
+3a3c9519e "[InstCombine] Negator: 0 - (X + Y)  -->  (-X) - Y  iff a single operand negated"
+f5df5cd55 "Recommit "[InstCombine] Negator: -(X << C) -->  X * (-1 << C)""
+
+The second commit triggers the failure and the first commit depends on the
+second one.
+---
+ .../InstCombine/InstCombineNegator.cpp        | 43 ++++---------------
+ .../CodeGen/AMDGPU/reqd-work-group-size.ll    | 17 ++++----
+ llvm/test/Transforms/InstCombine/icmp.ll      |  3 +-
+ llvm/test/Transforms/InstCombine/sub-gep.ll   | 10 ++---
+ .../InstCombine/sub-of-negatible.ll           | 10 ++---
+ llvm/test/Transforms/InstCombine/sub.ll       | 37 ++++++++--------
+ 6 files changed, 48 insertions(+), 72 deletions(-)
+
+diff --git a/llvm/lib/Transforms/InstCombine/InstCombineNegator.cpp b/llvm/lib/Transforms/InstCombine/InstCombineNegator.cpp
+index bfecfe98a59..56d27d81f99 100644
+--- a/llvm/lib/Transforms/InstCombine/InstCombineNegator.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineNegator.cpp
+@@ -333,16 +333,10 @@ LLVM_NODISCARD Value *Negator::visitImpl(Value *V, unsigned Depth) {
+   }
+   case Instruction::Shl: {
+     // `shl` is negatible if the first operand is negatible.
+-    if (Value *NegOp0 = negate(I->getOperand(0), Depth + 1))
+-      return Builder.CreateShl(NegOp0, I->getOperand(1), I->getName() + ".neg");
+-    // Otherwise, `shl %x, C` can be interpreted as `mul %x, 1<<C`.
+-    auto *Op1C = dyn_cast<Constant>(I->getOperand(1));
+-    if (!Op1C) // Early return.
++    Value *NegOp0 = negate(I->getOperand(0), Depth + 1);
++    if (!NegOp0) // Early return.
+       return nullptr;
+-    return Builder.CreateMul(
+-        I->getOperand(0),
+-        ConstantExpr::getShl(Constant::getAllOnesValue(Op1C->getType()), Op1C),
+-        I->getName() + ".neg");
++    return Builder.CreateShl(NegOp0, I->getOperand(1), I->getName() + ".neg");
+   }
+   case Instruction::Or:
+     if (!haveNoCommonBitsSet(I->getOperand(0), I->getOperand(1), DL, &AC, I,
+@@ -356,32 +350,13 @@ LLVM_NODISCARD Value *Negator::visitImpl(Value *V, unsigned Depth) {
+     LLVM_FALLTHROUGH;
+   case Instruction::Add: {
+     // `add` is negatible if both of its operands are negatible.
+-    SmallVector<Value *, 2> NegatedOps, NonNegatedOps;
+-    for (Value *Op : I->operands()) {
+-      // Can we sink the negation into this operand?
+-      if (Value *NegOp = negate(Op, Depth + 1)) {
+-        NegatedOps.emplace_back(NegOp); // Successfully negated operand!
+-        continue;
+-      }
+-      // Failed to sink negation into this operand. IFF we started from negation
+-      // and we manage to sink negation into one operand, we can still do this.
+-      if (!IsTrulyNegation)
+-        return nullptr;
+-      NonNegatedOps.emplace_back(Op); // Just record which operand that was.
+-    }
+-    assert((NegatedOps.size() + NonNegatedOps.size()) == 2 &&
+-           "Internal consistency sanity check.");
+-    // Did we manage to sink negation into both of the operands?
+-    if (NegatedOps.size() == 2) // Then we get to keep the `add`!
+-      return Builder.CreateAdd(NegatedOps[0], NegatedOps[1],
+-                               I->getName() + ".neg");
+-    assert(IsTrulyNegation && "We should have early-exited then.");
+-    // Completely failed to sink negation?
+-    if (NonNegatedOps.size() == 2)
++    Value *NegOp0 = negate(I->getOperand(0), Depth + 1);
++    if (!NegOp0) // Early return.
+       return nullptr;
+-    // 0-(a+b) --> (-a)-b
+-    return Builder.CreateSub(NegatedOps[0], NonNegatedOps[0],
+-                             I->getName() + ".neg");
++    Value *NegOp1 = negate(I->getOperand(1), Depth + 1);
++    if (!NegOp1)
++      return nullptr;
++    return Builder.CreateAdd(NegOp0, NegOp1, I->getName() + ".neg");
+   }
+   case Instruction::Xor:
+     // `xor` is negatible if one of its operands is invertible.
+diff --git a/llvm/test/CodeGen/AMDGPU/reqd-work-group-size.ll b/llvm/test/CodeGen/AMDGPU/reqd-work-group-size.ll
+index 40b1db00dcd..1e69d455135 100644
+--- a/llvm/test/CodeGen/AMDGPU/reqd-work-group-size.ll
++++ b/llvm/test/CodeGen/AMDGPU/reqd-work-group-size.ll
+@@ -149,7 +149,7 @@ define amdgpu_kernel void @use_local_size_z_8_16_2(i64 addrspace(1)* %out) #0 !r
+ 
+ ; CHECK-LABEL: @local_size_x_8_16_2_wrong_group_id(
+ ; CHECK: %group.id = tail call i32 @llvm.amdgcn.workgroup.id.y()
+-; CHECK: %group.id_x_group.size.x.neg = mul i32 %group.id, -8
++; CHECK: %group.id_x_group.size.x = shl i32 %group.id, 3
+ define amdgpu_kernel void @local_size_x_8_16_2_wrong_group_id(i64 addrspace(1)* %out) #0 !reqd_work_group_size !0 {
+   %dispatch.ptr = tail call i8 addrspace(4)* @llvm.amdgcn.dispatch.ptr()
+   %gep.group.size.x = getelementptr inbounds i8, i8 addrspace(4)* %dispatch.ptr, i64 4
+@@ -172,7 +172,8 @@ define amdgpu_kernel void @local_size_x_8_16_2_wrong_group_id(i64 addrspace(1)*
+ ; CHECK-LABEL: @local_size_x_8_16_2_wrong_grid_size(
+ ; CHECK: %grid.size.x = load i32, i32 addrspace(4)* %gep.grid.size.x.bc, align 4
+ ; CHECK: %group.id = tail call i32 @llvm.amdgcn.workgroup.id.x()
+-; CHECK: %group.id_x_group.size.x.neg = mul i32 %group.id, -8
++; CHECK: %group.id_x_group.size.x = shl i32 %group.id, 3
++; CHECK: %sub = sub i32 %grid.size.x, %group.id_x_group.size.x
+   define amdgpu_kernel void @local_size_x_8_16_2_wrong_grid_size(i64 addrspace(1)* %out) #0 !reqd_work_group_size !0 {
+   %dispatch.ptr = tail call i8 addrspace(4)* @llvm.amdgcn.dispatch.ptr()
+   %gep.group.size.x = getelementptr inbounds i8, i8 addrspace(4)* %dispatch.ptr, i64 4
+@@ -195,8 +196,8 @@ define amdgpu_kernel void @local_size_x_8_16_2_wrong_group_id(i64 addrspace(1)*
+ ; CHECK-LABEL: @local_size_x_8_16_2_wrong_cmp_type(
+ ; CHECK: %grid.size.x = load i32, i32 addrspace(4)* %gep.grid.size.x.bc, align 4
+ ; CHECK: %group.id = tail call i32 @llvm.amdgcn.workgroup.id.x()
+-; CHECK: %group.id_x_group.size.x.neg = mul i32 %group.id, -8
+-; CHECK: %sub = add i32 %group.id_x_group.size.x.neg, %grid.size.x
++; CHECK: %group.id_x_group.size.x = shl i32 %group.id, 3
++; CHECK: %sub = sub i32 %grid.size.x, %group.id_x_group.size.x
+ ; CHECK: %cmp = icmp slt i32 %sub, 8
+ ; CHECK: %select = select i1 %cmp, i32 %sub, i32 8
+ define amdgpu_kernel void @local_size_x_8_16_2_wrong_cmp_type(i64 addrspace(1)* %out) #0 !reqd_work_group_size !0 {
+@@ -219,8 +220,8 @@ define amdgpu_kernel void @local_size_x_8_16_2_wrong_cmp_type(i64 addrspace(1)*
+ }
+ 
+ ; CHECK-LABEL: @local_size_x_8_16_2_wrong_select(
+-; CHECK: %group.id_x_group.size.x.neg = mul i32 %group.id, -8
+-; CHECK: %sub = add i32 %group.id_x_group.size.x.neg, %grid.size.x
++; CHECK: %group.id_x_group.size.x = shl i32 %group.id, 3
++; CHECK: %sub = sub i32 %grid.size.x, %group.id_x_group.size.x
+ ; CHECK: %1 = icmp ugt i32 %sub, 8
+ ; CHECK: %select = select i1 %1, i32 %sub, i32 8
+ ; CHECK: %zext = zext i32 %select to i64
+@@ -247,8 +248,8 @@ define amdgpu_kernel void @local_size_x_8_16_2_wrong_select(i64 addrspace(1)* %o
+ ; CHECK: %grid.size.x = load i16, i16 addrspace(4)* %gep.grid.size.x.bc, align 4
+ ; CHECK: %grid.size.x.zext = zext i16 %grid.size.x to i32
+ ; CHECK: %group.id = tail call i32 @llvm.amdgcn.workgroup.id.x()
+-; CHECK: %group.id_x_group.size.x.neg = mul i32 %group.id, -8
+-; CHECK: %sub = add i32 %group.id_x_group.size.x.neg, %grid.size.x.zext
++; CHECK: %group.id_x_group.size.x = shl i32 %group.id, 3
++; CHECK: %sub = sub i32 %grid.size.x.zext, %group.id_x_group.size.x
+ define amdgpu_kernel void @use_local_size_x_8_16_2_wrong_grid_load_size(i64 addrspace(1)* %out) #0 !reqd_work_group_size !0 {
+   %dispatch.ptr = tail call i8 addrspace(4)* @llvm.amdgcn.dispatch.ptr()
+   %gep.group.size.x = getelementptr inbounds i8, i8 addrspace(4)* %dispatch.ptr, i64 4
+diff --git a/llvm/test/Transforms/InstCombine/icmp.ll b/llvm/test/Transforms/InstCombine/icmp.ll
+index 3b223d71f9d..9e1bbcbd83a 100644
+--- a/llvm/test/Transforms/InstCombine/icmp.ll
++++ b/llvm/test/Transforms/InstCombine/icmp.ll
+@@ -512,8 +512,7 @@ define i1 @test24(i64 %i) {
+ ; unsigned overflow does not happen during offset computation
+ define i1 @test24_neg_offs(i32* %p, i64 %offs) {
+ ; CHECK-LABEL: @test24_neg_offs(
+-; CHECK-NEXT:    [[P1_IDX_NEG:%.*]] = mul i64 [[OFFS:%.*]], -4
+-; CHECK-NEXT:    [[CMP:%.*]] = icmp eq i64 [[P1_IDX_NEG]], 8
++; CHECK-NEXT:    [[CMP:%.*]] = icmp eq i64 [[OFFS:%.*]], -2
+ ; CHECK-NEXT:    ret i1 [[CMP]]
+ ;
+   %p1 = getelementptr inbounds i32, i32* %p, i64 %offs
+diff --git a/llvm/test/Transforms/InstCombine/sub-gep.ll b/llvm/test/Transforms/InstCombine/sub-gep.ll
+index cf9604223f6..51eb994bf34 100644
+--- a/llvm/test/Transforms/InstCombine/sub-gep.ll
++++ b/llvm/test/Transforms/InstCombine/sub-gep.ll
+@@ -58,8 +58,9 @@ define i32 @test_inbounds_nuw_trunc([0 x i32]* %base, i64 %idx) {
+ 
+ define i64 @test_inbounds_nuw_swapped([0 x i32]* %base, i64 %idx) {
+ ; CHECK-LABEL: @test_inbounds_nuw_swapped(
+-; CHECK-NEXT:    [[P2_IDX_NEG:%.*]] = mul i64 [[IDX:%.*]], -4
+-; CHECK-NEXT:    ret i64 [[P2_IDX_NEG]]
++; CHECK-NEXT:    [[P2_IDX:%.*]] = shl nsw i64 [[IDX:%.*]], 2
++; CHECK-NEXT:    [[DIFF_NEG:%.*]] = sub i64 0, [[P2_IDX]]
++; CHECK-NEXT:    ret i64 [[DIFF_NEG]]
+ ;
+   %p1 = getelementptr inbounds [0 x i32], [0 x i32]* %base, i64 0, i64 0
+   %p2 = getelementptr inbounds [0 x i32], [0 x i32]* %base, i64 0, i64 %idx
+@@ -72,9 +73,8 @@ define i64 @test_inbounds_nuw_swapped([0 x i32]* %base, i64 %idx) {
+ ; The sub and shl here could be nuw, but this is harder to handle.
+ define i64 @test_inbounds_nuw_two_gep([0 x i32]* %base, i64 %idx, i64 %idx2) {
+ ; CHECK-LABEL: @test_inbounds_nuw_two_gep(
+-; CHECK-NEXT:    [[P1_IDX_NEG:%.*]] = mul i64 [[IDX:%.*]], -4
+-; CHECK-NEXT:    [[P2_IDX_NEG_NEG:%.*]] = shl i64 [[IDX2:%.*]], 2
+-; CHECK-NEXT:    [[DOTNEG:%.*]] = add i64 [[P2_IDX_NEG_NEG]], [[P1_IDX_NEG]]
++; CHECK-NEXT:    [[P1_IDX1_NEG:%.*]] = sub i64 [[IDX2:%.*]], [[IDX:%.*]]
++; CHECK-NEXT:    [[DOTNEG:%.*]] = shl i64 [[P1_IDX1_NEG]], 2
+ ; CHECK-NEXT:    ret i64 [[DOTNEG]]
+ ;
+   %p1 = getelementptr inbounds [0 x i32], [0 x i32]* %base, i64 0, i64 %idx
+diff --git a/llvm/test/Transforms/InstCombine/sub-of-negatible.ll b/llvm/test/Transforms/InstCombine/sub-of-negatible.ll
+index 0755ebfff16..72ab25937e8 100644
+--- a/llvm/test/Transforms/InstCombine/sub-of-negatible.ll
++++ b/llvm/test/Transforms/InstCombine/sub-of-negatible.ll
+@@ -1076,8 +1076,8 @@ define i8 @negate_left_shift_by_constant(i8 %x, i8 %y, i8 %z, i8 %k) {
+ ; CHECK-LABEL: @negate_left_shift_by_constant(
+ ; CHECK-NEXT:    [[T0:%.*]] = sub i8 [[K:%.*]], [[Z:%.*]]
+ ; CHECK-NEXT:    call void @use8(i8 [[T0]])
+-; CHECK-NEXT:    [[T1_NEG:%.*]] = mul i8 [[T0]], -16
+-; CHECK-NEXT:    [[T2:%.*]] = add i8 [[T1_NEG]], [[X:%.*]]
++; CHECK-NEXT:    [[T1:%.*]] = shl i8 [[T0]], 4
++; CHECK-NEXT:    [[T2:%.*]] = sub i8 [[X:%.*]], [[T1]]
+ ; CHECK-NEXT:    ret i8 [[T2]]
+ ;
+   %t0 = sub i8 %k, %z
+@@ -1106,8 +1106,9 @@ define i8 @negate_left_shift_by_constant_extrause(i8 %x, i8 %y, i8 %z, i8 %k) {
+ ; `add` with single negatible operand is still negatible
+ define i8 @negate_add_with_single_negatible_operand(i8 %x, i8 %y) {
+ ; CHECK-LABEL: @negate_add_with_single_negatible_operand(
+-; CHECK-NEXT:    [[T0_NEG:%.*]] = sub i8 -42, [[X:%.*]]
+-; CHECK-NEXT:    ret i8 [[T0_NEG]]
++; CHECK-NEXT:    [[T0:%.*]] = add i8 [[X:%.*]], 42
++; CHECK-NEXT:    [[T1:%.*]] = sub i8 0, [[T0]]
++; CHECK-NEXT:    ret i8 [[T1]]
+ ;
+   %t0 = add i8 %x, 42
+   %t1 = sub i8 0, %t0
+@@ -1138,7 +1139,6 @@ define i8 @negate_add_with_single_negatible_operand_extrause(i8 %x, i8 %y) {
+   %t1 = sub i8 0, %t0
+   ret i8 %t1
+ }
+-; But don't do this if that means just sinking the negation.
+ define i8 @negate_add_with_single_negatible_operand_non_negation(i8 %x, i8 %y) {
+ ; CHECK-LABEL: @negate_add_with_single_negatible_operand_non_negation(
+ ; CHECK-NEXT:    [[T0:%.*]] = add i8 [[X:%.*]], 42
+diff --git a/llvm/test/Transforms/InstCombine/sub.ll b/llvm/test/Transforms/InstCombine/sub.ll
+index d2e566be341..3bc8b67649f 100644
+--- a/llvm/test/Transforms/InstCombine/sub.ll
++++ b/llvm/test/Transforms/InstCombine/sub.ll
+@@ -506,8 +506,8 @@ define i64 @test24b(i8* %P, i64 %A){
+ 
+ define i64 @test25(i8* %P, i64 %A){
+ ; CHECK-LABEL: @test25(
+-; CHECK-NEXT:    [[B_IDX_NEG_NEG:%.*]] = shl i64 [[A:%.*]], 1
+-; CHECK-NEXT:    [[DOTNEG:%.*]] = add i64 [[B_IDX_NEG_NEG]], -84
++; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i64 [[A:%.*]], 1
++; CHECK-NEXT:    [[DOTNEG:%.*]] = add i64 [[B_IDX]], -84
+ ; CHECK-NEXT:    ret i64 [[DOTNEG]]
+ ;
+   %B = getelementptr inbounds [42 x i16], [42 x i16]* @Arr, i64 0, i64 %A
+@@ -521,8 +521,8 @@ define i64 @test25(i8* %P, i64 %A){
+ define i16 @test25_as1(i8 addrspace(1)* %P, i64 %A) {
+ ; CHECK-LABEL: @test25_as1(
+ ; CHECK-NEXT:    [[TMP1:%.*]] = trunc i64 [[A:%.*]] to i16
+-; CHECK-NEXT:    [[B_IDX_NEG_NEG:%.*]] = shl i16 [[TMP1]], 1
+-; CHECK-NEXT:    [[DOTNEG:%.*]] = add i16 [[B_IDX_NEG_NEG]], -84
++; CHECK-NEXT:    [[B_IDX:%.*]] = shl nsw i16 [[TMP1]], 1
++; CHECK-NEXT:    [[DOTNEG:%.*]] = add i16 [[B_IDX]], -84
+ ; CHECK-NEXT:    ret i16 [[DOTNEG]]
+ ;
+   %B = getelementptr inbounds [42 x i16], [42 x i16] addrspace(1)* @Arr_as1, i64 0, i64 %A
+@@ -557,8 +557,9 @@ define i64 @test_neg_shl_sub_extra_use1(i64 %a, i64 %b, i64* %p) {
+ ; CHECK-LABEL: @test_neg_shl_sub_extra_use1(
+ ; CHECK-NEXT:    [[SUB:%.*]] = sub i64 [[A:%.*]], [[B:%.*]]
+ ; CHECK-NEXT:    store i64 [[SUB]], i64* [[P:%.*]], align 8
+-; CHECK-NEXT:    [[MUL_NEG:%.*]] = mul i64 [[SUB]], -4
+-; CHECK-NEXT:    ret i64 [[MUL_NEG]]
++; CHECK-NEXT:    [[MUL:%.*]] = shl i64 [[SUB]], 2
++; CHECK-NEXT:    [[NEG:%.*]] = sub i64 0, [[MUL]]
++; CHECK-NEXT:    ret i64 [[NEG]]
+ ;
+   %sub = sub i64 %a, %b
+   store i64 %sub, i64* %p
+@@ -839,8 +840,8 @@ define i64 @test29(i8* %foo, i64 %i, i64 %j) {
+ 
+ define i64 @test30(i8* %foo, i64 %i, i64 %j) {
+ ; CHECK-LABEL: @test30(
+-; CHECK-NEXT:    [[GEP1_IDX_NEG_NEG:%.*]] = shl i64 [[I:%.*]], 2
+-; CHECK-NEXT:    [[DOTNEG:%.*]] = sub i64 [[GEP1_IDX_NEG_NEG]], [[J:%.*]]
++; CHECK-NEXT:    [[GEP1_IDX:%.*]] = shl nsw i64 [[I:%.*]], 2
++; CHECK-NEXT:    [[DOTNEG:%.*]] = sub i64 [[GEP1_IDX]], [[J:%.*]]
+ ; CHECK-NEXT:    ret i64 [[DOTNEG]]
+ ;
+   %bit = bitcast i8* %foo to i32*
+@@ -854,8 +855,8 @@ define i64 @test30(i8* %foo, i64 %i, i64 %j) {
+ 
+ define i16 @test30_as1(i8 addrspace(1)* %foo, i16 %i, i16 %j) {
+ ; CHECK-LABEL: @test30_as1(
+-; CHECK-NEXT:    [[GEP1_IDX_NEG_NEG:%.*]] = shl i16 [[I:%.*]], 2
+-; CHECK-NEXT:    [[DOTNEG:%.*]] = sub i16 [[GEP1_IDX_NEG_NEG]], [[J:%.*]]
++; CHECK-NEXT:    [[GEP1_IDX:%.*]] = shl nsw i16 [[I:%.*]], 2
++; CHECK-NEXT:    [[DOTNEG:%.*]] = sub i16 [[GEP1_IDX]], [[J:%.*]]
+ ; CHECK-NEXT:    ret i16 [[DOTNEG]]
+ ;
+   %bit = bitcast i8 addrspace(1)* %foo to i32 addrspace(1)*
+@@ -1309,8 +1310,8 @@ define i64 @test61([100 x [100 x i8]]* %foo, i64 %i, i64 %j) {
+ 
+ define i32 @test62(i32 %A) {
+ ; CHECK-LABEL: @test62(
+-; CHECK-NEXT:    [[B_NEG:%.*]] = mul i32 [[A:%.*]], -2
+-; CHECK-NEXT:    [[C:%.*]] = add i32 [[B_NEG]], 2
++; CHECK-NEXT:    [[B:%.*]] = shl i32 [[A:%.*]], 1
++; CHECK-NEXT:    [[C:%.*]] = sub i32 2, [[B]]
+ ; CHECK-NEXT:    ret i32 [[C]]
+ ;
+   %B = sub i32 1, %A
+@@ -1320,8 +1321,8 @@ define i32 @test62(i32 %A) {
+ 
+ define <2 x i32> @test62vec(<2 x i32> %A) {
+ ; CHECK-LABEL: @test62vec(
+-; CHECK-NEXT:    [[B_NEG:%.*]] = mul <2 x i32> [[A:%.*]], <i32 -2, i32 -2>
+-; CHECK-NEXT:    [[C:%.*]] = add <2 x i32> [[B_NEG]], <i32 2, i32 2>
++; CHECK-NEXT:    [[B:%.*]] = shl <2 x i32> [[A:%.*]], <i32 1, i32 1>
++; CHECK-NEXT:    [[C:%.*]] = sub <2 x i32> <i32 2, i32 2>, [[B]]
+ ; CHECK-NEXT:    ret <2 x i32> [[C]]
+ ;
+   %B = sub <2 x i32> <i32 1, i32 1>, %A
+@@ -1331,8 +1332,8 @@ define <2 x i32> @test62vec(<2 x i32> %A) {
+ 
+ define i32 @test63(i32 %A) {
+ ; CHECK-LABEL: @test63(
+-; CHECK-NEXT:    [[B_NEG_NEG:%.*]] = shl i32 [[A:%.*]], 1
+-; CHECK-NEXT:    ret i32 [[B_NEG_NEG]]
++; CHECK-NEXT:    [[B:%.*]] = shl i32 [[A:%.*]], 1
++; CHECK-NEXT:    ret i32 [[B]]
+ ;
+   %B = sub i32 1, %A
+   %C = shl i32 %B, 1
+@@ -1342,8 +1343,8 @@ define i32 @test63(i32 %A) {
+ 
+ define <2 x i32> @test63vec(<2 x i32> %A) {
+ ; CHECK-LABEL: @test63vec(
+-; CHECK-NEXT:    [[B_NEG_NEG:%.*]] = shl <2 x i32> [[A:%.*]], <i32 1, i32 1>
+-; CHECK-NEXT:    ret <2 x i32> [[B_NEG_NEG]]
++; CHECK-NEXT:    [[B:%.*]] = shl <2 x i32> [[A:%.*]], <i32 1, i32 1>
++; CHECK-NEXT:    ret <2 x i32> [[B]]
+ ;
+   %B = sub <2 x i32> <i32 1, i32 1>, %A
+   %C = shl <2 x i32> %B, <i32 1, i32 1>
+-- 
+2.29.0.rc1.297.gfa9743e501-goog
+

@@ -430,5 +430,11 @@
         "rel_patch_path": "Revert-windows-debug-directory.patch",
         "start_version": 399163,
         "end_version": null
+    },
+    {
+        "comment": "Revert two changes that break cfi_test.basic in bionic-unit-tests",
+        "rel_patch_path": "Revert-two-changes-that-break-cfi_test.basic-in-bionic-unit-tests.patch",
+        "start_version": 404259,
+        "end_version": null
     }
 ]
