@@ -486,12 +486,6 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        '-v',
-        '--verbose',
-        action='count',
-        default=0,
-        help='Increase log level. Defaults to logging.INFO.')
-    parser.add_argument(
         '--build-name', default='dev', help='Release name for the package.')
 
     parser.add_argument(
@@ -604,10 +598,7 @@ def main():
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
 
-    log_levels = [logging.INFO, logging.DEBUG]
-    verbosity = min(args.verbose, len(log_levels) - 1)
-    log_level = log_levels[verbosity]
-    logging.basicConfig(level=log_level)
+    logging.basicConfig(level=logging.DEBUG)
 
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),

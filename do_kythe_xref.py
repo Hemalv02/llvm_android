@@ -119,7 +119,7 @@ def package(build_name: str) -> None:
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     if len(sys.argv) > 2:
         print(f'Usage: {sys.argv[0]} BUILD_NAME')

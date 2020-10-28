@@ -75,7 +75,7 @@ def do_commit(prebuilt_dir, use_cbr, version, bug_id):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     args = ArgParser().parse_args()
     bug_id = args.bug
     use_cbr = args.use_current_branch

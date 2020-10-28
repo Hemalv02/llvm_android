@@ -35,7 +35,7 @@ def logger():
 
 def subprocess_run(cmd, *args, **kwargs):
     """subprocess.run with logging."""
-    logger().info('subprocess.run:%s %s',
+    logger().debug('subprocess.run:%s %s',
                   datetime.datetime.now().strftime("%H:%M:%S"),
                   list2cmdline(cmd))
     if kwargs.pop('dry_run', None):

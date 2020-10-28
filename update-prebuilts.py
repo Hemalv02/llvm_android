@@ -267,7 +267,7 @@ def repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
 
 def main():
     args = ArgParser().parse_args()
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
 
     do_fetch = not args.skip_fetch
     do_cleanup = not args.skip_cleanup

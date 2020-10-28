@@ -87,7 +87,7 @@ class AndroidBuildClient():
 
 
 def main():
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     utils.check_gcertstatus()
 
     if len(sys.argv) > 1:
