@@ -256,6 +256,7 @@ def repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
     cmd = ['repo', 'upload', '.',
            '--current-branch',
            '--yes', # Answer yes to all safe prompts
+           '--verify', # Run upload hooks without prompting.
            f'--push-option=topic={topic}',
            f'--hashtag={hashtag}',]
     if is_testing:

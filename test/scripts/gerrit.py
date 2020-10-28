@@ -216,6 +216,7 @@ class SoongCL(NamedTuple):
                 '.',
                 '--current-branch',
                 '--yes',  # Answer yes to all safe prompts
+                '--verify', # Run upload hooks without prompting.
                 '--wip',  # work in progress
                 '--label=Code-Review-2',  # code-review -2
                 f'--hashtag={hashtag}',
@@ -273,7 +274,7 @@ class SoongCL(NamedTuple):
     @staticmethod
     def getNewCL(revision, version):
         """Create and upload a build/soong switchover CL."""
-        return uploadCL(revision, version)
+        return SoongCL.uploadCL(revision, version)
 
     @staticmethod
     def getExistingCL(cl_number, revision=None, version=None,

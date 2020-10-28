@@ -38,6 +38,7 @@ import sys
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
 from data import CNSData, ForrestRecord
+import utils
 
 ANDROID_BUILD_API_SCOPE = (
     'https://www.googleapis.com/auth/androidbuild.internal')
