@@ -17,13 +17,13 @@
 # pylint: disable=invalid-name
 """Test Clang prebuilts on Android"""
 
-from typing import NamedTuple
+from typing import List, NamedTuple, Set, Tuple
 import argparse
 import inspect
-import json
 import logging
 import pathlib
 import sys
+import yaml
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
@@ -34,15 +34,40 @@ import test_paths
 import utils
 
 
-def _find_groups(all_configs):
+class TestConfig(NamedTuple):
+    branch: str
+    target: str
+    groups: List[str]
+    tests: List[str]
+
+
+def _load_configs() -> List[TestConfig]:
+    with open(test_paths.CONFIGS_YAML) as infile:
+        configs = yaml.load(infile, Loader=yaml.FullLoader)
+    result = []
+    for branch, targets in configs.items():
+        for target, target_config in targets.items():
+            if target_config:
+                # groups and tests can be empty.
+                groups = target_config.get('groups', '').split()
+                tests = target_config.get('tests', list())
+            else:
+                groups, tests = list(), list()
+            result.append(
+                TestConfig(
+                    branch=branch, target=target, groups=groups, tests=tests))
+
+    return result
+
+
+def _find_groups(all_configs: List[TestConfig]) -> Set[str]:
     groups = set()
     for config in all_configs:
-        for group in config['groups'].split():
-            groups.add(group)
+        groups.update(config.groups)
     return groups
 
 
-TEST_CONFIGS = json.load(open(test_paths.CONFIGS_JSON))
+TEST_CONFIGS = _load_configs()
 TEST_GROUPS = _find_groups(TEST_CONFIGS)
 
 
@@ -164,15 +189,15 @@ def invokeForrestRuns(cls, args):
             # be part of any group.)
             return True
         # Run test if it is a part of a group specified in args.groups
-        return any(g in to_run for g in test_groups.split())
+        return any(g in to_run for g in test_groups)
 
     for config in TEST_CONFIGS:
-        if not _should_run(config['groups']):
+        if not _should_run(config.groups):
             print(f'Skipping disabled config {config}')
             continue
-        branch = config['branch']
-        target = config['target']
-        tests = config['tests']
+        branch = config.branch
+        target = config.target
+        tests = config.tests
         if CNSData.ForrestPending.find(build, tag, branch, target) or \
            CNSData.Forrest.find(build, tag, branch, target):
             # Skip if this was previously scheduled.

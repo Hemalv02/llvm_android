@@ -20,7 +20,7 @@ from pathlib import Path
 TEST_SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 LLVM_ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[1]
 ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[3]
-CONFIGS_JSON: Path = TEST_SCRIPTS_DIR / 'test_configs.json'
+CONFIGS_YAML: Path = TEST_SCRIPTS_DIR / 'test_configs.yaml'
 CLUSTER_INFO_YAML: Path = TEST_SCRIPTS_DIR / 'cluster_info.yaml'
 
 FORREST: Path = Path('/google/data/ro/teams/android-test/tools/forrest')
