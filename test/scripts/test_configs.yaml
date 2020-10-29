@@ -19,11 +19,58 @@ aosp-master:
         groups: x86 smoke
         tests:
             - avd/avd_boot_health_check
+    aosp_arm64-userdebug:
+        groups: arm64
+    sdk_x86_64-sdk:
+    ndk:
+    renderscript:
+    test_suites_x86_64:
+
+# device_boot_health_check_extra fails in stage-aosp-master because of
+# unchecked selinux denials.  Use device_boot_health_check instead.
 git_stage-aosp-master:
+    aosp_blueline-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
     aosp_crosshatch-userdebug:
         groups: arm64 smoke
         tests:
             - apct/bionic/native_test
-            # device_boot_health_check_extra fails because of unchecked selinux
-            # denials.
+            - apct/device_boot_health_check
+    aosp_coral-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
+    aosp_flame-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
+    aosp_bonito-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
+    aosp_sargo-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
+    aosp_bramble-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
+    aosp_redfin-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check
+    aosp_sunfish-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
             - apct/device_boot_health_check
