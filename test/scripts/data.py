@@ -19,6 +19,7 @@
 from typing import Callable, Generic, List, Optional, NamedTuple, TypeVar, Iterable
 import csv
 import io
+import logging
 import subprocess
 
 import utils
@@ -257,6 +258,7 @@ class CNSData():
     def loadCNSData() -> None:
         """Load CSV data from CNS."""
         cns_path = test_paths.cns_path()
+        logging.info('Reading CNS data')
         CNSData.Prebuilts = PrebuiltsTable(
             f'{cns_path}/{test_paths.PREBUILT_CSV}')
         CNSData.SoongCLs = SoongCLTable(f'{cns_path}/{test_paths.SOONG_CSV}')

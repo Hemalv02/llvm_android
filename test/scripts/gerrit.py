@@ -20,6 +20,7 @@ from typing import Any, Dict, NamedTuple
 import base64
 import contextlib
 import json
+import logging
 import os
 import random
 import re
@@ -37,8 +38,10 @@ def gerrit_request(request: str) -> str:
 
     (https://gerrit-review.googlesource.com/Documentation/rest-api-changes.html)
     """
-    return utils.check_output(
-        ['gob-curl', '--request', 'GET', f'{AOSP_GERRIT_ENDPOINT}/{request}'])
+    return utils.check_output([
+        'gob-curl', '--no-progress-meter', '--request', 'GET',
+        f'{AOSP_GERRIT_ENDPOINT}/{request}'
+    ])
 
 
 def gerrit_request_json(request: str):
@@ -106,6 +109,8 @@ class PrebuiltCL(NamedTuple):
             raise RuntimeError('Cannot parse clang details from following ' +
                                'commit message for CL {cl_number}:\n' +
                                commit['message'])
+        logging.info(f'Using prebults/clang CL {cl_number} for build ' +
+                     clang_info.group('bld'))
         return PrebuiltCL(
             revision=clang_info.group('rev'),
             version=clang_info.group('ver'),
@@ -117,6 +122,7 @@ class PrebuiltCL(NamedTuple):
     def getNewCL(build_number, branch):
         """Upload prebuilts from a particular build number."""
 
+        logging.info(f'Uploading prebuilts CL for build {build_number}')
         # Add a random hashtag so we can discover the CL number.
         hashtag = 'chk-' + ''.join(random.sample(string.digits, 8))
         utils.check_call([
@@ -274,6 +280,7 @@ class SoongCL(NamedTuple):
     @staticmethod
     def getNewCL(revision, version):
         """Create and upload a build/soong switchover CL."""
+        logging.info(f'Uploading new CL for switching to {revision}')
         return SoongCL.uploadCL(revision, version)
 
     @staticmethod
@@ -299,6 +306,8 @@ class SoongCL(NamedTuple):
         if not mergeable_info['mergeable']:
             resolvable = SoongCL._is_trivial_switchover(cl_number)
             if resolvable and try_resolve_conflict:
+                logging.info(f'Resolving conflicts in {cl_number} for ' +
+                             f'switching to {revision}')
                 newCL = SoongCL.uploadCL(revision, version,
                                          changeId=info['change_id'])
                 if newCL.cl_number != cl_number:
@@ -309,6 +318,7 @@ class SoongCL(NamedTuple):
             else:
                 raise RuntimeError(f'Soong CL {cl_number} has merge conflicts')
 
+        logging.info(f'Using soong CL {cl_number} for switching to {revision}')
         return SoongCL(revision=revision, version=version, cl_number=cl_number)
 
     def equals(self, other) -> bool:

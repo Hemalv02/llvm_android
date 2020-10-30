@@ -40,6 +40,9 @@ class TestConfig(NamedTuple):
     groups: List[str]
     tests: List[str]
 
+    def __str__(self):
+        return f'{self.branch}:{self.target}'
+
 
 def _load_configs() -> List[TestConfig]:
     with open(test_paths.CONFIGS_YAML) as infile:
@@ -193,7 +196,7 @@ def invokeForrestRuns(cls, args):
 
     for config in TEST_CONFIGS:
         if not _should_run(config.groups):
-            print(f'Skipping disabled config {config}')
+            logging.info(f'Skipping disabled config {config}')
             continue
         branch = config.branch
         target = config.target
@@ -201,10 +204,11 @@ def invokeForrestRuns(cls, args):
         if CNSData.ForrestPending.find(build, tag, branch, target) or \
            CNSData.Forrest.find(build, tag, branch, target):
             # Skip if this was previously scheduled.
-            print(f'Skipping already-submitted config {config}.')
+            logging.info(f'Skipping already-submitted config {config}.')
             continue
         invocation_id = forrest.invokeForrestRun(branch, target, cl_numbers,
                                                  tests, args.tag)
+        logging.info(f'Submitted {config} to forrest: {invocation_id}')
         record = ForrestPendingRecord(
             prebuilt_build_number=build,
             invocation_id=invocation_id,
@@ -243,6 +247,9 @@ def parse_args():
         action='extend',
         help=f'Run tests from specified groups.  Choices: {TEST_GROUPS}')
 
+    parser.add_argument(
+        '--verbose', '-v', action='store_true', help='Print verbose output')
+
     args = parser.parse_args()
     if not args.prepare_only and not args.tag:
         raise RuntimeError('Provide a --tag argument for Forrest invocations' +
@@ -252,8 +259,9 @@ def parse_args():
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
     args = parse_args()
+    level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=level)
     do_prechecks()
 
     cls = prepareCLs(args)
