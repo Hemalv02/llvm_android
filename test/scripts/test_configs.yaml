@@ -10,6 +10,8 @@ git_master:
             - apct/device_boot_health_check_extra
     crosshatch_hwasan-userdebug:
         groups: arm64 hwasan
+        test:
+            - apct/device_boot_health_check_extra
     cf_x86_phone-userdebug_coverage:
         groups: x86 coverage
         tests:
