@@ -35,13 +35,19 @@ import utils
 
 
 class TestConfig(NamedTuple):
-    branch: str
+    branch_private: str  # use branch property instead
     target: str
     groups: List[str]
     tests: List[str]
 
     def __str__(self):
         return f'{self.branch}:{self.target}'
+
+    @property
+    def branch(self):
+        if self.branch_private == 'RELEASE_BRANCH':
+            return test_paths.release_branch_name()
+        return self.branch_private
 
 
 def _load_configs() -> List[TestConfig]:
@@ -58,7 +64,10 @@ def _load_configs() -> List[TestConfig]:
                 groups, tests = list(), list()
             result.append(
                 TestConfig(
-                    branch=branch, target=target, groups=groups, tests=tests))
+                    branch_private=branch,
+                    target=target,
+                    groups=groups,
+                    tests=tests))
 
     return result
 

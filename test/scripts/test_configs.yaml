@@ -3,6 +3,11 @@ git_master:
         groups: x86 smoke
         tests:
             - avd/avd_boot_health_check
+    blueline-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
     crosshatch-userdebug:
         groups: arm64 smoke
         tests:
@@ -16,6 +21,58 @@ git_master:
         groups: x86 coverage
         tests:
             - avd/avd_boot_health_check
+    coral-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    flame-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    bonito-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    sargo-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    bramble-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    redfin-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    sunfish-userdebug:
+        groups: arm64 smoke
+        tests:
+            - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    wembley-userdebug:
+        groups: arm64
+
+RELEASE_BRANCH:
+    cf_x86_phone_analyzer-userdebug:
+        groups: tidy
+    coral_analyzer-userdebug:
+        groups: tidy
+    pgo-coral-config1:
+        groups: pgo
+        tests:
+            - apct/perf/pgo/apk-profile-collector
+            - apct/perf/pgo/profile-collector
+
+git_master-art-host:
+    art-test:
+
 aosp-master:
     aosp_cf_x86_phone-userdebug:
         groups: x86 smoke
