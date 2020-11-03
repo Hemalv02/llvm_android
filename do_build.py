@@ -591,7 +591,6 @@ def main():
     do_package = not args.skip_package
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug and not args.build_llvm_next
-    enable_assertions = args.enable_assertions or args.build_llvm_next
     build_lldb = 'lldb' not in args.no_build
 
     android_version.set_llvm_next(args.build_llvm_next)
@@ -635,7 +634,7 @@ def main():
         stage2.build_name = args.build_name
         stage2.svn_revision = android_version.get_svn_revision()
         stage2.debug_build = args.debug
-        stage2.enable_assertions = enable_assertions
+        stage2.enable_assertions = args.enable_assertions
         stage2.lto = not args.no_lto
         stage2.build_instrumented = instrumented
         stage2.profdata_file = profdata if profdata else None
@@ -677,7 +676,7 @@ def main():
         if args.windows_sdk:
             win_sdk.set_path(Path(args.windows_sdk))
         win_builder, win_lldb_bins = build_llvm_for_windows(
-            enable_assertions=enable_assertions,
+            enable_assertions=args.enable_assertions,
             build_name=args.build_name,
             build_lldb=build_lldb,
             swig_builder=swig_builder)
