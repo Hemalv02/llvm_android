@@ -1,0 +1,753 @@
+From 25a8881b724abf7251a9278e72224af7e82cb9c2 Mon Sep 17 00:00:00 2001
+From: Vitaly Buka <vitalybuka@google.com>
+Date: Tue, 13 Oct 2020 03:02:30 -0700
+Subject: [PATCH] Revert "    Enable LSAN for Android"
+
+Breaks android build.
+asan_malloc_dispatch_k needs memalign interceptor disabled in this patch.
+
+This reverts commit a2291a58bf1c860d026581fee6fe96019dc25440.
+---
+ compiler-rt/cmake/config-ix.cmake             |  2 +-
+ compiler-rt/lib/asan/CMakeLists.txt           |  6 +--
+ compiler-rt/lib/asan/tests/CMakeLists.txt     |  2 -
+ compiler-rt/lib/lsan/CMakeLists.txt           |  9 +---
+ compiler-rt/lib/lsan/lsan_common.cpp          | 43 ++++---------------
+ compiler-rt/lib/lsan/lsan_common.h            |  9 ++--
+ compiler-rt/lib/lsan/lsan_common_linux.cpp    | 33 ++------------
+ .../sanitizer_internal_defs.h                 |  5 +--
+ .../lib/sanitizer_common/sanitizer_linux.h    | 10 -----
+ .../sanitizer_linux_libcdep.cpp               | 17 ++------
+ .../sanitizer_platform_interceptors.h         |  7 ++-
+ .../test/asan/TestCases/coverage-and-lsan.cpp |  3 +-
+ compiler-rt/test/asan/lit.cfg.py              |  3 +-
+ compiler-rt/test/lit.common.cfg.py            | 24 ++---------
+ .../Linux/cleanup_in_tsd_destructor.c         |  2 +-
+ .../Linux/disabler_in_tsd_destructor.c        |  2 +-
+ .../test/lsan/TestCases/Linux/guard-page.c    |  3 --
+ .../lsan/TestCases/Linux/log-path_test.cpp    |  6 +--
+ .../lsan/TestCases/Linux/use_tls_dynamic.cpp  |  3 +-
+ .../Linux/use_tls_pthread_specific_static.cpp |  3 --
+ compiler-rt/test/lsan/TestCases/disabler.c    |  2 +-
+ compiler-rt/test/lsan/TestCases/disabler.cpp  |  2 +-
+ .../test/lsan/TestCases/ignore_object.c       |  2 +-
+ .../lsan/TestCases/large_allocation_leak.cpp  |  2 +-
+ .../test/lsan/TestCases/strace_test.cpp       |  3 --
+ .../test/lsan/TestCases/suppressions_file.cpp | 11 ++---
+ .../test/lsan/TestCases/swapcontext.cpp       |  3 +-
+ .../test/lsan/TestCases/use_registers.cpp     | 13 ++----
+ compiler-rt/test/lsan/lit.common.cfg.py       | 10 +----
+ 29 files changed, 53 insertions(+), 187 deletions(-)
+
+diff --git a/compiler-rt/cmake/config-ix.cmake b/compiler-rt/cmake/config-ix.cmake
+index 70245988638..23a47f2b853 100644
+--- a/compiler-rt/cmake/config-ix.cmake
++++ b/compiler-rt/cmake/config-ix.cmake
+@@ -681,7 +681,7 @@ else()
+ endif()
+ 
+ if (COMPILER_RT_HAS_SANITIZER_COMMON AND LSAN_SUPPORTED_ARCH AND
+-    OS_NAME MATCHES "Android|Darwin|Linux|NetBSD|Fuchsia")
++    OS_NAME MATCHES "Darwin|Linux|NetBSD|Fuchsia")
+   set(COMPILER_RT_HAS_LSAN TRUE)
+ else()
+   set(COMPILER_RT_HAS_LSAN FALSE)
+diff --git a/compiler-rt/lib/asan/CMakeLists.txt b/compiler-rt/lib/asan/CMakeLists.txt
+index ed34c652c81..41e889eb79e 100644
+--- a/compiler-rt/lib/asan/CMakeLists.txt
++++ b/compiler-rt/lib/asan/CMakeLists.txt
+@@ -86,8 +86,6 @@ append_rtti_flag(OFF ASAN_CFLAGS)
+ set(ASAN_DYNAMIC_LINK_FLAGS ${SANITIZER_COMMON_LINK_FLAGS})
+ 
+ if(ANDROID)
+-  list(APPEND ASAN_CFLAGS -fno-emulated-tls)
+-  list(APPEND ASAN_DYNAMIC_LINK_FLAGS -fuse-ld=lld)
+ # Put most Sanitizer shared libraries in the global group. For more details, see
+ # android-changes-for-ndk-developers.md#changes-to-library-search-order
+   if (COMPILER_RT_HAS_Z_GLOBAL)
+@@ -234,9 +232,7 @@ else()
+            -Wl,--version-script,${CMAKE_CURRENT_BINARY_DIR}/clang_rt.asan-dynamic-${arch}.vers)
+       # The Solaris 11.4 linker supports a subset of GNU ld version scripts,
+       # but requires a special option to enable it.
+-      # This is used/compatible with ANDROID because we force `lld` on ANDROID (line 90).
+-      # Therefore we don't want to add it for ANDROID.
+-      if (COMPILER_RT_HAS_GNU_VERSION_SCRIPT_COMPAT AND NOT ANDROID)
++      if (COMPILER_RT_HAS_GNU_VERSION_SCRIPT_COMPAT)
+           list(APPEND VERSION_SCRIPT_FLAG -Wl,-z,gnu-version-script-compat)
+       endif()
+       set_property(SOURCE
+diff --git a/compiler-rt/lib/asan/tests/CMakeLists.txt b/compiler-rt/lib/asan/tests/CMakeLists.txt
+index 4ffc58cdef0..6c07d1a8c6f 100644
+--- a/compiler-rt/lib/asan/tests/CMakeLists.txt
++++ b/compiler-rt/lib/asan/tests/CMakeLists.txt
+@@ -91,7 +91,6 @@ if(APPLE)
+ endif()
+ if(ANDROID)
+   list(APPEND ASAN_UNITTEST_COMMON_LINK_FLAGS -pie)
+-  list(APPEND ASAN_UNITTEST_COMMON_LINK_FLAGS -fuse-ld=lld)
+ endif()
+ 
+ set(ASAN_UNITTEST_INSTRUMENTED_LINK_FLAGS
+@@ -289,7 +288,6 @@ if(ANDROID)
+       $<TARGET_OBJECTS:RTSanitizerCommonLibc.${arch}>
+       $<TARGET_OBJECTS:RTSanitizerCommonCoverage.${arch}>
+       $<TARGET_OBJECTS:RTSanitizerCommonSymbolizer.${arch}>
+-      $<TARGET_OBJECTS:RTLSanCommon.${arch}>
+       $<TARGET_OBJECTS:RTUbsan.${arch}>
+       $<TARGET_OBJECTS:RTUbsan_cxx.${arch}>
+       ${COMPILER_RT_GTEST_SOURCE}
+diff --git a/compiler-rt/lib/lsan/CMakeLists.txt b/compiler-rt/lib/lsan/CMakeLists.txt
+index 4685214a7a4..ff8d38d8484 100644
+--- a/compiler-rt/lib/lsan/CMakeLists.txt
++++ b/compiler-rt/lib/lsan/CMakeLists.txt
+@@ -1,7 +1,6 @@
+ include_directories(..)
+ 
+ set(LSAN_CFLAGS ${SANITIZER_COMMON_CFLAGS})
+-set(LSAN_LINK_FLAGS ${SANITIZER_COMMON_LINK_FLAGS})
+ append_rtti_flag(OFF LSAN_CFLAGS)
+ 
+ set(LSAN_COMMON_SOURCES
+@@ -34,11 +33,6 @@ set(LSAN_HEADERS
+ 
+ set(LSAN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+ 
+-if(ANDROID)
+-  list(APPEND LSAN_CFLAGS -fno-emulated-tls)
+-  list(APPEND LSAN_LINK_FLAGS -fuse-ld=lld)
+-endif()
+-
+ add_compiler_rt_object_libraries(RTLSanCommon
+     OS ${SANITIZER_COMMON_SUPPORTED_OS}
+     ARCHS ${LSAN_COMMON_SUPPORTED_ARCH}
+@@ -67,7 +61,7 @@ if(COMPILER_RT_HAS_LSAN)
+                   RTSanitizerCommonCoverage
+                   RTSanitizerCommonSymbolizer
+       CFLAGS ${LSAN_CFLAGS}
+-      LINK_FLAGS ${LSAN_LINK_FLAGS} ${WEAK_SYMBOL_LINK_FLAGS}
++      LINK_FLAGS ${SANITIZER_COMMON_LINK_FLAGS} ${WEAK_SYMBOL_LINK_FLAGS}
+       LINK_LIBS ${LSAN_LINK_LIBS}
+       PARENT_TARGET lsan)
+   else()
+@@ -84,7 +78,6 @@ if(COMPILER_RT_HAS_LSAN)
+                 $<TARGET_OBJECTS:RTLSanCommon.${arch}>
+         ADDITIONAL_HEADERS ${LSAN_HEADERS}
+         CFLAGS ${LSAN_CFLAGS}
+-        LINK_FLAGS ${LSAN_LINK_FLAGS}
+         PARENT_TARGET lsan)
+     endforeach()
+   endif()
+diff --git a/compiler-rt/lib/lsan/lsan_common.cpp b/compiler-rt/lib/lsan/lsan_common.cpp
+index abb559fe3b3..107d63ac911 100644
+--- a/compiler-rt/lib/lsan/lsan_common.cpp
++++ b/compiler-rt/lib/lsan/lsan_common.cpp
+@@ -71,17 +71,17 @@ static const char kSuppressionLeak[] = "leak";
+ static const char *kSuppressionTypes[] = { kSuppressionLeak };
+ static const char kStdSuppressions[] =
+ #if SANITIZER_SUPPRESS_LEAK_ON_PTHREAD_EXIT
+-    // For more details refer to the SANITIZER_SUPPRESS_LEAK_ON_PTHREAD_EXIT
+-    // definition.
+-    "leak:*pthread_exit*\n"
++  // For more details refer to the SANITIZER_SUPPRESS_LEAK_ON_PTHREAD_EXIT
++  // definition.
++  "leak:*pthread_exit*\n"
+ #endif  // SANITIZER_SUPPRESS_LEAK_ON_PTHREAD_EXIT
+ #if SANITIZER_MAC
+-    // For Darwin and os_log/os_trace: https://reviews.llvm.org/D35173
+-    "leak:*_os_trace*\n"
++  // For Darwin and os_log/os_trace: https://reviews.llvm.org/D35173
++  "leak:*_os_trace*\n"
+ #endif
+-    // TLS leak in some glibc versions, described in
+-    // https://sourceware.org/bugzilla/show_bug.cgi?id=12650.
+-    "leak:*tls_get_addr*\n";
++  // TLS leak in some glibc versions, described in
++  // https://sourceware.org/bugzilla/show_bug.cgi?id=12650.
++  "leak:*tls_get_addr*\n";
+ 
+ void InitializeSuppressions() {
+   CHECK_EQ(nullptr, suppression_ctx);
+@@ -294,22 +294,6 @@ static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
+                                  kReachable);
+         }
+       }
+-#if SANITIZER_ANDROID
+-      if (HAS_ANDROID_THREAD_PROPERTIES_API) {
+-        auto *cb = +[](void *dtls_begin, void *dtls_end, uptr /*dso_idd*/,
+-                       void *arg) -> void {
+-          ScanRangeForPointers(reinterpret_cast<uptr>(dtls_begin),
+-                               reinterpret_cast<uptr>(dtls_end),
+-                               reinterpret_cast<Frontier *>(arg), "DTLS",
+-                               kReachable);
+-        };
+-
+-        // FIXME: There might be a race-condition here (and in Bionic) if the
+-        // thread is suspended in the middle of updating its DTLS. IOWs, we
+-        // could scan already freed memory. (probably fine for now)
+-        __libc_iterate_dynamic_tls(os_id, cb, frontier);
+-      }
+-#else
+       if (dtls && !DTLSInDestruction(dtls)) {
+         for (uptr j = 0; j < dtls->dtv_size; ++j) {
+           uptr dtls_beg = dtls->dtv[j].beg;
+@@ -325,7 +309,6 @@ static void ProcessThreads(SuspendedThreadsList const &suspended_threads,
+         // this and continue.
+         LOG_THREADS("Thread %d has DTLS under destruction.\n", os_id);
+       }
+-#endif
+     }
+   }
+ }
+@@ -592,16 +575,8 @@ static void CheckForLeaksCallback(const SuspendedThreadsList &suspended_threads,
+ }
+ 
+ static bool CheckForLeaks() {
+-#if SANITIZER_ANDROID
+-  // Presence of the ThreadProperties API implies the presence of
+-  // TLS support, which is required for calling  __lsan_is_turned_off().
+-  // Therefore, this check must preceed that.
+-  if (!HAS_ANDROID_THREAD_PROPERTIES_API)
+-    return false;
+-#endif
+-
+   if (&__lsan_is_turned_off && __lsan_is_turned_off())
+-    return false;
++      return false;
+   EnsureMainThreadIDIsCorrect();
+   CheckForLeaksParam param;
+   LockStuffAndStopTheWorld(CheckForLeaksCallback, &param);
+diff --git a/compiler-rt/lib/lsan/lsan_common.h b/compiler-rt/lib/lsan/lsan_common.h
+index d482a6ef75b..3434beede82 100644
+--- a/compiler-rt/lib/lsan/lsan_common.h
++++ b/compiler-rt/lib/lsan/lsan_common.h
+@@ -29,13 +29,16 @@
+ // To enable LeakSanitizer on a new architecture, one needs to implement the
+ // internal_clone function as well as (probably) adjust the TLS machinery for
+ // the new architecture inside the sanitizer library.
+-#if (SANITIZER_LINUX || SANITIZER_MAC) && (SANITIZER_WORDSIZE == 64) &&  \
++#if (SANITIZER_LINUX && !SANITIZER_ANDROID || SANITIZER_MAC) &&          \
++    (SANITIZER_WORDSIZE == 64) &&                                        \
+     (defined(__x86_64__) || defined(__mips64) || defined(__aarch64__) || \
+      defined(__powerpc64__) || defined(__s390x__))
+ #define CAN_SANITIZE_LEAKS 1
+-#elif defined(__i386__) && (SANITIZER_LINUX || SANITIZER_MAC)
++#elif defined(__i386__) && \
++    (SANITIZER_LINUX && !SANITIZER_ANDROID || SANITIZER_MAC)
+ #define CAN_SANITIZE_LEAKS 1
+-#elif defined(__arm__) && SANITIZER_LINUX
++#elif defined(__arm__) && \
++    SANITIZER_LINUX && !SANITIZER_ANDROID
+ #define CAN_SANITIZE_LEAKS 1
+ #elif SANITIZER_NETBSD || SANITIZER_FUCHSIA
+ #define CAN_SANITIZE_LEAKS 1
+diff --git a/compiler-rt/lib/lsan/lsan_common_linux.cpp b/compiler-rt/lib/lsan/lsan_common_linux.cpp
+index 0a731c3dd4f..c97ef31593d 100644
+--- a/compiler-rt/lib/lsan/lsan_common_linux.cpp
++++ b/compiler-rt/lib/lsan/lsan_common_linux.cpp
+@@ -41,28 +41,9 @@ static bool IsLinker(const LoadedModule& module) {
+ 
+ __attribute__((tls_model("initial-exec")))
+ THREADLOCAL int disable_counter;
+-bool DisabledInThisThread() {
+-#if SANITIZER_ANDROID
+-  // LSAN is only enabled with Android-S and up.
+-  if (!HAS_ANDROID_THREAD_PROPERTIES_API)
+-    return true;
+-#endif
+-  return disable_counter > 0;
+-}
+-void DisableInThisThread() {
+-#if SANITIZER_ANDROID
+-  // LSAN is only enabled with Android-S and up.
+-  if (!HAS_ANDROID_THREAD_PROPERTIES_API)
+-    return;
+-#endif
+-  disable_counter++;
+-}
++bool DisabledInThisThread() { return disable_counter > 0; }
++void DisableInThisThread() { disable_counter++; }
+ void EnableInThisThread() {
+-#if SANITIZER_ANDROID
+-  // LSAN is only enabled with Android-S and up.
+-  if (!HAS_ANDROID_THREAD_PROPERTIES_API)
+-    return;
+-#endif
+   if (disable_counter == 0) {
+     DisableCounterUnderflow();
+   }
+@@ -114,15 +95,7 @@ static int ProcessGlobalRegionsCallback(struct dl_phdr_info *info, size_t size,
+ 
+ // Scans global variables for heap pointers.
+ void ProcessGlobalRegions(Frontier *frontier) {
+-  if (!flags()->use_globals) {
+-#if SANITIZER_ANDROID
+-    // There are known malloc'ed global variables from libc[++] on Android.
+-    // If use_globals is turnt off, we could see leaks.
+-    // Issue a warning in case users turn it off by accident.
+-    Report("use_globals=0 on Android could lead to false reports.");
+-#endif
+-    return;
+-  }
++  if (!flags()->use_globals) return;
+   dl_iterate_phdr(ProcessGlobalRegionsCallback, frontier);
+ }
+ 
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_internal_defs.h b/compiler-rt/lib/sanitizer_common/sanitizer_internal_defs.h
+index 3756a6b76d3..a6c55148705 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_internal_defs.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_internal_defs.h
+@@ -104,9 +104,8 @@
+ //
+ // FIXME: do we have anything like this on Mac?
+ #ifndef SANITIZER_CAN_USE_PREINIT_ARRAY
+-#if (SANITIZER_LINUX || SANITIZER_OPENBSD || SANITIZER_FUCHSIA || \
+-     SANITIZER_NETBSD) &&                                         \
+-    !defined(PIC)
++#if ((SANITIZER_LINUX && !SANITIZER_ANDROID) || SANITIZER_OPENBSD || \
++     SANITIZER_FUCHSIA || SANITIZER_NETBSD) && !defined(PIC)
+ #define SANITIZER_CAN_USE_PREINIT_ARRAY 1
+ // Before Solaris 11.4, .preinit_array is fully supported only with GNU ld.
+ // FIXME: Check for those conditions.
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_linux.h b/compiler-rt/lib/sanitizer_common/sanitizer_linux.h
+index 4e31105449e..a8625ca86e8 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_linux.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_linux.h
+@@ -154,16 +154,6 @@ ALWAYS_INLINE uptr *get_android_tls_ptr() {
+   return reinterpret_cast<uptr *>(&__get_tls()[TLS_SLOT_SANITIZER]);
+ }
+ 
+-// Bionic provides this API since 31.
+-extern "C" SANITIZER_WEAK_ATTRIBUTE void __libc_get_static_tls_bounds(void **,
+-                                                                      void **);
+-extern "C" SANITIZER_WEAK_ATTRIBUTE void __libc_iterate_dynamic_tls(
+-    pid_t, void (*cb)(void *, void *, uptr, void *), void *);
+-
+-#define HAS_ANDROID_THREAD_PROPERTIES_API (&__libc_iterate_dynamic_tls != 0)
+-
+-#else
+-#define HAS_ANDROID_THREAD_PROPERTIES_API (0)
+ #endif  // SANITIZER_ANDROID
+ 
+ }  // namespace __sanitizer
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_linux_libcdep.cpp b/compiler-rt/lib/sanitizer_common/sanitizer_linux_libcdep.cpp
+index 26bdf0457f5..b8b999363ff 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_linux_libcdep.cpp
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_linux_libcdep.cpp
+@@ -460,19 +460,7 @@ int GetSizeFromHdr(struct dl_phdr_info *info, size_t size, void *data) {
+ 
+ #if !SANITIZER_GO
+ static void GetTls(uptr *addr, uptr *size) {
+-#if SANITIZER_ANDROID
+-  if (HAS_ANDROID_THREAD_PROPERTIES_API) {
+-    void *start_addr;
+-    void *end_addr;
+-    __libc_get_static_tls_bounds(&start_addr, &end_addr);
+-    *addr = reinterpret_cast<uptr>(start_addr);
+-    *size =
+-        reinterpret_cast<uptr>(end_addr) - reinterpret_cast<uptr>(start_addr);
+-  } else {
+-    *addr = 0;
+-    *size = 0;
+-  }
+-#elif SANITIZER_LINUX && !SANITIZER_ANDROID
++#if SANITIZER_LINUX && !SANITIZER_ANDROID
+ #if defined(__x86_64__) || defined(__i386__) || defined(__s390__)
+   *addr = ThreadSelf();
+   *size = GetTlsSize();
+@@ -516,6 +504,9 @@ static void GetTls(uptr *addr, uptr *size) {
+ #elif SANITIZER_OPENBSD
+   *addr = 0;
+   *size = 0;
++#elif SANITIZER_ANDROID
++  *addr = 0;
++  *size = 0;
+ #elif SANITIZER_SOLARIS
+   // FIXME
+   *addr = 0;
+diff --git a/compiler-rt/lib/sanitizer_common/sanitizer_platform_interceptors.h b/compiler-rt/lib/sanitizer_common/sanitizer_platform_interceptors.h
+index 2f598bfb188..25be06c1bc8 100644
+--- a/compiler-rt/lib/sanitizer_common/sanitizer_platform_interceptors.h
++++ b/compiler-rt/lib/sanitizer_common/sanitizer_platform_interceptors.h
+@@ -504,15 +504,14 @@
+ #define SANITIZER_INTERCEPT_MALLOPT_AND_MALLINFO                            \
+   (!SI_FREEBSD && !SI_MAC && !SI_NETBSD && !SI_OPENBSD && SI_NOT_FUCHSIA && \
+    SI_NOT_RTEMS && !SI_SOLARIS)
+-#define SANITIZER_INTERCEPT_MEMALIGN                                      \
+-  (!SI_FREEBSD && !SI_MAC && !SI_NETBSD && !SI_OPENBSD && SI_NOT_RTEMS && \
+-   !SI_ANDROID)
++#define SANITIZER_INTERCEPT_MEMALIGN \
++  (!SI_FREEBSD && !SI_MAC && !SI_NETBSD && !SI_OPENBSD && SI_NOT_RTEMS)
+ #define SANITIZER_INTERCEPT_PVALLOC                                         \
+   (!SI_FREEBSD && !SI_MAC && !SI_NETBSD && !SI_OPENBSD && SI_NOT_FUCHSIA && \
+    SI_NOT_RTEMS && !SI_SOLARIS)
+ #define SANITIZER_INTERCEPT_CFREE                                           \
+   (!SI_FREEBSD && !SI_MAC && !SI_NETBSD && !SI_OPENBSD && SI_NOT_FUCHSIA && \
+-   SI_NOT_RTEMS && !SI_SOLARIS && !SI_ANDROID)
++   SI_NOT_RTEMS && !SI_SOLARIS)
+ #define SANITIZER_INTERCEPT_REALLOCARRAY SI_POSIX
+ #define SANITIZER_INTERCEPT_ALIGNED_ALLOC (!SI_MAC && SI_NOT_RTEMS)
+ #define SANITIZER_INTERCEPT_MALLOC_USABLE_SIZE \
+diff --git a/compiler-rt/test/asan/TestCases/coverage-and-lsan.cpp b/compiler-rt/test/asan/TestCases/coverage-and-lsan.cpp
+index d95d95fc5d5..60851dabb6b 100644
+--- a/compiler-rt/test/asan/TestCases/coverage-and-lsan.cpp
++++ b/compiler-rt/test/asan/TestCases/coverage-and-lsan.cpp
+@@ -9,8 +9,7 @@
+ // RUN: %sancov print %t-dir/*.sancov 2>&1
+ //
+ // REQUIRES: leak-detection
+-// FIXME: sancov paths not work with adb
+-// UNSUPPORTED: android
++
+ int *g = new int;
+ int main(int argc, char **argv) {
+   g = 0;
+diff --git a/compiler-rt/test/asan/lit.cfg.py b/compiler-rt/test/asan/lit.cfg.py
+index 4cfd0b68b76..3a338d79e22 100644
+--- a/compiler-rt/test/asan/lit.cfg.py
++++ b/compiler-rt/test/asan/lit.cfg.py
+@@ -209,11 +209,10 @@ if not config.arm_thumb:
+   config.available_features.add('fast-unwinder-works')
+ 
+ # Turn on leak detection on 64-bit Linux.
+-leak_detection_android = config.android and 'android-thread-properties-api' in config.available_features and (config.target_arch == 'x86_64' or config.target_arch == 'i386' or config.target_arch == 'i686'  or config.target_arch == 'aarch64' )
+ leak_detection_linux = (config.host_os == 'Linux') and (not config.android) and (config.target_arch == 'x86_64' or config.target_arch == 'i386')
+ leak_detection_mac = (config.host_os == 'Darwin') and (config.target_arch == 'x86_64')
+ leak_detection_netbsd = (config.host_os == 'NetBSD') and (config.target_arch in ['x86_64', 'i386'])
+-if leak_detection_android or leak_detection_linux or leak_detection_mac or leak_detection_netbsd:
++if leak_detection_linux or leak_detection_mac or leak_detection_netbsd:
+   config.available_features.add('leak-detection')
+ 
+ # Set LD_LIBRARY_PATH to pick dynamic runtime up properly.
+diff --git a/compiler-rt/test/lit.common.cfg.py b/compiler-rt/test/lit.common.cfg.py
+index 05d0bae016b..be1534d554e 100644
+--- a/compiler-rt/test/lit.common.cfg.py
++++ b/compiler-rt/test/lit.common.cfg.py
+@@ -61,13 +61,6 @@ if config.asan_shadow_scale != '':
+ # BFD linker in 64-bit android toolchains fails to find libc++_shared.so, which
+ # is a transitive shared library dependency (via asan runtime).
+ if config.android:
+-  # These are needed for tests to upload/download temp files, such as
+-  # suppression-files, to device.
+-  config.substitutions.append( ('%device_rundir', "/data/local/tmp/Output") )
+-  # FIXME: May need to select specific device with `-s SERIAL`
+-  config.substitutions.append( ('%push_to_device', "adb push ") )
+-  config.substitutions.append( ('%pull_from_device', "adb pull ") )
+-  config.substitutions.append( ('%adb_shell ', "adb shell ") )
+   # Prepend the flag so that it can be overridden.
+   config.target_cflags = "-pie -fuse-ld=gold " + config.target_cflags
+   if config.android_ndk_version < 19:
+@@ -76,11 +69,7 @@ if config.android:
+     # just contains a handful of ABI functions", which makes most C++ code fail
+     # to link. In r19 and later we just use the default which is libc++.
+     config.cxx_mode_flags.append('-stdlib=libstdc++')
+-else:
+-  config.substitutions.append( ('%device_rundir', "") )
+-  config.substitutions.append( ('%push_to_device', "echo ") )
+-  config.substitutions.append( ('%pull_from_device', "echo ") )
+-  config.substitutions.append( ('%adb_shell', "echo ") )
++
+ config.environment = dict(os.environ)
+ 
+ # Clear some environment variables that might affect Clang.
+@@ -352,15 +341,10 @@ if config.android:
+   if config.android_serial:
+     env['ANDROID_SERIAL'] = config.android_serial
+     config.environment['ANDROID_SERIAL'] = config.android_serial
+-  # Must use lld because Bionic's TLS layout is not compatible with the Gold convention.
+-  # The buildbot script will guarantee lld is built/included.
+-  # The check for `has_lld` somehow missed that it exists and always marked tests as "unsupported".
+-  config.use_lld = True
+-  config.has_lld = True
++
+   adb = os.environ.get('ADB', 'adb')
+   try:
+     android_api_level_str = subprocess.check_output([adb, "shell", "getprop", "ro.build.version.sdk"], env=env).rstrip()
+-    android_api_codename = subprocess.check_output([adb, "shell", "getprop", "ro.build.version.codename"], env=env).rstrip().decode("utf-8")
+   except (subprocess.CalledProcessError, OSError):
+     lit_config.fatal("Failed to read ro.build.version.sdk (using '%s' as adb)" % adb)
+   try:
+@@ -371,8 +355,6 @@ if config.android:
+     config.available_features.add('android-26')
+   if android_api_level >= 28:
+     config.available_features.add('android-28')
+-  if android_api_level >= 31 or android_api_codename == 'S':
+-    config.available_features.add('android-thread-properties-api')
+ 
+   # Prepare the device.
+   android_tmpdir = '/data/local/tmp/Output'
+@@ -392,7 +374,7 @@ if config.host_os == 'Linux':
+     from distutils.version import LooseVersion
+     ver = LooseVersion(ver_line.split()[-1].decode())
+     # 2.27 introduced some incompatibilities
+-    if ver >= LooseVersion("2.27") and not config.android:
++    if ver >= LooseVersion("2.27"):
+       config.available_features.add("glibc-2.27")
+ 
+ sancovcc_path = os.path.join(config.llvm_tools_dir, "sancov")
+diff --git a/compiler-rt/test/lsan/TestCases/Linux/cleanup_in_tsd_destructor.c b/compiler-rt/test/lsan/TestCases/Linux/cleanup_in_tsd_destructor.c
+index 18476d5a9ad..cf080e4dd75 100644
+--- a/compiler-rt/test/lsan/TestCases/Linux/cleanup_in_tsd_destructor.c
++++ b/compiler-rt/test/lsan/TestCases/Linux/cleanup_in_tsd_destructor.c
+@@ -3,7 +3,7 @@
+ // user-installed TSD destructors have finished running (since they may contain
+ // additional cleanup tasks). LSan doesn't actually meet that goal 100%, but it
+ // makes its best effort.
+-// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0"
++// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_globals=0"
+ // RUN: %clang_lsan %s -o %t
+ // RUN: %env_lsan_opts=$LSAN_BASE:use_tls=1 %run %t
+ // RUN: %env_lsan_opts=$LSAN_BASE:use_tls=0 not %run %t 2>&1 | FileCheck %s
+diff --git a/compiler-rt/test/lsan/TestCases/Linux/disabler_in_tsd_destructor.c b/compiler-rt/test/lsan/TestCases/Linux/disabler_in_tsd_destructor.c
+index be36b52fc34..52819bb9fcc 100644
+--- a/compiler-rt/test/lsan/TestCases/Linux/disabler_in_tsd_destructor.c
++++ b/compiler-rt/test/lsan/TestCases/Linux/disabler_in_tsd_destructor.c
+@@ -1,5 +1,5 @@
+ // Regression test. Disabler should not depend on TSD validity.
+-// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_tls=1:use_ld_allocations=0"
++// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_globals=0:use_tls=1:use_ld_allocations=0"
+ // RUN: %clang_lsan %s -o %t
+ // RUN: %env_lsan_opts=$LSAN_BASE %run %t
+ 
+diff --git a/compiler-rt/test/lsan/TestCases/Linux/guard-page.c b/compiler-rt/test/lsan/TestCases/Linux/guard-page.c
+index ba03c1ff353..7b353ce30f8 100644
+--- a/compiler-rt/test/lsan/TestCases/Linux/guard-page.c
++++ b/compiler-rt/test/lsan/TestCases/Linux/guard-page.c
+@@ -1,9 +1,6 @@
+ // Check that if LSan finds that SP doesn't point into thread stack (e.g.
+ // if swapcontext is used), LSan will not hit the guard page.
+ // RUN: %clang_lsan %s -o %t && %run %t
+-// Missing 'getcontext' and 'makecontext' on Android.
+-// UNSUPPORTED: android
+-
+ #include <errno.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+diff --git a/compiler-rt/test/lsan/TestCases/Linux/log-path_test.cpp b/compiler-rt/test/lsan/TestCases/Linux/log-path_test.cpp
+index aba3aa12411..a31b4f64acc 100644
+--- a/compiler-rt/test/lsan/TestCases/Linux/log-path_test.cpp
++++ b/compiler-rt/test/lsan/TestCases/Linux/log-path_test.cpp
+@@ -7,11 +7,7 @@
+ 
+ // Good log_path.
+ // RUN: rm -f %t.log.*
+-// RUN: %adb_shell 'rm -f %t.log.*'
+-// RUN: %env_lsan_opts="use_stacks=0:log_path='"%device_rundir/%t.log"'" not %run %t > %t.out 2>&1
+-// adb-pull doesn't support wild cards so we need to rename the log file.
+-// RUN: %adb_shell 'mv %device_rundir/%t.log.* %device_rundir/%t.log'
+-// RUN: %pull_from_device %device_rundir/%t.log %t.log.ANDROID
++// RUN: %env_lsan_opts="use_stacks=0:log_path='"%t.log"'" not %run %t > %t.out 2>&1
+ // RUN: FileCheck %s --check-prefix=CHECK-ERROR < %t.log.*
+ 
+ #include <stdio.h>
+diff --git a/compiler-rt/test/lsan/TestCases/Linux/use_tls_dynamic.cpp b/compiler-rt/test/lsan/TestCases/Linux/use_tls_dynamic.cpp
+index e81183fcaf9..b7ca2d754b1 100644
+--- a/compiler-rt/test/lsan/TestCases/Linux/use_tls_dynamic.cpp
++++ b/compiler-rt/test/lsan/TestCases/Linux/use_tls_dynamic.cpp
+@@ -1,7 +1,6 @@
+ // Test that dynamically allocated TLS space is included in the root set.
+ 
+ // This is known to be broken with glibc-2.27+
+-// but it should pass with Bionic
+ // https://bugs.llvm.org/show_bug.cgi?id=37804
+ // XFAIL: glibc-2.27
+ 
+@@ -11,7 +10,7 @@
+ // RUN: %env_lsan_opts=$LSAN_BASE:"use_tls=0" not %run %t 2>&1 | FileCheck %s
+ // RUN: %env_lsan_opts=$LSAN_BASE:"use_tls=1" %run %t 2>&1
+ // RUN: %env_lsan_opts="" %run %t 2>&1
+-// UNSUPPORTED: arm,powerpc
++// UNSUPPORTED: i386-linux,arm,powerpc
+ 
+ #ifndef BUILD_DSO
+ #include <assert.h>
+diff --git a/compiler-rt/test/lsan/TestCases/Linux/use_tls_pthread_specific_static.cpp b/compiler-rt/test/lsan/TestCases/Linux/use_tls_pthread_specific_static.cpp
+index c4398c56ea0..cafe40f0637 100644
+--- a/compiler-rt/test/lsan/TestCases/Linux/use_tls_pthread_specific_static.cpp
++++ b/compiler-rt/test/lsan/TestCases/Linux/use_tls_pthread_specific_static.cpp
+@@ -19,10 +19,7 @@ int main() {
+   int res;
+   res = pthread_key_create(&key, NULL);
+   assert(res == 0);
+-#if !defined(__ANDROID__) && !defined(__BIONIC__)
+-  // Bionic doesn't have specific limit.
+   assert(key < PTHREAD_KEY_2NDLEVEL_SIZE);
+-#endif
+   void *p = malloc(1337);
+   res = pthread_setspecific(key, p);
+   assert(res == 0);
+diff --git a/compiler-rt/test/lsan/TestCases/disabler.c b/compiler-rt/test/lsan/TestCases/disabler.c
+index 73f1b3e36e9..f8b7f0da1ba 100644
+--- a/compiler-rt/test/lsan/TestCases/disabler.c
++++ b/compiler-rt/test/lsan/TestCases/disabler.c
+@@ -1,5 +1,5 @@
+ // Test for __lsan_disable() / __lsan_enable().
+-// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_tls=0"
++// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_globals=0:use_tls=0"
+ // RUN: %clang_lsan %s -o %t
+ // RUN: %env_lsan_opts=$LSAN_BASE not %run %t 2>&1 | FileCheck %s
+ 
+diff --git a/compiler-rt/test/lsan/TestCases/disabler.cpp b/compiler-rt/test/lsan/TestCases/disabler.cpp
+index 21e508e5314..c5ffdb0bf6f 100644
+--- a/compiler-rt/test/lsan/TestCases/disabler.cpp
++++ b/compiler-rt/test/lsan/TestCases/disabler.cpp
+@@ -1,5 +1,5 @@
+ // Test for ScopedDisabler.
+-// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_tls=0"
++// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_globals=0:use_tls=0"
+ // RUN: %clangxx_lsan %s -o %t
+ // RUN: %env_lsan_opts=$LSAN_BASE not %run %t 2>&1 | FileCheck %s
+ 
+diff --git a/compiler-rt/test/lsan/TestCases/ignore_object.c b/compiler-rt/test/lsan/TestCases/ignore_object.c
+index 92f03ee33a0..53dea75947b 100644
+--- a/compiler-rt/test/lsan/TestCases/ignore_object.c
++++ b/compiler-rt/test/lsan/TestCases/ignore_object.c
+@@ -1,5 +1,5 @@
+ // Test for __lsan_ignore_object().
+-// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_tls=0"
++// RUN: LSAN_BASE="report_objects=1:use_registers=0:use_stacks=0:use_globals=0:use_tls=0"
+ // RUN: %clang_lsan %s -o %t
+ // RUN: %env_lsan_opts=$LSAN_BASE not %run %t 2>&1 | FileCheck %s
+ 
+diff --git a/compiler-rt/test/lsan/TestCases/large_allocation_leak.cpp b/compiler-rt/test/lsan/TestCases/large_allocation_leak.cpp
+index ef2fe2f8853..66f364fffcd 100644
+--- a/compiler-rt/test/lsan/TestCases/large_allocation_leak.cpp
++++ b/compiler-rt/test/lsan/TestCases/large_allocation_leak.cpp
+@@ -5,7 +5,7 @@
+ 
+ // For 32 bit LSan it's pretty likely that large chunks are "reachable" from some
+ // internal data structures (e.g. Glibc global data).
+-// UNSUPPORTED: x86, arm, i686
++// UNSUPPORTED: x86, arm
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+diff --git a/compiler-rt/test/lsan/TestCases/strace_test.cpp b/compiler-rt/test/lsan/TestCases/strace_test.cpp
+index 18c809ca329..b25e0575384 100644
+--- a/compiler-rt/test/lsan/TestCases/strace_test.cpp
++++ b/compiler-rt/test/lsan/TestCases/strace_test.cpp
+@@ -2,9 +2,6 @@
+ // REQUIRES: strace
+ // RUN: %clangxx_lsan %s -o %t
+ // RUN: not strace -o /dev/null %run %t 2>&1 | FileCheck %s
+-// FIXME: This technically works in practice but cannot be tested because the
+-// fatal-error caused adb to failed. Could not be captured to stderr to lit-check.
+-// XFAIL: android
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+diff --git a/compiler-rt/test/lsan/TestCases/suppressions_file.cpp b/compiler-rt/test/lsan/TestCases/suppressions_file.cpp
+index 29422bd3c2c..33cf0202d73 100644
+--- a/compiler-rt/test/lsan/TestCases/suppressions_file.cpp
++++ b/compiler-rt/test/lsan/TestCases/suppressions_file.cpp
+@@ -3,16 +3,13 @@
+ 
+ // RUN: rm -f %t.supp
+ // RUN: touch %t.supp
+-// RUN: %push_to_device %t.supp %device_rundir/%t.supp
+-// RUN: %env_lsan_opts="$LSAN_BASE:suppressions='%device_rundir/%t.supp'" not %run %t 2>&1 | FileCheck %s --check-prefix=NOSUPP
++// RUN: %env_lsan_opts="$LSAN_BASE:suppressions='%t.supp'" not %run %t 2>&1 | FileCheck %s --check-prefix=NOSUPP
+ 
+ // RUN: echo "leak:*LSanTestLeakingFunc*" > %t.supp
+-// RUN: %push_to_device  %t.supp %device_rundir/%t.supp
+-// RUN: %env_lsan_opts="$LSAN_BASE:suppressions='%device_rundir/%t.supp'" not %run %t 2>&1 | FileCheck %s
+-//
++// RUN: %env_lsan_opts="$LSAN_BASE:suppressions='%t.supp'" not %run %t 2>&1 | FileCheck %s
++
+ // RUN: echo "leak:%t" > %t.supp
+-// RUN: %push_to_device  %t.supp %device_rundir/%t.supp
+-// RUN: %env_lsan_opts="$LSAN_BASE:suppressions='%device_rundir/%t.supp':symbolize=false" %run %t
++// RUN: %env_lsan_opts="$LSAN_BASE:suppressions='%t.supp':symbolize=false" %run %t
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+diff --git a/compiler-rt/test/lsan/TestCases/swapcontext.cpp b/compiler-rt/test/lsan/TestCases/swapcontext.cpp
+index d0999598ad4..afce8d9fe3b 100644
+--- a/compiler-rt/test/lsan/TestCases/swapcontext.cpp
++++ b/compiler-rt/test/lsan/TestCases/swapcontext.cpp
+@@ -4,8 +4,7 @@
+ // RUN: %clangxx_lsan %s -o %t
+ // RUN: %env_lsan_opts= %run %t 2>&1
+ // RUN: %env_lsan_opts= not %run %t foo 2>&1 | FileCheck %s
+-// Missing 'getcontext' and 'makecontext' on Android.
+-// UNSUPPORTED: arm,powerpc64,android
++// UNSUPPORTED: arm,powerpc64
+ 
+ #include "sanitizer_common/sanitizer_ucontext.h"
+ #include <stdio.h>
+diff --git a/compiler-rt/test/lsan/TestCases/use_registers.cpp b/compiler-rt/test/lsan/TestCases/use_registers.cpp
+index 1cf5b17f03f..2a7d97e0fb4 100644
+--- a/compiler-rt/test/lsan/TestCases/use_registers.cpp
++++ b/compiler-rt/test/lsan/TestCases/use_registers.cpp
+@@ -21,10 +21,11 @@ void *registers_thread_func(void *arg) {
+ 
+   // To store the pointer, choose a register which is unlikely to be reused by
+   // a function call.
+-#if defined(__i386__) || defined(__i686__)
+-  asm("mov %0, %%edi"
++#if defined(__i386__)
++  asm ( "mov %0, %%esi"
+       :
+-      : "r"(p));
++      : "r" (p)
++      );
+ #elif defined(__x86_64__)
+   asm ( "mov %0, %%r15"
+       :
+@@ -40,12 +41,6 @@ void *registers_thread_func(void *arg) {
+       :
+       : "r" (p)
+       );
+-#elif defined(__aarch64__)
+-  // x9-10are used. x11-12 are probably used.
+-  // So we pick x13 to be safe.
+-  asm("mov x13, %0"
+-      :
+-      : "r"(p));
+ #elif defined(__powerpc__)
+   asm ( "mr 30, %0"
+       :
+diff --git a/compiler-rt/test/lsan/lit.common.cfg.py b/compiler-rt/test/lsan/lit.common.cfg.py
+index d6a959552b5..1d393880af6 100644
+--- a/compiler-rt/test/lsan/lit.common.cfg.py
++++ b/compiler-rt/test/lsan/lit.common.cfg.py
+@@ -21,7 +21,6 @@ config.test_source_root = os.path.dirname(__file__)
+ 
+ # Choose between standalone and LSan+ASan modes.
+ lsan_lit_test_mode = get_required_attr(config, 'lsan_lit_test_mode')
+-
+ if lsan_lit_test_mode == "Standalone":
+   config.name = "LeakSanitizer-Standalone"
+   lsan_cflags = ["-fsanitize=leak"]
+@@ -36,8 +35,7 @@ else:
+ config.name += config.name_suffix
+ 
+ # Platform-specific default LSAN_OPTIONS for lit tests.
+-default_common_opts_str = ':'.join(list(config.default_sanitizer_opts))
+-default_lsan_opts = default_common_opts_str + ':detect_leaks=1'
++default_lsan_opts = 'detect_leaks=1'
+ if config.host_os == 'Darwin':
+   # On Darwin, we default to `abort_on_error=1`, which would make tests run
+   # much slower. Let's override this and run lit tests with 'abort_on_error=0'.
+@@ -55,8 +53,6 @@ if lit.util.which('strace'):
+   config.available_features.add('strace')
+ 
+ clang_cflags = ["-O0", config.target_cflags] + config.debug_info_flags
+-if config.android:
+-  clang_cflags = clang_cflags + ["-fno-emulated-tls"]
+ clang_cxxflags = config.cxx_mode_flags + clang_cflags
+ lsan_incdir = config.test_source_root + "/../"
+ clang_lsan_cflags = clang_cflags + lsan_cflags + ["-I%s" % lsan_incdir]
+@@ -80,10 +76,6 @@ supported_netbsd = config.host_os == 'NetBSD' and config.target_arch in ['x86_64
+ if not (supported_linux or supported_darwin or supported_netbsd):
+   config.unsupported = True
+ 
+-# Only run the tests on Android, if required API level is present.
+-if config.android and 'android-thread-properties-api' not in config.available_features:
+-  config.unsupported = True
+-
+ # Don't support Thumb due to broken fast unwinder
+ if re.search('mthumb', config.target_cflags) is not None:
+   config.unsupported = True
+-- 
+2.29.1.341.ge80a0c044ae-goog
+

@@ -22,7 +22,7 @@ _version_read = False
 _patch_level = '5'
 _svn_revision = 'r399163b'
 # svn_revision_next will be newer than the official svn_revision in the future.
-_svn_revision_next = 'r404259'
+_svn_revision_next = 'r407598'
 
 def set_llvm_next(llvm_next: bool):
     if _version_read:
