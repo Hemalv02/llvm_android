@@ -24,18 +24,17 @@ import hosts
 import paths
 import utils
 import source_manager
+import sys
 
 _LLVM_ANDROID_PATH = paths.SCRIPTS_DIR
 _PATCH_DIR = os.path.join(_LLVM_ANDROID_PATH, 'patches')
 _PATCH_JSON = os.path.join(_PATCH_DIR, 'PATCHES.json')
 
-_SVN_REVISION = (
-    android_version.get_svn_revision_number()
+_SVN_REVISION = (android_version.get_svn_revision_number())
 
 
 def get_removed_patches(output):
-    """Parse the list of removed patches from patch_manager.py's output.
-    """
+    """Parse the list of removed patches from patch_manager.py's output."""
     marker = 'removed from the patch metadata file:\n'
     marker_start = output.find(marker)
     if marker_start == -1:
@@ -45,8 +44,7 @@ def get_removed_patches(output):
 
 
 def trim_patches_json():
-    """Invoke patch_manager.py with failure_mode=remove_patches
-    """
+    """Invoke patch_manager.py with failure_mode=remove_patches."""
     source_dir = paths.TOOLCHAIN_LLVM_PATH
     output = source_manager.apply_patches(source_dir, _SVN_REVISION,
                                           _PATCH_JSON, _PATCH_DIR,
@@ -55,6 +53,11 @@ def trim_patches_json():
 
 
 def main():
+    if len(sys.argv) > 1:
+        print(f'Usage: {sys.argv[0]}')
+        print('  Script to remove downstream patches no longer needed for ' +
+              'Android LLVM version.')
+        return
 
     def _get_patch_path(patch):
         # Find whether the basename printed by patch_manager.py is a cherry-pick
@@ -87,6 +90,7 @@ def main():
     message_lines = [
         f'Remove patch entries older than {_SVN_REVISION}.',
         '',
+        'Removed using: python3 trim_patch_data.py',
         'Test: N/A',
     ]
     utils.check_call(['git', 'commit', '-m', '\n'.join(message_lines)])
