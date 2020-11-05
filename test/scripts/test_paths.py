@@ -28,6 +28,8 @@ CNS_KEY_FILE: Path = Path(
     '/google/data/ro/teams/android-llvm/tests/cns_key_file.txt')
 GCL_KEY_FILE: Path = Path(
     '/google/data/ro/teams/android-llvm/tests/gcl_key_file.txt')
+RELEASE_BRANCH_KEY_FILE: Path = Path(
+    '/google/data/ro/teams/android-llvm/tests/release_branch_key_file.txt')
 
 SOONG_CSV: str = 'soong_cls.csv'
 PREBUILT_CSV: str = 'prebuilt_cls.csv'
@@ -48,3 +50,8 @@ def cns_path() -> str:
 def gcl_path() -> str:
     """Read path to testbench GCLs from GCL_KEY_FILE."""
     return _read_key_file(GCL_KEY_FILE)
+
+
+def release_branch_name() -> str:
+    """Read name of release branch from RELEASE_BRANCH_KEY_FILE."""
+    return _read_key_file(RELEASE_BRANCH_KEY_FILE)
