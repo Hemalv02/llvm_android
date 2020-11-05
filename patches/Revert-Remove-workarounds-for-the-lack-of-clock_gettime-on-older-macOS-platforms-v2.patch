@@ -1,0 +1,274 @@
+From 5c05ca348fa95539b4d6f621a16baae584d45c51 Mon Sep 17 00:00:00 2001
+From: Stephen Hines <srhines@google.com>
+Date: Wed, 4 Nov 2020 12:49:50 -0800
+Subject: [PATCH] Revert "[libc++] Remove workarounds for the lack of
+ clock_gettime on older macOS platforms"
+
+This reverts commit babd3aefc9193b44ad0620a2cfd63ebb6ad7e952.
+
+Change-Id: Ia7b0d2722aaeb2679102c8a83a3730d43e568398
+---
+ libcxx/docs/index.rst                   | 35 +++--------
+ libcxx/src/chrono.cpp                   | 84 +++++++++++++++++++++----
+ libcxx/src/filesystem/operations.cpp    | 12 ++--
+ libcxx/src/include/apple_availability.h | 18 ++++++
+ 4 files changed, 106 insertions(+), 43 deletions(-)
+
+diff --git a/libcxx/docs/index.rst b/libcxx/docs/index.rst
+index 75d5b8226b4c..1ddf4793b737 100644
+--- a/libcxx/docs/index.rst
++++ b/libcxx/docs/index.rst
+@@ -85,46 +85,25 @@ reasons, but some of the major ones are:
+ Platform and Compiler Support
+ -----------------------------
+ 
+-For using the libc++ headers
+-############################
+-The libc++ headers are known to work on the following platforms, using GCC and
+-Clang. Note that functionality provided by ``<atomic>`` is only functional with
+-Clang and GCC.
+-
+-============ ==================== ============
+-OS           Arch                 Compilers
+-============ ==================== ============
+-macOS 10.9+  i386, x86_64         Clang, GCC
+-FreeBSD 10+  i386, x86_64, ARM    Clang, GCC
+-Linux        i386, x86_64         Clang, GCC
+-============ ==================== ============
+-
+-The following minimum compiler versions are required:
+-
+-* Clang 4.0 and above
+-* GCC 5.0 and above.
+-
+-The C++03 dialect is only supported with Clang.
+-
+-For building the libc++ library
+-###############################
+-Building the libc++ library (static or shared) requires some features from
+-the operating system. As such, it has its own set of (slightly different)
+-system requirements.
++libc++ is known to work on the following platforms, using gcc and
++clang.
++Note that functionality provided by ``<atomic>`` is only functional with clang
++and GCC.
+ 
+ ============ ==================== ============ ========================
+ OS           Arch                 Compilers    ABI Library
+ ============ ==================== ============ ========================
+-macOS 10.12+ i386, x86_64         Clang, GCC   libc++abi
++macOS        i386, x86_64         Clang, GCC   libc++abi
+ FreeBSD 10+  i386, x86_64, ARM    Clang, GCC   libcxxrt, libc++abi
+ Linux        i386, x86_64         Clang, GCC   libc++abi
+ ============ ==================== ============ ========================
+ 
+-The following minimum compiler versions are required:
++The following minimum compiler versions are strongly recommended.
+ 
+ * Clang 4.0 and above
+ * GCC 5.0 and above.
+ 
++The C++03 dialect is only supported for Clang compilers.
+ 
+ C++ Dialect Support
+ ---------------------
+diff --git a/libcxx/src/chrono.cpp b/libcxx/src/chrono.cpp
+index c88224c61bdb..67f062a0efc3 100644
+--- a/libcxx/src/chrono.cpp
++++ b/libcxx/src/chrono.cpp
+@@ -9,7 +9,7 @@
+ #include "chrono"
+ #include "cerrno"        // errno
+ #include "system_error"  // __throw_system_error
+-#include <time.h>        // clock_gettime and CLOCK_{MONOTONIC,REALTIME,MONOTONIC_RAW}
++#include <time.h>        // clock_gettime, CLOCK_MONOTONIC and CLOCK_REALTIME
+ #include "include/apple_availability.h"
+ 
+ #if __has_include(<unistd.h>)
+@@ -33,6 +33,14 @@
+ #  endif
+ #endif // defined(_LIBCPP_WIN32API)
+ 
++#if !defined(_LIBCPP_HAS_NO_MONOTONIC_CLOCK)
++# if __APPLE__
++#  include <mach/mach_time.h>  // mach_absolute_time, mach_timebase_info_data_t
++# elif !defined(_LIBCPP_WIN32API) && !defined(CLOCK_MONOTONIC)
++#  error "Monotonic clock not implemented"
++# endif
++#endif
++
+ #if defined(__ELF__) && defined(_LIBCPP_LINK_RT_LIB)
+ #  pragma comment(lib, "rt")
+ #endif
+@@ -110,15 +118,8 @@ const bool steady_clock::is_steady;
+ 
+ #if defined(__APPLE__)
+ 
+-#if !defined(CLOCK_MONOTONIC_RAW)
+-#  error "Building libc++ on Apple platforms requires CLOCK_MONOTONIC_RAW"
+-#endif
+-
+-// On Apple platforms, only CLOCK_UPTIME_RAW, CLOCK_MONOTONIC_RAW or
+-// mach_absolute_time are able to time functions in the nanosecond range.
+-// Furthermore, only CLOCK_MONOTONIC_RAW is truly monotonic, because it
+-// also counts cycles when the system is asleep. Thus, it is the only
+-// acceptable implementation of steady_clock.
++// Darwin libc versions >= 1133 provide ns precision via CLOCK_MONOTONIC_RAW
++#if defined(_LIBCPP_USE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC_RAW)
+ steady_clock::time_point
+ steady_clock::now() _NOEXCEPT
+ {
+@@ -128,6 +129,60 @@ steady_clock::now() _NOEXCEPT
+     return time_point(seconds(tp.tv_sec) + nanoseconds(tp.tv_nsec));
+ }
+ 
++#else
++//   mach_absolute_time() * MachInfo.numer / MachInfo.denom is the number of
++//   nanoseconds since the computer booted up.  MachInfo.numer and MachInfo.denom
++//   are run time constants supplied by the OS.  This clock has no relationship
++//   to the Gregorian calendar.  It's main use is as a high resolution timer.
++
++// MachInfo.numer / MachInfo.denom is often 1 on the latest equipment.  Specialize
++//   for that case as an optimization.
++
++static
++steady_clock::rep
++steady_simplified()
++{
++    return static_cast<steady_clock::rep>(mach_absolute_time());
++}
++
++static
++double
++compute_steady_factor()
++{
++    mach_timebase_info_data_t MachInfo;
++    mach_timebase_info(&MachInfo);
++    return static_cast<double>(MachInfo.numer) / MachInfo.denom;
++}
++
++static
++steady_clock::rep
++steady_full()
++{
++    static const double factor = compute_steady_factor();
++    return static_cast<steady_clock::rep>(mach_absolute_time() * factor);
++}
++
++typedef steady_clock::rep (*FP)();
++
++static
++FP
++init_steady_clock()
++{
++    mach_timebase_info_data_t MachInfo;
++    mach_timebase_info(&MachInfo);
++    if (MachInfo.numer == MachInfo.denom)
++        return &steady_simplified;
++    return &steady_full;
++}
++
++steady_clock::time_point
++steady_clock::now() _NOEXCEPT
++{
++    static FP fp = init_steady_clock();
++    return time_point(duration(fp()));
++}
++#endif // defined(_LIBCPP_USE_CLOCK_GETTIME) && defined(CLOCK_MONOTONIC_RAW)
++
+ #elif defined(_LIBCPP_WIN32API)
+ 
+ // https://msdn.microsoft.com/en-us/library/windows/desktop/ms644905(v=vs.85).aspx says:
+@@ -155,6 +210,13 @@ steady_clock::now() _NOEXCEPT
+ 
+ #elif defined(CLOCK_MONOTONIC)
+ 
++// On Apple platforms only CLOCK_UPTIME_RAW, CLOCK_MONOTONIC_RAW or
++// mach_absolute_time are able to time functions in the nanosecond range.
++// Thus, they are the only acceptable implementations of steady_clock.
++#ifdef __APPLE__
++#error "Never use CLOCK_MONOTONIC for steady_clock::now on Apple platforms"
++#endif
++
+ steady_clock::time_point
+ steady_clock::now() _NOEXCEPT
+ {
+@@ -165,7 +227,7 @@ steady_clock::now() _NOEXCEPT
+ }
+ 
+ #else
+-#  error "Monotonic clock not implemented"
++#error "Monotonic clock not implemented"
+ #endif
+ 
+ #endif // !_LIBCPP_HAS_NO_MONOTONIC_CLOCK
+diff --git a/libcxx/src/filesystem/operations.cpp b/libcxx/src/filesystem/operations.cpp
+index 5c98671feeed..51bd1ca51bf4 100644
+--- a/libcxx/src/filesystem/operations.cpp
++++ b/libcxx/src/filesystem/operations.cpp
+@@ -36,9 +36,13 @@
+ #define _LIBCPP_USE_COPYFILE
+ #endif
+ 
+-#if !defined(CLOCK_REALTIME)
++#if !defined(__APPLE__) && _POSIX_TIMERS > 0
++#define _LIBCPP_USE_CLOCK_GETTIME
++#endif
++
++#if !defined(CLOCK_REALTIME) || !defined(_LIBCPP_USE_CLOCK_GETTIME)
+ #include <sys/time.h> // for gettimeofday and timeval
+-#endif // !defined(CLOCK_REALTIME)
++#endif                // !defined(CLOCK_REALTIME)
+ 
+ #if defined(__ELF__) && defined(_LIBCPP_LINK_RT_LIB)
+ #pragma comment(lib, "rt")
+@@ -486,7 +490,7 @@ const bool _FilesystemClock::is_steady;
+ 
+ _FilesystemClock::time_point _FilesystemClock::now() noexcept {
+   typedef chrono::duration<rep> __secs;
+-#if defined(CLOCK_REALTIME)
++#if defined(_LIBCPP_USE_CLOCK_GETTIME) && defined(CLOCK_REALTIME)
+   typedef chrono::duration<rep, nano> __nsecs;
+   struct timespec tp;
+   if (0 != clock_gettime(CLOCK_REALTIME, &tp))
+@@ -498,7 +502,7 @@ _FilesystemClock::time_point _FilesystemClock::now() noexcept {
+   timeval tv;
+   gettimeofday(&tv, 0);
+   return time_point(__secs(tv.tv_sec) + __microsecs(tv.tv_usec));
+-#endif // CLOCK_REALTIME
++#endif // _LIBCPP_USE_CLOCK_GETTIME && CLOCK_REALTIME
+ }
+ 
+ filesystem_error::~filesystem_error() {}
+diff --git a/libcxx/src/include/apple_availability.h b/libcxx/src/include/apple_availability.h
+index 0f999d3feafb..f0a5800e8f3a 100644
+--- a/libcxx/src/include/apple_availability.h
++++ b/libcxx/src/include/apple_availability.h
+@@ -28,6 +28,24 @@
+ #endif
+ #endif // __ENVIRONMENT_.*_VERSION_MIN_REQUIRED__
+ 
++#if defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__)
++#if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 101200
++#define _LIBCPP_USE_CLOCK_GETTIME
++#endif
++#elif defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
++#if __ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__ >= 100000
++#define _LIBCPP_USE_CLOCK_GETTIME
++#endif
++#elif defined(__ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__)
++#if __ENVIRONMENT_TV_OS_VERSION_MIN_REQUIRED__ >= 100000
++#define _LIBCPP_USE_CLOCK_GETTIME
++#endif
++#elif defined(__ENVIRONMENT_WATCH_OS_VERSION_MIN_REQUIRED__)
++#if __ENVIRONMENT_WATCH_OS_VERSION_MIN_REQUIRED__ >= 30000
++#define _LIBCPP_USE_CLOCK_GETTIME
++#endif
++#endif // __ENVIRONMENT_.*_VERSION_MIN_REQUIRED__
++
+ #if defined(__ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__)
+ #if __ENVIRONMENT_MAC_OS_X_VERSION_MIN_REQUIRED__ >= 101500
+ #define _LIBCPP_USE_ULOCK
+-- 
+2.29.1.341.ge80a0c044ae-goog
+

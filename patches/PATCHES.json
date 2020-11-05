@@ -402,6 +402,12 @@
         "end_version": 405613
     },
     {
+        "comment": "[UPSTREAM] Revert \"    Enable LSAN for Android\"",
+        "rel_patch_path": "cherry/25a8881b724abf7251a9278e72224af7e82cb9c2.patch",
+        "start_version": 407598,
+        "end_version": 407756
+    },
+    {
         "comment": "Driver: Add integer sanitizers to trapping group automatically.",
         "rel_patch_path": "cherry/c5acd3490b79703426931f7b88b544fe7c6e1ef2.patch",
         "start_version": 403758,
@@ -465,6 +471,12 @@
         "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
         "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms.patch",
         "start_version": 395739,
+        "end_version": 407598
+    },
+    {
+        "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
+        "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms-v2.patch",
+        "start_version": 407598,
         "end_version": null
     },
     {
@@ -477,6 +489,12 @@
         "comment": "Revert two changes that break cfi_test.basic in bionic-unit-tests",
         "rel_patch_path": "Revert-two-changes-that-break-cfi_test.basic-in-bionic-unit-tests.patch",
         "start_version": 404259,
+        "end_version": 407598
+    },
+    {
+        "comment": "Revert several changes that break cfi_test.basic in bionic-unit-tests",
+        "rel_patch_path": "Revert-several-changes-that-break-cfi_test.basic-in-bionic-unit-tests.patch",
+        "start_version": 407598,
         "end_version": null
     }
 ]
