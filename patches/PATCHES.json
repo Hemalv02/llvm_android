@@ -402,6 +402,12 @@
         "end_version": 405613
     },
     {
+        "comment": "[UPSTREAM] [MinGW][clang-shlib] Build only when LLVM_LINK_LLVM_DYLIB is enabled",
+        "rel_patch_path": "cherry/3b1d018c0dba45408164f5e69cb400976efa350f.patch",
+        "start_version": 404259,
+        "end_version": 407710
+    },
+    {
         "comment": "[UPSTREAM] Revert \"    Enable LSAN for Android\"",
         "rel_patch_path": "cherry/25a8881b724abf7251a9278e72224af7e82cb9c2.patch",
         "start_version": 407598,
