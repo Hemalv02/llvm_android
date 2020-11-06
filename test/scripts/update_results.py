@@ -30,20 +30,20 @@ except ImportError:
 """
     raise ImportError(missingImportString)
 
-from typing import Tuple
+from typing import Tuple, List
 import logging
 import pathlib
 import sys
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
-from data import CNSData, ForrestRecord
+from data import CNSData, WorkNodeRecord, TestResultRecord
 import utils
 
 ANDROID_BUILD_API_SCOPE = (
     'https://www.googleapis.com/auth/androidbuild.internal')
 ANDROID_BUILD_API_NAME = 'androidbuildinternal'
-ANDROID_BUILD_API_VERSION = 'v2beta1'
+ANDROID_BUILD_API_VERSION = 'v3'
 TRADEFED_KEY_FILE = '/google/data/ro/teams/tradefed/configs/tradefed.json'
 
 
@@ -60,34 +60,85 @@ class AndroidBuildClient():
             credentials=creds,
             discoveryServiceUrl=apiclient.discovery.DISCOVERY_URI)
 
-    def get_build(self, forrest_invocation_id) -> Tuple[str, str]:
-        """Return the build ID and target for a Forrest invocation_id."""
-        request = self.client.worknode().list(
-            workExecutorTypes='pendingChangeBuild',
-            workPlanId=forrest_invocation_id)
+    @staticmethod
+    def _worknode_parse_general(workNodeData):
+        if 'isFinal' not in workNodeData:
+            return False, 'Error: isFinal field not present'
+        isFinal = workNodeData['isFinal']
+        if not isinstance(isFinal, bool):
+            return False, 'Error: isFinal expected to be a bool'
+        if not isFinal:
+            return False, 'incomplete'
 
-        response = request.execute()
-        # TODO(pirama) validate response
-        worknode = response['workNodes'][0]
-        if 'workOutput' not in worknode:
-            return ('PENDING', 'PENDING')
-        buildOutput = worknode['workOutput']['buildOutput']
-        return (buildOutput['buildId'], buildOutput['target'])
+        return True, workNodeData['workExecutorType']
 
-    def get_build_status(self, buildId, target):
-        """Return the status of a target in a build."""
-        request = self.client.build().get(buildId=buildId, target=target)
-        # TODO(pirama) validate response
+    def get_worknode_status(self, forrest_invocation_id: str,
+                            tag: str) -> Tuple[bool, List[TestResultRecord]]:
+        """Return completion status and results from a Forrest invocation."""
+        resultStr = lambda res: 'passed' if res else 'failed'
+
+        request = self.client.worknode().list(workPlanId=forrest_invocation_id)
         response = request.execute()
-        status = response['buildAttemptStatus']
-        if not isinstance(response['successful'], bool):
-            raise RuntimeError('response[\'successful\'] is not a boolean')
-        complete = (status == 'complete') and response['successful']
-        return 'completed' if complete else 'failed'
+
+        results = []
+        workDone = False
+        for worknode in response['workNodes']:
+            ok, msg = AndroidBuildClient._worknode_parse_general(worknode)
+            if not ok:
+                if msg != 'incomplete':
+                    logging.warning(f'Parsing worknode failed: {msg}\n' +
+                                    str(worknode))
+                continue
+
+            if msg == 'trybotFinished':
+                # Status of trybotFinished worknode tells if work for an
+                # invocation is completed.
+                workDone = worknode['status'] == 'complete'
+                continue
+
+            workOutput = worknode['workOutput']
+            success = workOutput['success']
+            if msg == 'pendingChangeBuild':
+                work_type = 'BUILD'
+                params = worknode['workParameters']['submitQueue']
+                build_id = workOutput['buildOutput']['buildId']
+                test_name = 'NA'
+                ants_id = 'NA'
+                display_message = 'NA'
+            elif msg == 'atpTest':
+                work_type = 'TEST'
+                params = worknode['workParameters']['atpTestParameters']
+                if 'testOutput' in workOutput:
+                    build_id = workOutput['testOutput']['buildId']
+                    ants_id = workOutput['testOutput']['antsInvocationId']
+                else:
+                    # 'testOutput' absent - test didn't run due to build
+                    # failure.
+                    build_id, ants_id = 'NA', 'NA'
+                test_name = params['testName']
+                display_message = workOutput['displayMessage']
+
+            branch = params['branch']
+            target = params['target']
+
+            results.append(
+                TestResultRecord(
+                    tag=tag,
+                    worknode_id=worknode['id'],
+                    work_type=work_type,
+                    branch=branch,
+                    target=target,
+                    build_id=build_id,
+                    result=resultStr(success),
+                    test_name=test_name,
+                    ants_invocation_id=ants_id,
+                    display_message=display_message))
+
+        return workDone, results
 
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
     utils.check_gcertstatus()
 
     if len(sys.argv) > 1:
@@ -97,31 +148,29 @@ def main():
     CNSData.loadCNSData()
     build_client = AndroidBuildClient()
 
-    invocations = [r.invocation_id for r in CNSData.ForrestPending.records]
-    for inv in invocations:
-        pending = CNSData.ForrestPending.findByInvocation(inv)
+    completed = list()
+    for pending in CNSData.PendingWorkNodes.records:
+        inv = pending.invocation_id
         # Remove the pending record if it already exists in CNSData.Forrest or
         # if its invocation has finished execution.
-        complete = CNSData.Forrest.findByInvocation(inv)
+        complete = CNSData.CompletedWorkNodes.findByInvocation(inv)
+
         if not complete:
-            buildId, target = build_client.get_build(inv)
-            if buildId == 'PENDING':
-                continue # Build is not finished yet.
+            complete, results = build_client.get_worknode_status(
+                inv, pending.tag)
+            for result in results:
+                CNSData.TestResults.addResult(result, writeBack=False)
 
-            result = build_client.get_build_status(buildId, target)
-            record = ForrestRecord(
-                prebuilt_build_number=pending.prebuilt_build_number,
-                invocation_id=inv,
-                tag=pending.tag,
-                branch=pending.branch,
-                target=pending.target,
-                build_number=buildId,
-                result=result)
-            CNSData.Forrest.addInvocation(record, writeBack=False)
-        CNSData.ForrestPending.remove(pending, writeBack=False)
+        if complete:
+            completed.append(pending)
 
-    CNSData.Forrest.write()
-    CNSData.ForrestPending.write()
+    for record in completed:
+        CNSData.CompletedWorkNodes.addInvocation(record, writeBack=False)
+        CNSData.PendingWorkNodes.remove(record, writeBack=False)
+
+    CNSData.TestResults.write()
+    CNSData.CompletedWorkNodes.write()
+    CNSData.PendingWorkNodes.write()
 
 
 if __name__ == '__main__':

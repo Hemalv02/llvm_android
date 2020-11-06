@@ -58,8 +58,8 @@ class SoongCLRecord(NamedTuple):
     cl_number: str
 
 
-class ForrestPendingRecord(NamedTuple):
-    """CSV Record for an in-progress forrest invocation."""
+class WorkNodeRecord(NamedTuple):
+    """CSV Record for a forrest invocation (both pending and completed)."""
     prebuilt_build_number: str
     invocation_id: str
     tag: str
@@ -67,21 +67,22 @@ class ForrestPendingRecord(NamedTuple):
     target: str
 
 
-class ForrestRecord(NamedTuple):
-    """CSV Record for a completed forrest invocation."""
-    prebuilt_build_number: str
-    invocation_id: str
+class TestResultRecord(NamedTuple):
+    """CSV Record with results of a completed forrest invocation."""
     tag: str
+    worknode_id: str
+    work_type: str
     branch: str
     target: str
-    build_number: str
+    build_id: str
     result: str
+    test_name: str
+    ants_invocation_id: str
+    display_message: str
 
 
-ForrestRecordType = TypeVar('ForrestRecordType', ForrestPendingRecord,
-                            ForrestRecord)
 RecordType = TypeVar('RecordType', PrebuiltCLRecord, SoongCLRecord,
-                     ForrestPendingRecord, ForrestRecord)
+                     WorkNodeRecord, TestResultRecord)
 
 
 class CSVTable(Generic[RecordType]):
@@ -214,45 +215,39 @@ class SoongCLTable(CSVTable[SoongCLRecord]):
         return row
 
 
-class ForrestTableBase(CSVTable[ForrestRecordType]):
-    """Base CSV table for pending and completed Forrest invocations."""
+class WorkNodeTable(CSVTable[WorkNodeRecord]):
+    """CSV table for Forrest worknode invocations (pending and completed)."""
+    makeRow = WorkNodeRecord._make
 
-    def addInvocation(self,
-                      record: ForrestRecordType,
-                      writeBack=True) -> None:
+    def addInvocation(self, record: WorkNodeRecord, writeBack=True) -> None:
         """Add invocation to CSV Table and optionally write back."""
         if self.get(lambda that: that.invocation_id == record.invocation_id):
             raise RuntimeError(f'Invocation {record} already exists')
         self.add(record, writeBack)
 
-    def find(self, prebuilt_build_number, tag, branch,
-             target) -> Optional[ForrestRecordType]:
-        """Find Forrest invocation based on (prebuilt, tag, branch, target)."""
-        return self.getOne(lambda that:
-            that.prebuilt_build_number == prebuilt_build_number and \
-            that.branch == branch and \
-            that.target == target and \
-            that.tag == tag)
-
-    def findByInvocation(self, invocation_id) -> Optional[ForrestRecordType]:
+    def findByInvocation(self, invocation_id) -> Optional[WorkNodeRecord]:
         """Find Forrest invocation based on invocation_id."""
         return self.getOne(lambda that: that.invocation_id == invocation_id)
 
 
-class ForrestPendingTable(ForrestTableBase[ForrestPendingRecord]):
-    """CSV table for bookkeeping pending Forrest invocations."""
-    makeRow = ForrestPendingRecord._make
+class TestResultsTable(CSVTable[TestResultRecord]):
+    """CSV table for Forrest work records (for both builds and tests)."""
+    makeRow = TestResultRecord._make
 
-class ForrestTable(ForrestTableBase[ForrestRecord]):
-    """CSV table for bookkeeping completed Forrest invocations."""
-    makeRow = ForrestRecord._make
+    def addResult(self, record: TestResultRecord, writeBack=True) -> None:
+        """Add test record and optionally write back."""
+        if self.get(lambda that: that.worknode_id == record.worknode_id):
+            raise RuntimeError(f'TestResultRecord exists for worknode {record}')
+        self.add(record, writeBack)
+
 
 class CNSData():
     """Wrapper for CSV Data stored in CNS."""
     Prebuilts: PrebuiltsTable
     SoongCLs: SoongCLTable
-    ForrestPending: ForrestPendingTable
-    Forrest: ForrestTable
+    PendingWorkNodes: WorkNodeTable
+    CompletedWorkNodes: WorkNodeTable
+    TestResults: TestResultsTable
 
     @staticmethod
     def loadCNSData() -> None:
@@ -262,6 +257,9 @@ class CNSData():
         CNSData.Prebuilts = PrebuiltsTable(
             f'{cns_path}/{test_paths.PREBUILT_CSV}')
         CNSData.SoongCLs = SoongCLTable(f'{cns_path}/{test_paths.SOONG_CSV}')
-        CNSData.ForrestPending = ForrestPendingTable(
+        CNSData.PendingWorkNodes = WorkNodeTable(
             f'{cns_path}/{test_paths.FORREST_PENDING_CSV}')
-        CNSData.Forrest = ForrestTable(f'{cns_path}/{test_paths.FORREST_CSV}')
+        CNSData.CompletedWorkNodes = WorkNodeTable(
+            f'{cns_path}/{test_paths.FORREST_CSV}')
+        CNSData.TestResults = TestResultsTable(
+            f'{cns_path}/{test_paths.TEST_RESULTS_CSV}')

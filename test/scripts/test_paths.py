@@ -35,6 +35,7 @@ SOONG_CSV: str = 'soong_cls.csv'
 PREBUILT_CSV: str = 'prebuilt_cls.csv'
 FORREST_PENDING_CSV: str = 'forrest_pending.csv'
 FORREST_CSV: str = 'forrest.csv'
+TEST_RESULTS_CSV: str = 'test_results.csv'
 
 
 def _read_key_file(key_file: Path) -> str:

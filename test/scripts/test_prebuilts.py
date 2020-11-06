@@ -27,7 +27,7 @@ import yaml
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
-from data import CNSData, PrebuiltCLRecord, SoongCLRecord, ForrestPendingRecord
+from data import CNSData, PrebuiltCLRecord, SoongCLRecord, WorkNodeRecord
 import forrest
 import gerrit
 import test_paths
@@ -126,7 +126,6 @@ def prepareCLs(args):
 
     Upload new CLs to gerrit if matching CLs not found in CNS data.
     """
-    CNSData.loadCNSData()
     build = get_toolchain_build(args.build)
 
     prebuiltRow = CNSData.Prebuilts.getPrebuilt(args.build, args.prebuilt_cl)
@@ -210,21 +209,21 @@ def invokeForrestRuns(cls, args):
         branch = config.branch
         target = config.target
         tests = config.tests
-        if CNSData.ForrestPending.find(build, tag, branch, target) or \
-           CNSData.Forrest.find(build, tag, branch, target):
+        if CNSData.PendingWorkNodes.find(build, tag, branch, target) or \
+           CNSData.CompletedWorkNodes.find(build, tag, branch, target):
             # Skip if this was previously scheduled.
             logging.info(f'Skipping already-submitted config {config}.')
             continue
         invocation_id = forrest.invokeForrestRun(branch, target, cl_numbers,
                                                  tests, args.tag)
         logging.info(f'Submitted {config} to forrest: {invocation_id}')
-        record = ForrestPendingRecord(
+        record = WorkNodeRecord(
             prebuilt_build_number=build,
             invocation_id=invocation_id,
             tag=tag,
             branch=branch,
             target=target)
-        CNSData.ForrestPending.addInvocation(record)
+        CNSData.PendingWorkNodes.addInvocation(record)
 
 
 def parse_args():
@@ -273,6 +272,7 @@ def main():
     logging.basicConfig(level=level)
     do_prechecks()
 
+    CNSData.loadCNSData()
     cls = prepareCLs(args)
     if args.prepare_only:
         return
