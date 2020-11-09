@@ -4,7 +4,7 @@ git_master:
         tests:
             - avd/avd_boot_health_check
     blueline-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
@@ -22,37 +22,37 @@ git_master:
         tests:
             - avd/avd_boot_health_check
     coral-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
     flame-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
     bonito-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
     sargo-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
     bramble-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
     redfin-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
     sunfish-userdebug:
-        groups: arm64 smoke
+        groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
