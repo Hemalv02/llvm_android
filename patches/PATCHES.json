@@ -138,6 +138,12 @@
         "end_version": 410707
     },
     {
+        "comment": "[LegalizeTypes] Legalize vector rotate operations",
+        "rel_patch_path": "cherry/62b17a76971cd17c1ebd4ce00a536b0b74af98b2.patch",
+        "start_version": 404259,
+        "end_version": 408939
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,

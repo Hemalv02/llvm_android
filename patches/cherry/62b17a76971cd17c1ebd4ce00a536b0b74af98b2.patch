@@ -1,0 +1,152 @@
+From 62b17a76971cd17c1ebd4ce00a536b0b74af98b2 Mon Sep 17 00:00:00 2001
+From: Simon Pilgrim <llvm-dev@redking.me.uk>
+Date: Sat, 24 Oct 2020 11:30:32 +0100
+Subject: [LegalizeTypes] Legalize vector rotate operations
+
+Lower vector rotate operations as long as the legalization occurs outside of LegalizeVectorOps.
+
+This fixes https://bugs.llvm.org/show_bug.cgi?id=47320
+
+Patch By: @rsanthir.quic (Ryan Santhirarajan)
+
+Differential Revision: https://reviews.llvm.org/D89497
+---
+ llvm/include/llvm/CodeGen/TargetLowering.h    |  5 ++++-
+ llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp |  2 +-
+ .../SelectionDAG/LegalizeIntegerTypes.cpp     |  4 ++--
+ .../SelectionDAG/LegalizeVectorOps.cpp        |  2 +-
+ .../CodeGen/SelectionDAG/TargetLowering.cpp   | 15 +++++++------
+ .../test/CodeGen/AArch64/expand-vector-rot.ll | 22 +++++++++++++++++++
+ 6 files changed, 38 insertions(+), 12 deletions(-)
+ create mode 100644 llvm/test/CodeGen/AArch64/expand-vector-rot.ll
+
+diff --git a/llvm/include/llvm/CodeGen/TargetLowering.h b/llvm/include/llvm/CodeGen/TargetLowering.h
+index 07ff21a10e3..064e7608cb6 100644
+--- a/llvm/include/llvm/CodeGen/TargetLowering.h
++++ b/llvm/include/llvm/CodeGen/TargetLowering.h
+@@ -4309,9 +4309,12 @@ public:
+ 
+   /// Expand rotations.
+   /// \param N Node to expand
++  /// \param AllowVectorOps expand vector rotate, this should only be performed
++  ///        if the legalization is happening outside of LegalizeVectorOps
+   /// \param Result output after conversion
+   /// \returns True, if the expansion was successful, false otherwise
+-  bool expandROT(SDNode *N, SDValue &Result, SelectionDAG &DAG) const;
++  bool expandROT(SDNode *N, bool AllowVectorOps, SDValue &Result,
++                 SelectionDAG &DAG) const;
+ 
+   /// Expand float(f32) to SINT(i64) conversion
+   /// \param N Node to expand
+diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp
+index 6328626868d..078d8ad2711 100644
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeDAG.cpp
+@@ -3523,7 +3523,7 @@ bool SelectionDAGLegalize::ExpandNode(SDNode *Node) {
+     break;
+   case ISD::ROTL:
+   case ISD::ROTR:
+-    if (TLI.expandROT(Node, Tmp1, DAG))
++    if (TLI.expandROT(Node, true /*AllowVectorOps*/, Tmp1, DAG))
+       Results.push_back(Tmp1);
+     break;
+   case ISD::SADDSAT:
+diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
+index b2ff53327d5..1c5253369ef 100644
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeIntegerTypes.cpp
+@@ -1122,7 +1122,7 @@ SDValue DAGTypeLegalizer::PromoteIntRes_SRL(SDNode *N) {
+ SDValue DAGTypeLegalizer::PromoteIntRes_Rotate(SDNode *N) {
+   // Lower the rotate to shifts and ORs which can be promoted.
+   SDValue Res;
+-  TLI.expandROT(N, Res, DAG);
++  TLI.expandROT(N, true /*AllowVectorOps*/, Res, DAG);
+   ReplaceValueWith(SDValue(N, 0), Res);
+   return SDValue();
+ }
+@@ -4068,7 +4068,7 @@ void DAGTypeLegalizer::ExpandIntRes_Rotate(SDNode *N,
+                                            SDValue &Lo, SDValue &Hi) {
+   // Lower the rotate to shifts and ORs which can be expanded.
+   SDValue Res;
+-  TLI.expandROT(N, Res, DAG);
++  TLI.expandROT(N, true /*AllowVectorOps*/, Res, DAG);
+   SplitInteger(Res, Lo, Hi);
+ }
+ 
+diff --git a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorOps.cpp b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorOps.cpp
+index 07b51005555..f109b078175 100644
+--- a/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorOps.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/LegalizeVectorOps.cpp
+@@ -800,7 +800,7 @@ void VectorLegalizer::Expand(SDNode *Node, SmallVectorImpl<SDValue> &Results) {
+     break;
+   case ISD::ROTL:
+   case ISD::ROTR:
+-    if (TLI.expandROT(Node, Tmp, DAG)) {
++    if (TLI.expandROT(Node, false /*AllowVectorOps*/, Tmp, DAG)) {
+       Results.push_back(Tmp);
+       return;
+     }
+diff --git a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
+index 58a731afee3..5a1fc97a9da 100644
+--- a/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
++++ b/llvm/lib/CodeGen/SelectionDAG/TargetLowering.cpp
+@@ -6302,8 +6302,8 @@ bool TargetLowering::expandFunnelShift(SDNode *Node, SDValue &Result,
+ }
+ 
+ // TODO: Merge with expandFunnelShift.
+-bool TargetLowering::expandROT(SDNode *Node, SDValue &Result,
+-                               SelectionDAG &DAG) const {
++bool TargetLowering::expandROT(SDNode *Node, bool AllowVectorOps,
++                               SDValue &Result, SelectionDAG &DAG) const {
+   EVT VT = Node->getValueType(0);
+   unsigned EltSizeInBits = VT.getScalarSizeInBits();
+   bool IsLeft = Node->getOpcode() == ISD::ROTL;
+@@ -6322,11 +6322,12 @@ bool TargetLowering::expandROT(SDNode *Node, SDValue &Result,
+     return true;
+   }
+ 
+-  if (VT.isVector() && (!isOperationLegalOrCustom(ISD::SHL, VT) ||
+-                        !isOperationLegalOrCustom(ISD::SRL, VT) ||
+-                        !isOperationLegalOrCustom(ISD::SUB, VT) ||
+-                        !isOperationLegalOrCustomOrPromote(ISD::OR, VT) ||
+-                        !isOperationLegalOrCustomOrPromote(ISD::AND, VT)))
++  if (!AllowVectorOps && VT.isVector() &&
++      (!isOperationLegalOrCustom(ISD::SHL, VT) ||
++       !isOperationLegalOrCustom(ISD::SRL, VT) ||
++       !isOperationLegalOrCustom(ISD::SUB, VT) ||
++       !isOperationLegalOrCustomOrPromote(ISD::OR, VT) ||
++       !isOperationLegalOrCustomOrPromote(ISD::AND, VT)))
+     return false;
+ 
+   unsigned ShOpc = IsLeft ? ISD::SHL : ISD::SRL;
+diff --git a/llvm/test/CodeGen/AArch64/expand-vector-rot.ll b/llvm/test/CodeGen/AArch64/expand-vector-rot.ll
+new file mode 100644
+index 00000000000..d8aa9ea9eb5
+--- /dev/null
++++ b/llvm/test/CodeGen/AArch64/expand-vector-rot.ll
+@@ -0,0 +1,22 @@
++; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
++; RUN: llc < %s -mtriple=aarch64-linux-android | FileCheck %s
++
++declare <2 x i16> @llvm.fshl.v2i16(<2 x i16>, <2 x i16>, <2 x i16>)
++
++define <2 x i16>  @rotlv2_16(<2 x i16> %vec2_16, <2 x i16> %shift) {
++; CHECK-LABEL: rotlv2_16:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    neg v3.2s, v1.2s
++; CHECK-NEXT:    movi v4.2s, #15
++; CHECK-NEXT:    movi d2, #0x00ffff0000ffff
++; CHECK-NEXT:    and v3.8b, v3.8b, v4.8b
++; CHECK-NEXT:    and v2.8b, v0.8b, v2.8b
++; CHECK-NEXT:    and v1.8b, v1.8b, v4.8b
++; CHECK-NEXT:    neg v3.2s, v3.2s
++; CHECK-NEXT:    ushl v2.2s, v2.2s, v3.2s
++; CHECK-NEXT:    ushl v0.2s, v0.2s, v1.2s
++; CHECK-NEXT:    orr v0.8b, v0.8b, v2.8b
++; CHECK-NEXT:    ret
++  %1 = call <2 x i16> @llvm.fshl.v2i16(<2 x i16> %vec2_16, <2 x i16> %vec2_16, <2 x i16> %shift)
++  ret <2 x i16> %1
++}
+-- 
+2.29.2.222.g5d2a92d10f8-goog
+
