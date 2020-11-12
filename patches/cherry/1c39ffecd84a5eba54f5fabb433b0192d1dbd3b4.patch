@@ -1,0 +1,27 @@
+commit 1c39ffecd84a5eba54f5fabb433b0192d1dbd3b4
+Author: Mikael Holmen <mikael.holmen@ericsson.com>
+Date:   Tue Aug 25 12:26:48 2020 +0200
+
+    [libunwind] Fix warning when building without frameheader cache
+    
+    Without the fix the compiler warns with
+    
+    /data/repo/master/libunwind/src/AddressSpace.hpp:436:44: warning: unused parameter 'pinfo_size' [-Wunused-parameter]
+                                        size_t pinfo_size, void *data) {
+                                               ^
+    1 warning generated.
+
+diff --git a/libunwind/src/AddressSpace.hpp b/libunwind/src/AddressSpace.hpp
+index b3949b2d27a4..717aa336fd13 100644
+--- a/libunwind/src/AddressSpace.hpp
++++ b/libunwind/src/AddressSpace.hpp
+@@ -440,6 +440,9 @@ static int findUnwindSectionsByPhdr(struct dl_phdr_info *pinfo,
+ #if defined(_LIBUNWIND_USE_FRAME_HEADER_CACHE)
+   if (ProcessFrameHeaderCache.find(pinfo, pinfo_size, data))
+     return 1;
++#else
++  // Avoid warning about unused variable.
++  (void)pinfo_size;
+ #endif
+ 
+   Elf_Addr image_base = calculateImageBase(pinfo);

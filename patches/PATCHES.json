@@ -120,6 +120,24 @@
         "end_version": 407756
     },
     {
+        "comment": "[UPSTREAM] [libunwind] Provide a way to set '_LIBUNWIND_IS_BAREMETAL' through cmake.",
+        "rel_patch_path": "cherry/380fee34d2794361f9e222fe3c8c065be3b9fff8.patch",
+        "start_version": 399163,
+        "end_version": 400742
+    },
+    {
+        "comment": "[UPSTREAM] Default to disabling the libunwind frameheader cache.",
+        "rel_patch_path": "cherry/a20f5fe70810e0a768c1814d69d10862965c21e4.patch",
+        "start_version": 399163,
+        "end_version": 402855
+    },
+    {
+        "comment": "[UPSTREAM] [libunwind] Fix warning when building without frameheader cache",
+        "rel_patch_path": "cherry/1c39ffecd84a5eba54f5fabb433b0192d1dbd3b4.patch",
+        "start_version": 399163,
+        "end_version": 403383
+    },
+    {
         "comment": "Driver: Add integer sanitizers to trapping group automatically.",
         "rel_patch_path": "cherry/c5acd3490b79703426931f7b88b544fe7c6e1ef2.patch",
         "start_version": 403758,

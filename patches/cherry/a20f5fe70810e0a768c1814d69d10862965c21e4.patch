@@ -1,0 +1,89 @@
+commit a20f5fe70810e0a768c1814d69d10862965c21e4
+Author: Sterling Augustine <saugustine@google.com>
+Date:   Tue Aug 18 12:05:07 2020 -0700
+
+    Default to disabling the libunwind frameheader cache.
+    
+    Although it works fine with glibc, as currently implemented the
+    frameheader cache is incompatible with certain platforms with
+    slightly different locking semantics inside dl_iterate_phdr.
+    
+    Therefore only enable it when it is turned on explicitly with
+    a configure-time option.
+    
+    Differential Revision: https://reviews.llvm.org/D86163
+
+diff --git a/libunwind/CMakeLists.txt b/libunwind/CMakeLists.txt
+index 8419d851ab7..f4243f3d279 100644
+--- a/libunwind/CMakeLists.txt
++++ b/libunwind/CMakeLists.txt
+@@ -138,6 +138,7 @@ option(LIBUNWIND_WEAK_PTHREAD_LIB "Use weak references to refer to pthread funct
+ option(LIBUNWIND_USE_COMPILER_RT "Use compiler-rt instead of libgcc" OFF)
+ option(LIBUNWIND_INCLUDE_DOCS "Build the libunwind documentation." ${LLVM_INCLUDE_DOCS})
+ option(LIBUNWIND_IS_BAREMETAL "Build libunwind for baremetal targets." OFF)
++option(LIBUNWIND_USE_FRAME_HEADER_CACHE "Cache frame headers for unwinding. Requires locking dl_iterate_phdr." OFF)
+ 
+ set(LIBUNWIND_LIBDIR_SUFFIX "${LLVM_LIBDIR_SUFFIX}" CACHE STRING
+     "Define suffix of library directory name (32/64)")
+@@ -368,6 +369,10 @@ if(LIBUNWIND_IS_BAREMETAL)
+   add_compile_definitions(_LIBUNWIND_IS_BAREMETAL)
+ endif()
+ 
++if(LIBUNWIND_USE_FRAME_HEADER_CACHE)
++  add_compile_definitions(_LIBUNWIND_USE_FRAME_HEADER_CACHE)
++endif()
++
+ # This is the _ONLY_ place where add_definitions is called.
+ if (MSVC)
+   add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+diff --git a/libunwind/src/AddressSpace.hpp b/libunwind/src/AddressSpace.hpp
+index 78d2dd11086..2443bd761cc 100644
+--- a/libunwind/src/AddressSpace.hpp
++++ b/libunwind/src/AddressSpace.hpp
+@@ -411,10 +411,12 @@ struct _LIBUNWIND_HIDDEN dl_iterate_cb_data {
+     #error "_LIBUNWIND_SUPPORT_DWARF_UNWIND requires _LIBUNWIND_SUPPORT_DWARF_INDEX on this platform."
+   #endif
+ 
++#if defined(_LIBUNWIND_USE_FRAME_HEADER_CACHE)
+ #include "FrameHeaderCache.hpp"
+ 
+ // There should be just one of these per process.
+ static FrameHeaderCache ProcessFrameHeaderCache;
++#endif
+ 
+ static bool checkAddrInSegment(const Elf_Phdr *phdr, size_t image_base,
+                                dl_iterate_cb_data *cbdata) {
+@@ -435,8 +437,10 @@ int findUnwindSectionsByPhdr(struct dl_phdr_info *pinfo, size_t pinfo_size,
+   auto cbdata = static_cast<dl_iterate_cb_data *>(data);
+   if (pinfo->dlpi_phnum == 0 || cbdata->targetAddr < pinfo->dlpi_addr)
+     return 0;
++#if defined(_LIBUNWIND_USE_FRAME_HEADER_CACHE)
+   if (ProcessFrameHeaderCache.find(pinfo, pinfo_size, data))
+     return 1;
++#endif
+ 
+   Elf_Addr image_base = calculateImageBase(pinfo);
+   bool found_obj = false;
+@@ -464,7 +468,9 @@ int findUnwindSectionsByPhdr(struct dl_phdr_info *pinfo, size_t pinfo_size,
+       found_obj = checkAddrInSegment(phdr, image_base, cbdata);
+     }
+     if (found_obj && found_hdr) {
++#if defined(_LIBUNWIND_USE_FRAME_HEADER_CACHE)
+       ProcessFrameHeaderCache.add(cbdata->sects);
++#endif
+       return 1;
+     }
+   }
+diff --git a/libunwind/test/frameheadercache_test.pass.cpp b/libunwind/test/frameheadercache_test.pass.cpp
+index 9397e70d66c..ebbc00464e0 100644
+--- a/libunwind/test/frameheadercache_test.pass.cpp
++++ b/libunwind/test/frameheadercache_test.pass.cpp
+@@ -6,7 +6,7 @@
+ // The frame header cache should work fine for other architectures,
+ // but the #ifdefs end up being even more complicated than this.
+ 
+-#ifdef __x86_64__
++#if defined(__x86_64__) && defined(_LIBUNWIND_USE_FRAME_HEADER_CACHE)
+ 
+ // This #if chain is ugly, but see the comments in AddressSpace.hpp for
+ // the reasoning.

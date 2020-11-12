@@ -107,7 +107,8 @@ def build_llvm_for_windows(enable_assertions: bool,
 
 def build_runtimes(build_lldb_server: bool):
     builders.SysrootsBuilder().build()
-
+    builders.BuiltinsBuilder().build()
+    builders.LibUnwindBuilder().build()
     builders.PlatformLibcxxAbiBuilder().build()
     builders.CompilerRTBuilder().build()
     # 32-bit host crts are not needed for Darwin
