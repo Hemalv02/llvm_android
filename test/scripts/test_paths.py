@@ -32,6 +32,7 @@ RELEASE_BRANCH_KEY_FILE: Path = Path(
     '/google/data/ro/teams/android-llvm/tests/release_branch_key_file.txt')
 
 SOONG_CSV: str = 'soong_cls.csv'
+KERNEL_CSV: str = 'kernel_cls.csv'
 PREBUILT_CSV: str = 'prebuilt_cls.csv'
 FORREST_PENDING_CSV: str = 'forrest_pending.csv'
 FORREST_CSV: str = 'forrest.csv'

@@ -133,3 +133,8 @@ git_stage-aosp-master:
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check
+
+
+aosp_kernel-common-android-mainline:
+    kernel_cf_i686:
+    kernel_aarch64:

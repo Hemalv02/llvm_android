@@ -69,6 +69,7 @@ def gerrit_change_info(cl_number) -> Dict[str, Any]:
 
 PREBUILTS_PROJECT = 'platform/prebuilts/clang/host/linux-x86'
 SOONG_PROJECT = 'platform/build/soong'
+KERNEL_COMMON_PROJECT = 'kernel/common'
 
 
 class PrebuiltCL(NamedTuple):
@@ -150,6 +151,7 @@ class PrebuiltCL(NamedTuple):
 
 
 class SoongCL(NamedTuple):
+    """Gerrit CL for changing toolchain in build/soong project."""
 
     revision: str
     version: str
@@ -222,7 +224,7 @@ class SoongCL(NamedTuple):
                 '.',
                 '--current-branch',
                 '--yes',  # Answer yes to all safe prompts
-                '--verify', # Run upload hooks without prompting.
+                '--verify',  # Run upload hooks without prompting.
                 '--wip',  # work in progress
                 '--label=Code-Review-2',  # code-review -2
                 f'--hashtag={hashtag}',
@@ -232,8 +234,11 @@ class SoongCL(NamedTuple):
         if len(json_output) != 1:
             raise RuntimeError('Upload failed; or hashtag not unique.  ' +
                                f'Gerrit query returned {json_output}')
-        return SoongCL.getExistingCL(str(json_output[0]['_number']), revision,
-                                     version, try_resolve_conflict=False)
+        return SoongCL.getExistingCL(
+            str(json_output[0]['_number']),
+            revision,
+            version,
+            try_resolve_conflict=False)
 
     @staticmethod
     def _is_trivial_switchover(cl_number: str):
@@ -284,7 +289,9 @@ class SoongCL(NamedTuple):
         return SoongCL.uploadCL(revision, version)
 
     @staticmethod
-    def getExistingCL(cl_number, revision=None, version=None,
+    def getExistingCL(cl_number,
+                      revision=None,
+                      version=None,
                       try_resolve_conflict=True):
         """Find/parse build/soong switchover CL info from a gerrit CL."""
         info = gerrit_change_info(cl_number)
@@ -308,8 +315,8 @@ class SoongCL(NamedTuple):
             if resolvable and try_resolve_conflict:
                 logging.info(f'Resolving conflicts in {cl_number} for ' +
                              f'switching to {revision}')
-                newCL = SoongCL.uploadCL(revision, version,
-                                         changeId=info['change_id'])
+                newCL = SoongCL.uploadCL(
+                    revision, version, changeId=info['change_id'])
                 if newCL.cl_number != cl_number:
                     raise RuntimeError(
                         f'CL number changed from {cl_number} to ' +
@@ -324,4 +331,63 @@ class SoongCL(NamedTuple):
     def equals(self, other) -> bool:
         return self.revision == other.revision and \
             self.version == other.version and \
+            self.cl_number == other.cl_number
+
+
+class KernelCL(NamedTuple):
+    """Gerrit CL info for changing toolchain in kernel/common project."""
+    revision: str
+    cl_number: str
+
+    @staticmethod
+    def getNewCL(revision: str, version: str, kernel_repo_path: str):
+        """Upload kernel/common CL to switch clang version."""
+
+        logging.info(f'Uploading Kernel CL to switch to clang-{revision}')
+        # Add a random hashtag so we can discover the CL number.
+        hashtag = 'chk-' + ''.join(random.sample(string.digits, 8))
+        utils.check_call([
+            str(test_paths.LLVM_ANDROID_DIR / 'update_kernel_toolchain.py'),
+            kernel_repo_path,
+            'common',
+            'NA',  # no clang_bin.  We're using --clang_revision instead.
+            'NA',  # no bug
+            f'--clang_version={revision}:{version}',
+            f'--hashtag={hashtag}',
+            '--no_topic',
+            '--wip',
+        ])
+
+        json_output = gerrit_query_change(f'hashtag:{hashtag}')
+        if len(json_output) != 1:
+            raise RuntimeError('Upload failed; or hashtag not unique.  ' +
+                               f'Gerrit query returned {json_output}')
+        return KernelCL.getExistingCL(str(json_output[0]['_number']))
+
+    @staticmethod
+    def getExistingCL(cl_number):
+        """Find/parse kernel/common switchover CL info from a gerrit CL."""
+        info = gerrit_change_info(cl_number)
+
+        # Validate that the CL is in the correct project and doesn't have merge
+        # conflicts.  The CL should not be merged either.
+        if info['project'] != KERNEL_COMMON_PROJECT:
+            raise RuntimeError(
+                f'Switchover CL {cl_number} not in {KERNEL_COMMON_PROJECT}')
+
+        diff_b64 = gerrit_request(
+            f'changes/{cl_number}/revisions/current/patch')
+        diff = base64.b64decode(diff_b64).decode('utf-8')
+        match = re.search('\+.*clang-(?P<rev>r[0-9]+)/bin', diff)
+        if not match:
+            raise RuntimeError(
+                f'Cannot parse clang version from {cl_number}\'s diff: {diff}')
+        revision = match.group('rev')
+
+        logging.info(
+            f'Using kernel/common CL {cl_number} for switching to {revision}')
+        return KernelCL(revision=match.group('rev'), cl_number=cl_number)
+
+    def equals(self, other) -> bool:
+        return self.revision == other.revision and \
             self.cl_number == other.cl_number
