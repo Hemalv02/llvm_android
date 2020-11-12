@@ -144,6 +144,12 @@
         "end_version": 408939
     },
     {
+        "comment": "[llvm-objcopy] --only-keep-debug: place zero-size segment according to its parent segment",
+        "rel_patch_path": "cherry/20de1822466e87c137b2369d8601b0f4c575981b.patch",
+        "start_version": 399163,
+        "end_version": 410815
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
