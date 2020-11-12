@@ -1,0 +1,83 @@
+From 8262e94a6da77e176dbd13d9eadce76da74489d4 Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Tue, 10 Nov 2020 11:15:16 -0800
+Subject: [ARM] Fix PR 47980: Use constrainRegClass during foldImmediate opt.
+
+Previously we used setRegClass to rgpr, which may expand the register
+domain if the result was already in a constrained class (tcgpr in the
+above PR).
+
+Differential Revision: https://reviews.llvm.org/D91192
+---
+ llvm/lib/Target/ARM/ARMBaseInstrInfo.cpp      |  2 +-
+ .../ARM/peephole-callee-save-regalloc.mir     | 45 +++++++++++++++++++
+ 2 files changed, 46 insertions(+), 1 deletion(-)
+ create mode 100644 llvm/test/CodeGen/ARM/peephole-callee-save-regalloc.mir
+
+diff --git a/llvm/lib/Target/ARM/ARMBaseInstrInfo.cpp b/llvm/lib/Target/ARM/ARMBaseInstrInfo.cpp
+index e8d100ef0e3..6426d7d85dc 100644
+--- a/llvm/lib/Target/ARM/ARMBaseInstrInfo.cpp
++++ b/llvm/lib/Target/ARM/ARMBaseInstrInfo.cpp
+@@ -3368,7 +3368,7 @@ bool ARMBaseInstrInfo::FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI,
+     case ARM::t2SUBspImm:
+     case ARM::t2ADDri:
+     case ARM::t2SUBri:
+-      MRI->setRegClass(UseMI.getOperand(0).getReg(), TRC);
++      MRI->constrainRegClass(UseMI.getOperand(0).getReg(), TRC);
+   }
+   return true;
+ }
+diff --git a/llvm/test/CodeGen/ARM/peephole-callee-save-regalloc.mir b/llvm/test/CodeGen/ARM/peephole-callee-save-regalloc.mir
+new file mode 100644
+index 00000000000..104c887b5f7
+--- /dev/null
++++ b/llvm/test/CodeGen/ARM/peephole-callee-save-regalloc.mir
+@@ -0,0 +1,45 @@
++# RUN: llc -mtriple=thumbv8 -run-pass=peephole-opt %s -o - | FileCheck %s
++
++# Test case for PR 47980:
++# Ensure that peephole optimization to fold move immediate doesn't unconstrain
++# the register class of the consumer.
++#
++# Check that register class for %5 is unchanged as 'tcgpr'
++# CHECK: { id: 5, class: tcgpr, preferred-register: '' }
++# CHECK: TCRETURNri killed %5
++
++--- |
++  define i32 @foo(i32 %in) {
++    ret i32 undef
++  }
++...
++---
++name:            foo
++registers:
++  - { id: 0, class: gpr}
++  - { id: 1, class: gpr }
++  - { id: 2, class: rgpr }
++  - { id: 3, class: gpr }
++  - { id: 4, class: rgpr }
++  - { id: 5, class: tcgpr }
++liveins:
++  - { reg: '$r0', virtual-reg: '%0' }
++  - { reg: '$r1', virtual-reg: '%1' }
++  - { reg: '$r2', virtual-reg: '%2' }
++  - { reg: '$r3', virtual-reg: '%3' }
++body:             |
++  bb.0 (%ir-block.0):
++    liveins: $r0, $r1, $r2, $r3
++    %0 = COPY $r0
++    %1 = COPY $r1
++    %2 = COPY $r2
++    %3 = COPY $r3
++
++    %4 = t2MOVi32imm 270337
++    %5 = t2ADDrr killed %2, killed %4, 14, $noreg, $noreg
++    $r0 = COPY %0
++    $r1 = COPY %1
++    $r2 = COPY %2
++    $r3 = COPY %3
++    TCRETURNri killed %5, implicit $sp, implicit $r0, implicit $r1, implicit $r2, implicit $r3
++...
+-- 
+2.29.2.222.g5d2a92d10f8-goog
+

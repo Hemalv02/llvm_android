@@ -132,6 +132,12 @@
         "end_version": 408516
     },
     {
+        "comment": "[ARM] Fix PR 47980: Use constrainRegClass during foldImmediate opt.",
+        "rel_patch_path": "cherry/8262e94a6da77e176dbd13d9eadce76da74489d4.patch",
+        "start_version": 404259,
+        "end_version": 410707
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
@@ -183,18 +189,6 @@
         "comment": "Revert \"[llvm-objcopy] [COFF] Fix a misconception about debug directory payloads\"",
         "rel_patch_path": "Revert-windows-debug-directory.patch",
         "start_version": 399163,
-        "end_version": null
-    },
-    {
-        "comment": "Revert two changes that break cfi_test.basic in bionic-unit-tests",
-        "rel_patch_path": "Revert-two-changes-that-break-cfi_test.basic-in-bionic-unit-tests.patch",
-        "start_version": 404259,
-        "end_version": 407598
-    },
-    {
-        "comment": "Revert several changes that break cfi_test.basic in bionic-unit-tests",
-        "rel_patch_path": "Revert-several-changes-that-break-cfi_test.basic-in-bionic-unit-tests.patch",
-        "start_version": 407598,
         "end_version": null
     }
 ]
