@@ -261,7 +261,7 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         # personality routine warnings caused by r309226.
         # defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
         defines['COMPILER_RT_TEST_COMPILER_CFLAGS'] = defines['CMAKE_C_FLAGS']
-        defines['COMPILER_RT_TEST_TARGET_TRIPLE'] = arch.llvm_triple
+        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = arch.llvm_triple
         defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
         defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
         # With CMAKE_SYSTEM_NAME='Android', compiler-rt will be installed to
@@ -383,7 +383,6 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['CMAKE_POSITION_INDEPENDENT_CODE'] = 'ON'
         defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if self.is_shared else 'FALSE'
