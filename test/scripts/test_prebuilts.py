@@ -218,7 +218,7 @@ def getKernelCL(revision: str, version: str, cl_number: Optional[str],
     """
     kernelRow = CNSData.KernelCLs.getCL(revision, cl_number)
     if kernelRow:
-        kernelCL = gerrit.KernelCL.getExistingCL(cl_number)
+        kernelCL = gerrit.KernelCL.getExistingCL(kernelRow.cl_number)
         if not kernelCL.equals(kernelRow):
             raise RuntimeError('Mismatch between CSV Data and Gerrit CL. \n' +
                                f'  {kernelRow}\n  {kernelCL}')
