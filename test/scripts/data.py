@@ -58,6 +58,12 @@ class SoongCLRecord(NamedTuple):
     cl_number: str
 
 
+class KernelCLRecord(NamedTuple):
+    """CSV Record for a kernel/common CL that switches Clang revision."""
+    revision: str
+    cl_number: str
+
+
 class WorkNodeRecord(NamedTuple):
     """CSV Record for a forrest invocation (both pending and completed)."""
     prebuilt_build_number: str
@@ -81,8 +87,8 @@ class TestResultRecord(NamedTuple):
     display_message: str
 
 
-RecordType = TypeVar('RecordType', PrebuiltCLRecord, SoongCLRecord,
-                     WorkNodeRecord, TestResultRecord)
+RecordType = TypeVar('RecordType', KernelCLRecord, PrebuiltCLRecord,
+                     SoongCLRecord, WorkNodeRecord, TestResultRecord)
 
 
 class CSVTable(Generic[RecordType]):
@@ -215,6 +221,31 @@ class SoongCLTable(CSVTable[SoongCLRecord]):
         return row
 
 
+class KernelCLTable(CSVTable[KernelCLRecord]):
+    """CSV table for bookkeeping kernel/common switchover CLs."""
+    makeRow = KernelCLRecord._make
+
+    def addCL(self, record: KernelCLRecord) -> None:
+        """Add a CL record and write back to CSV file."""
+        if self.get(lambda that: that.revision == record.revision):
+            raise RuntimeError(f'Kernel CL for {record} already exists')
+        self.add(record)
+
+    def getCL(self, revision: str,
+              cl_number: Optional[str]) -> Optional[KernelCLRecord]:
+        """Get a KernelCL record with matching clang revision.
+
+        If optional parameter cl_number is provided, raise an exception if the
+        record's cl_number is different.
+        """
+        row = self.getOne(lambda that: that.revision == revision)
+        if row and cl_number and cl_number != row.cl_number:
+            raise RuntimeError(
+                f'CL mismatch for clang {revision}. ' +
+                f'User Input: {cl_number}.  Data: {row.cl_number}')
+        return row
+
+
 class WorkNodeTable(CSVTable[WorkNodeRecord]):
     """CSV table for Forrest worknode invocations (pending and completed)."""
     makeRow = WorkNodeRecord._make
@@ -224,6 +255,15 @@ class WorkNodeTable(CSVTable[WorkNodeRecord]):
         if self.get(lambda that: that.invocation_id == record.invocation_id):
             raise RuntimeError(f'Invocation {record} already exists')
         self.add(record, writeBack)
+
+    def find(self, prebuilt_build_number, tag, branch,
+             target) -> Optional[WorkNodeRecord]:
+        """Find Forrest invocation based on (prebuilt, tag, branch, target)."""
+        return self.getOne(lambda that:
+            that.prebuilt_build_number == prebuilt_build_number and \
+            that.branch == branch and \
+            that.target == target and \
+            that.tag == tag)
 
     def findByInvocation(self, invocation_id) -> Optional[WorkNodeRecord]:
         """Find Forrest invocation based on invocation_id."""
@@ -245,6 +285,7 @@ class CNSData():
     """Wrapper for CSV Data stored in CNS."""
     Prebuilts: PrebuiltsTable
     SoongCLs: SoongCLTable
+    KernelCLs: KernelCLTable
     PendingWorkNodes: WorkNodeTable
     CompletedWorkNodes: WorkNodeTable
     TestResults: TestResultsTable
@@ -257,6 +298,7 @@ class CNSData():
         CNSData.Prebuilts = PrebuiltsTable(
             f'{cns_path}/{test_paths.PREBUILT_CSV}')
         CNSData.SoongCLs = SoongCLTable(f'{cns_path}/{test_paths.SOONG_CSV}')
+        CNSData.KernelCLs = KernelCLTable(f'{cns_path}/{test_paths.KERNEL_CSV}')
         CNSData.PendingWorkNodes = WorkNodeTable(
             f'{cns_path}/{test_paths.FORREST_PENDING_CSV}')
         CNSData.CompletedWorkNodes = WorkNodeTable(

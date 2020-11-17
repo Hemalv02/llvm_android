@@ -17,7 +17,7 @@
 # pylint: disable=invalid-name
 """Test Clang prebuilts on Android"""
 
-from typing import List, NamedTuple, Set, Tuple
+from typing import List, NamedTuple, Optional, Set, Tuple
 import argparse
 import inspect
 import logging
@@ -27,7 +27,7 @@ import yaml
 
 sys.path.append(str(pathlib.Path(__file__).resolve().parents[2]))
 
-from data import CNSData, PrebuiltCLRecord, SoongCLRecord, WorkNodeRecord
+from data import CNSData, KernelCLRecord, PrebuiltCLRecord, SoongCLRecord, WorkNodeRecord
 import forrest
 import gerrit
 import test_paths
@@ -48,6 +48,10 @@ class TestConfig(NamedTuple):
         if self.branch_private == 'RELEASE_BRANCH':
             return test_paths.release_branch_name()
         return self.branch_private
+
+    @property
+    def is_kernel_branch(self):
+        return self.branch.startswith('aosp_kernel')
 
 
 def _load_configs() -> List[TestConfig]:
@@ -128,20 +132,39 @@ def prepareCLs(args):
     """
     build = get_toolchain_build(args.build)
 
-    prebuiltRow = CNSData.Prebuilts.getPrebuilt(args.build, args.prebuilt_cl)
+    prebuiltCL = getPrebuiltCL(build, args.prebuilt_cl)
+    cls = {'prebuiltsCL': prebuiltCL}
+
+    if TestKindConfig.platform:
+        cls['soongCL'] = getSoongCL(prebuiltCL.revision, prebuiltCL.version,
+                                    args.soong_cl)
+    if TestKindConfig.kernel:
+        cls['kernelCL'] = getKernelCL(prebuiltCL.revision, prebuiltCL.version,
+                                      args.kernel_cl, args.kernel_repo_path)
+
+    return cls
+
+
+def getPrebuiltCL(build: ToolchainBuild,
+                  cl_number: Optional[str]) -> gerrit.PrebuiltCL:
+    """Get clang prebuilts CL for testing.
+
+    Upload new CLs to gerrit if matching CLs not found in CNS data.
+    """
+    prebuiltRow = CNSData.Prebuilts.getPrebuilt(build.build_number, cl_number)
     if prebuiltRow:
         prebuiltCL = gerrit.PrebuiltCL.getExistingCL(prebuiltRow.cl_number)
         if not prebuiltCL.equals(prebuiltRow):
             raise RuntimeError('Mismatch between CSV Data and Gerrit CL. \n' +
                                f'  {prebuiltRow}\n  {prebuiltCL}')
     else:
-        # Prebuilt record not found.  Create record (from args.prebuilt_cl or
-        # new prebuilts) and update records.
-        if args.prebuilt_cl:
-            prebuiltCL = gerrit.PrebuiltCL.getExistingCL(args.prebuilt_cl)
-            if prebuiltCL.build_number != args.build:
+        # Prebuilt record not found.  Create record (from cl_number or new
+        # prebuilts) and update records.
+        if cl_number:
+            prebuiltCL = gerrit.PrebuiltCL.getExistingCL(cl_number)
+            if prebuiltCL.build_number != build.build_number:
                 raise RuntimeError(
-                    f'Input CL {args.cl_number} does not correspond to build {args.build}'
+                    f'Input CL {cl_number} does not correspond to build {build}'
                 )
         else:
             prebuiltCL = gerrit.PrebuiltCL.getNewCL(build.build_number,
@@ -154,58 +177,111 @@ def prepareCLs(args):
             cl_number=prebuiltCL.cl_number,
             is_llvm_next=str(is_llvm_next))
         CNSData.Prebuilts.addPrebuilt(prebuiltRow)
+    return prebuiltCL
 
-    soongRow = CNSData.SoongCLs.getCL(prebuiltRow.revision, prebuiltRow.version,
-                                      args.soong_cl)
+
+def getSoongCL(revision: str, version: str,
+               cl_number: Optional[str]) -> gerrit.SoongCL:
+    """Get build/soong switchover CL for testing.
+
+    Upload new CLs to gerrit if matching CLs not found in CNS data.
+    """
+    soongRow = CNSData.SoongCLs.getCL(revision, version, cl_number)
     if soongRow:
         soongCL = gerrit.SoongCL.getExistingCL(soongRow.cl_number)
         if not soongCL.equals(soongRow):
             raise RuntimeError('Mismatch between CSV Data and Gerrit CL. \n' +
                                f'  {soongRow}\n  {soongCL}')
     else:
-        # Soong CL record not found.  Create record (from args.soong_cl or new
+        # Soong CL record not found.  Create record (from cl_number or new
         # switchover change) and update records.
-        if args.soong_cl:
-            soongCL = gerrit.SoongCL.getExistingCL(args.soong_cl)
+        if cl_number:
+            soongCL = gerrit.SoongCL.getExistingCL(cl_number)
         else:
-            soongCL = gerrit.SoongCL.getNewCL(prebuiltCL.revision,
-                                              prebuiltCL.version)
-        if soongCL.revision != prebuiltCL.revision or \
-           soongCL.version != prebuiltCL.version:
-            raise RuntimeError('Clang version mismatch: \n' +
-                               f'  {soongCL}\n  {prebuiltCL}')
+            soongCL = gerrit.SoongCL.getNewCL(revision, version)
+        if soongCL.revision != revision or soongCL.version != version:
+            raise RuntimeError(f'Clang version mismatch: \n  {soongCL}\n' +
+                               f'Requested: {revision} ({version})')
         soongRow = SoongCLRecord(
             version=soongCL.version,
             revision=soongCL.revision,
             cl_number=soongCL.cl_number)
         CNSData.SoongCLs.addCL(soongRow)
+    return soongCL
 
-    cls = [soongCL]
-    if not prebuiltCL.merged:
-        cls.append(prebuiltCL)
-    return cls
+
+def getKernelCL(revision: str, version: str, cl_number: Optional[str],
+                kernel_repo_path: Optional[str]) -> gerrit.KernelCL:
+    """Get kernel/common switchover CL for testing.
+
+    Upload new CLs to gerrit if matching CLs not found in CNS data.
+    """
+    kernelRow = CNSData.KernelCLs.getCL(revision, cl_number)
+    if kernelRow:
+        kernelCL = gerrit.KernelCL.getExistingCL(cl_number)
+        if not kernelCL.equals(kernelRow):
+            raise RuntimeError('Mismatch between CSV Data and Gerrit CL. \n' +
+                               f'  {kernelRow}\n  {kernelCL}')
+    else:
+        # Kernel CL record not found.  Create record (cl_number or new
+        # switchover change) and update records.
+        if cl_number:
+            kernelCL = gerrit.KernelCL.getExistingCL(cl_number)
+        else:
+            if not kernel_repo_path:
+                raise RuntimeError(
+                    'Kernel switchover CL not found in CNS or not provided ' +
+                    'in command line.  Provide a path to kernel repo using ' +
+                    '--kernel_repo_path to upload a new switchover CL.')
+            kernelCL = gerrit.KernelCL.getNewCL(revision, version,
+                                                kernel_repo_path)
+        if kernelCL.revision != revision:
+            raise RuntimeError(f'Clang version mismatch:\n  {kernelCL}\n' +
+                               f'  Requested: {revision}')
+        kernelRow = KernelCLRecord(
+            revision=kernelCL.revision, cl_number=kernelCL.cl_number)
+        CNSData.KernelCLs.addCL(kernelRow)
+    return kernelCL
 
 
 def invokeForrestRuns(cls, args):
     """Submit builds/tests to Forrest for provided CLs and args."""
     build, tag = args.build, args.tag
 
-    cl_numbers = [cl.cl_number for cl in cls]
-
     to_run = set(args.groups) if args.groups else set()
 
-    def _should_run(test_groups):
+    def _should_run(config):
+        # Do not run test if this config is disabled in TestKindConfig.
+        if config.is_kernel_branch:
+            testKindFlag = TestKindConfig.kernel
+        else:
+            testKindFlag = TestKindConfig.platform
+        if not testKindFlag:
+            return False
+
         if not to_run:
             # if args.groups is empty, run all tests (note: some tests may not
             # be part of any group.)
             return True
+
         # Run test if it is a part of a group specified in args.groups
-        return any(g in to_run for g in test_groups)
+        return any(g in to_run for g in config.groups)
+
+    def _get_cl_numbers(config):
+        cl_numbers = []
+        if not cls['prebuiltsCL'].merged:
+            cl_numbers.append(cls['prebuiltsCL'].cl_number)
+        if config.is_kernel_branch:
+            cl_numbers.append(cls['kernelCL'].cl_number)
+        else:
+            cl_numbers.append(cls['soongCL'].cl_number)
+        return cl_numbers
 
     for config in TEST_CONFIGS:
-        if not _should_run(config.groups):
+        if not _should_run(config):
             logging.info(f'Skipping disabled config {config}')
             continue
+        cl_numbers = _get_cl_numbers(config)
         branch = config.branch
         target = config.target
         tests = config.tests
@@ -233,20 +309,19 @@ def parse_args():
     parser.add_argument('--build', help='Toolchain build number (from go/ab/).')
     parser.add_argument(
         '--prebuilt_cl',
-        help='[Optional] Prebuilts CL (to prebuilts/clang/host/linux-x86)')
+        help='Prebuilts CL (to prebuilts/clang/host/linux-x86)')
     parser.add_argument(
-        '--soong_cl',
-        help='[Optional] build/soong/ CL to switch compiler version')
+        '--soong_cl', help='build/soong/ CL to switch compiler version')
+    parser.add_argument(
+        '--kernel_cl', help='kernel/common CL to switch compiler version')
     parser.add_argument(
         '--prepare-only',
         action='store_true',
         help='Prepare/validate CLs.  Don\'t initiate tests')
-
     parser.add_argument(
         '--tag',
         help=('Tag to group Forrest invocations for this test ' +
               '(and avoid duplicate submissions).'))
-
     parser.add_argument(
         '--groups',
         metavar='GROUP',
@@ -254,7 +329,19 @@ def parse_args():
         nargs='+',
         action='extend',
         help=f'Run tests from specified groups.  Choices: {TEST_GROUPS}')
-
+    test_kind_choices = ['platform', 'kernel']
+    parser.add_argument(
+        '--test_kind',
+        metavar='KIND',
+        choices=test_kind_choices,
+        nargs='+',
+        action='extend',
+        help=('Prepare CLs and run tests for specified test kinds.  ' +
+              'Omit this parameter to run all test kinds.  ' +
+              f'Choices: {test_kind_choices}'))
+    parser.add_argument(
+        '--kernel_repo_path',
+        help='Kernel tree to use when uploading switcover CLs')
     parser.add_argument(
         '--verbose', '-v', action='store_true', help='Print verbose output')
 
@@ -262,8 +349,15 @@ def parse_args():
     if not args.prepare_only and not args.tag:
         raise RuntimeError('Provide a --tag argument for Forrest invocations' +
                            ' or use --prepare-only to only prepare Gerrit CLs.')
+    if not args.test_kind:
+        args.test_kind = test_kind_choices
 
     return args
+
+
+class TestKindConfig():
+    platform: bool = False
+    kernel: bool = False
 
 
 def main():
@@ -273,6 +367,10 @@ def main():
     do_prechecks()
 
     CNSData.loadCNSData()
+
+    TestKindConfig.platform = 'platform' in args.test_kind
+    TestKindConfig.kernel = 'kernel' in args.test_kind
+
     cls = prepareCLs(args)
     if args.prepare_only:
         return
