@@ -1,0 +1,35 @@
+commit 380fee34d2794361f9e222fe3c8c065be3b9fff8
+Author: Hafiz Abid Qadeer <abidh@codesourcery.com>
+Date:   Wed Jul 29 11:39:41 2020 +0100
+
+    [libunwind] Provide a way to set '_LIBUNWIND_IS_BAREMETAL' through cmake.
+    
+    Libunwind uses _LIBUNWIND_IS_BAREMETAL in a lot of places but there is no cmake variable to set it. This patch adds such a variable. It is quite like what LIBCXXABI_BAREMETAL does in libcxxabi.
+    
+    Reviewed By: compnerd, #libunwind
+    
+    Differential Revision: https://reviews.llvm.org/D84759
+
+diff --git a/libunwind/CMakeLists.txt b/libunwind/CMakeLists.txt
+index c5b536532f3c..4606360f07ab 100644
+--- a/libunwind/CMakeLists.txt
++++ b/libunwind/CMakeLists.txt
+@@ -137,6 +137,7 @@ option(LIBUNWIND_ENABLE_THREADS "Build libunwind with threading support." ON)
+ option(LIBUNWIND_WEAK_PTHREAD_LIB "Use weak references to refer to pthread functions." OFF)
+ option(LIBUNWIND_USE_COMPILER_RT "Use compiler-rt instead of libgcc" OFF)
+ option(LIBUNWIND_INCLUDE_DOCS "Build the libunwind documentation." ${LLVM_INCLUDE_DOCS})
++option(LIBUNWIND_IS_BAREMETAL "Build libunwind for baremetal targets." OFF)
+ 
+ set(LIBUNWIND_LIBDIR_SUFFIX "${LLVM_LIBDIR_SUFFIX}" CACHE STRING
+     "Define suffix of library directory name (32/64)")
+@@ -361,6 +362,10 @@ if (LIBUNWIND_ENABLE_ARM_WMMX)
+   add_compile_flags(-D__ARM_WMMX)
+ endif()
+ 
++if(LIBUNWIND_IS_BAREMETAL)
++  add_compile_definitions(_LIBUNWIND_IS_BAREMETAL)
++endif()
++
+ # This is the _ONLY_ place where add_definitions is called.
+ if (MSVC)
+   add_definitions(-D_CRT_SECURE_NO_WARNINGS)

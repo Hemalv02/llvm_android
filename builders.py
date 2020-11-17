@@ -18,6 +18,7 @@
 import contextlib
 from pathlib import Path
 import os
+import re
 import shutil
 import textwrap
 from typing import cast, Dict, Iterator, List, Optional, Set
@@ -237,6 +238,44 @@ class Stage2Builder(base_builders.LLVMBuilder):
         lldb_wrapper_path.chmod(0o755)
 
 
+class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'builtins'
+    src_dir: Path = paths.LLVM_PATH / 'compiler-rt' / 'lib' / 'builtins'
+
+    # Only build the builtins library for the NDK, not the platform, then
+    # install it into the resource dir and runtimes_ndk_cxx. Clang references
+    # the builtins using an absolute path to its resource dir, and it will use
+    # the single library in the stage2 resource dir for the remainder of the
+    # LLVM NDK and platform builders, which makes it difficult to have separate
+    # NDK+platform builds. The builtins static library references `stderr` which
+    # is `__sF` in older API levels.
+    config_list: List[configs.Config] = configs.android_configs(platform=False)
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        arch = self._config.target_arch
+        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = arch.llvm_triple
+        # For CMake feature testing, create an archive instead of an executable,
+        # because we can't link an executable until builtins have been built.
+        defines['CMAKE_TRY_COMPILE_TARGET_TYPE'] = 'STATIC_LIBRARY'
+        return defines
+
+    def install_config(self) -> None:
+        # Copy the library into the toolchain resource directory (lib/linux) and
+        # runtimes_ndk_cxx.
+        arch = self._config.target_arch
+        sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
+        filename = 'libclang_rt.builtins-' + sarch + '-android.a'
+        src_path = self.output_dir / 'lib' / 'android' / filename
+
+        shutil.copy2(src_path, self.toolchain.resource_dir / filename)
+
+        dst_dir = self.toolchain.path / 'runtimes_ndk_cxx'
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_path, dst_dir / filename)
+
+
 class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'compiler-rt'
     src_dir: Path = paths.LLVM_PATH / 'compiler-rt'
@@ -257,6 +296,8 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         arch = self._config.target_arch
+        defines['COMPILER_RT_BUILD_BUILTINS'] = 'OFF'
+        defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
         # FIXME: Disable WError build until upstream fixed the compiler-rt
         # personality routine warnings caused by r309226.
         # defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
@@ -272,6 +313,9 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
             libs += ['-latomic']
         if self._config.api_level < 21:
             libs += ['-landroid_support']
+        # Currently, -rtlib=compiler-rt (even with -unwindlib=libunwind) does
+        # not automatically link libunwind.a on Android.
+        libs += ['-lunwind']
         defines['SANITIZER_COMMON_LINK_LIBS'] = ' '.join(libs)
         if self._config.platform:
             defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
@@ -360,6 +404,66 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
         super()._build_config()
 
 
+class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'libunwind'
+    src_dir: Path = paths.LLVM_PATH / 'libunwind'
+    config_list: List[configs.Config] = (
+        configs.android_configs(platform=True) +
+        configs.android_configs(platform=False)
+    )
+
+    @property
+    def is_exported(self) -> bool:
+        return self._config.platform
+
+    @property
+    def output_dir(self) -> Path:
+        old_path = super().output_dir
+        suffix = '-exported' if self.is_exported else '-hermetic'
+        return old_path.parent / (old_path.name + suffix)
+
+    @property
+    def cflags(self) -> List[str]:
+        return super().cflags + ['-D_LIBUNWIND_USE_DLADDR=0']
+
+    @property
+    def ldflags(self) -> List[str]:
+        # This flag is currently unnecessary but will become necessary if the
+        # default -unwindlib changes to libunwind. libunwind.a doesn't exist
+        # when libunwind is built, and libunwind can't use
+        # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY because
+        # LIBUNWIND_HAS_PTHREAD_LIB must be set to false.
+        return super().ldflags + ['-unwindlib=none']
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LIBUNWIND_HERMETIC_STATIC_LIBRARY'] = 'TRUE' if not self.is_exported else 'FALSE'
+        defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
+        # TODO: Enable the FrameHeaderCache, for the platform only (not the
+        # NDK), after (a) upgrading libunwind to a version with this config
+        # setting and (b) upgrading the prebuilt NDK to r21 (which adds
+        # dlpi_adds/dlpi_subs).
+        return defines
+
+    def install_config(self) -> None:
+        # We need to install libunwind manually.
+        src_file = self.output_dir / 'lib64' / 'libunwind.a'
+        arch = self._config.target_arch
+
+        res_dir = self.toolchain.resource_dir / arch.value
+        res_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.is_exported:
+            shutil.copy2(src_file, res_dir / 'libunwind-exported.a')
+        else:
+            shutil.copy2(src_file, res_dir / 'libunwind.a')
+
+            ndk_dir = self.toolchain.path / 'runtimes_ndk_cxx' / arch.value
+            ndk_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_file, ndk_dir / 'libunwind.a')
+
+
 class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'libomp'
     src_dir: Path = paths.LLVM_PATH / 'openmp'
@@ -386,6 +490,9 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if self.is_shared else 'FALSE'
+        # Some compiler-rt math builtins depend on libm, so link against it.
+        # TODO: Try to break the builtins->libm dependency (llvm.org/PR32279).
+        defines['LIBOMP_LIBFLAGS'] = '-lm'
         # Minimum version for OpenMP's CMake is too low for the CMP0056 policy
         # to be ON by default.
         defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
@@ -546,6 +653,12 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         return cflags
 
     @property
+    def ldflags(self) -> List[str]:
+        # Currently, -rtlib=compiler-rt (even with -unwindlib=libunwind) does
+        # not automatically link libunwind.a on Android.
+        return super().ldflags + ['-lunwind']
+
+    @property
     def _llvm_target(self) -> str:
         return {
             hosts.Arch.ARM: 'ARM',
@@ -623,35 +736,104 @@ class SysrootsBuilder(base_builders.Builder):
             shutil.rmtree(sysroot)
         sysroot.mkdir(parents=True, exist_ok=True)
 
-        base_header_path = paths.NDK_BASE / 'sysroot' / 'usr' / 'include'
-        base_lib_path = paths.NDK_BASE / 'platforms' / f'android-{config.api_level}'
-        dest_usr = sysroot / 'usr'
+        # Copy the NDK prebuilt's sysroot, but for the platform variant, omit
+        # the STL and android_support headers and libraries.
+        src_sysroot = paths.NDK_BASE / 'toolchains' / 'llvm' / 'prebuilt' / 'linux-x86_64' / 'sysroot'
 
         # Copy over usr/include.
-        dest_usr_include = dest_usr / 'include'
-        shutil.copytree(base_header_path, dest_usr_include, symlinks=True)
+        shutil.copytree(src_sysroot / 'usr' / 'include',
+                        sysroot / 'usr' / 'include', symlinks=True)
 
-        # Copy over usr/include/asm.
-        asm_headers = base_header_path / arch.ndk_triple / 'asm'
-        dest_usr_include_asm = dest_usr_include / 'asm'
-        shutil.copytree(asm_headers, dest_usr_include_asm, symlinks=True)
+        if platform:
+            # Remove the STL headers.
+            shutil.rmtree(sysroot / 'usr' / 'include' / 'c++')
+        else:
+            # Add the android_support headers from usr/local/include.
+            shutil.copytree(src_sysroot / 'usr' / 'local' / 'include',
+                            sysroot / 'usr' / 'local' / 'include', symlinks=True)
 
-        # Copy over usr/lib.
-        arch_lib_path = base_lib_path / f'arch-{arch.ndk_arch}' / 'usr' / 'lib'
-        dest_usr_lib = dest_usr / 'lib'
-        shutil.copytree(arch_lib_path, dest_usr_lib, symlinks=True)
+        # Copy over usr/lib/$TRIPLE.
+        src_lib = src_sysroot / 'usr' / 'lib' / arch.ndk_triple
+        dest_lib = sysroot / 'usr' / 'lib' / arch.ndk_triple
+        shutil.copytree(src_lib, dest_lib, symlinks=True)
 
-        # For only x86_64, we also need to copy over usr/lib64
-        if arch == hosts.Arch.X86_64:
-            arch_lib64_path = base_lib_path / f'arch-{arch.ndk_arch}' / 'usr' / 'lib64'
-            dest_usr_lib64 = dest_usr / 'lib64'
-            shutil.copytree(arch_lib64_path, dest_usr_lib64, symlinks=True)
+        # Remove the NDK r20's old libcompiler_rt-extras and libunwind. (In the
+        # future, libunwind.a will be located in the toolchain resource
+        # directory along with libclang_rt.*.a, not in the sysroot directory.)
+        # For the platform, also remove the NDK libc++.
+        (dest_lib / 'libcompiler_rt-extras.a').unlink()
+        if arch == hosts.Arch.ARM:
+            (dest_lib / 'libunwind.a').unlink()
+        if platform:
+            (dest_lib / 'libc++abi.a').unlink()
+            (dest_lib / 'libc++_static.a').unlink()
+            (dest_lib / 'libc++_shared.so').unlink()
+        # Each per-API-level directory has libc++.so, libc++.a, and libcompiler_rt-extras.a.
+        for subdir in dest_lib.iterdir():
+            if subdir.is_symlink() or not subdir.is_dir():
+                continue
+            if not re.match(r'\d+$', subdir.name):
+                continue
+            (subdir / 'libcompiler_rt-extras.a').unlink()
+            if platform:
+                (subdir / 'libc++.a').unlink()
+                (subdir / 'libc++.so').unlink()
+        # Verify that there aren't any extra copies somewhere else in the
+        # directory hierarchy.
+        verify_gone = ['libcompiler_rt-extras.a', 'libunwind.a']
+        if platform:
+            verify_gone += [
+                'libc++abi.a',
+                'libc++_static.a',
+                'libc++_shared.so',
+                'libc++.a',
+                'libc++.so',
+            ]
+        for (parent, _, files) in os.walk(sysroot):
+            for f in files:
+                if f in verify_gone:
+                    raise RuntimeError('sysroot file should have been ' +
+                                       f'removed: {os.path.join(parent, f)}')
+
+        if not platform and arch in [hosts.Arch.ARM, hosts.Arch.I386]:
+            # HACK: The arm32 libunwind uses dl_unwind_find_exidx rather than
+            # __gnu_Unwind_Find_exidx. However, libc.a only provides the latter
+            # until NDK r22. Until this build system upgrades to NDK r22,
+            # replace libc.a(exidx_static.o) with an upgraded copy.
+            #
+            # HACK: The x86 libc.a from NDK r20 needs __x86.get_pc_thunk.cx from
+            # libgcc.a. This incorrect dependency will be fixed in NDK r22's
+            # libc.a. The workaround here might result in a mislinked
+            # lldb-server that crashes, but instead, lldb-server seems to be OK.
+            # See https://bugs.llvm.org/show_bug.cgi?id=45594.
+            if constants.NDK_VERSION >= 'r22':
+                raise RuntimeError('libc.a patching should be removed with r22 prebuilt: '
+                                   f'NDK_VERSION={constants.NDK_VERSION}')
+            patch_dir = paths.OUT_DIR / 'ndk_libc_patch'
+            patch_dir.mkdir(parents=True, exist_ok=True)
+            if arch == hosts.Arch.ARM:
+                patch_src = (paths.ANDROID_DIR / 'bionic' / 'libc' / 'arch-arm' /
+                             'bionic' / 'exidx_static.c')
+                patch_name = 'exidx_static'
+            else:
+                patch_src = (paths.ANDROID_DIR / 'bionic' / 'libc' / 'arch-x86' /
+                             'bionic' / '__x86.get_pc_thunk.S')
+                patch_name = '__x86.get_pc_thunk'
+            patch_obj = patch_dir / f'{patch_name}.o'
+            libc_archive = (sysroot / 'usr' / 'lib' / arch.ndk_triple / '29' /
+                            'libc.a')
+            utils.check_call([self.toolchain.cc, f'--sysroot={sysroot}', '-c',
+                              f'--target={arch.llvm_triple}', f'-o{patch_obj}',
+                              patch_src])
+            utils.check_call([self.toolchain.path / 'bin' / 'llvm-ar',
+                              'rcs', libc_archive, patch_obj])
 
         if platform:
             # Create a stub library for the platform's libc++.
             platform_stubs = paths.OUT_DIR / 'platform_stubs' / arch.ndk_arch
             platform_stubs.mkdir(parents=True, exist_ok=True)
-            libdir = dest_usr_lib64 if arch == hosts.Arch.X86_64 else dest_usr_lib
+            libdir = sysroot / 'usr' / ('lib64' if arch == hosts.Arch.X86_64 else 'lib')
+            libdir.mkdir(parents=True, exist_ok=True)
             with (platform_stubs / 'libc++.c').open('w') as f:
                 f.write(textwrap.dedent("""\
                     void __cxa_atexit() {}
