@@ -37,14 +37,18 @@ class KernelToolchainUpdater():
 
     def __init__(self):
         self.parse_args()
-        self.get_clang_versions()
-        self.get_clang_sha()
+        if self.clang_version_arg:
+            self.clang_revision, self.clang_version = self.clang_version_arg.split(':')
+        else:
+            self.get_clang_versions()
+
         self.kernel_dir = path.normpath(path.join(self.repo_checkout, self.kernel_relpath))
         self.repo_dir = path.join(self.repo_checkout, ".repo", "manifests")
         self.topic = path.basename(self.repo_checkout) + "_" + self.clang_revision
 
         if path.basename(self.kernel_dir) != 'common':
             self.resync_tree()
+            self.get_clang_sha()
             self.update_sha()
             self.commit_sha()
             self.push_manifest_change()
@@ -72,6 +76,23 @@ class KernelToolchainUpdater():
             "-d", action="store_true", help="Dry run and debug.")
         parser.add_argument(
             "-n", action="store_true", help="No push (but do local changes)")
+        parser.add_argument(
+            "--no_topic",
+            action="store_true",
+            help="Do not set topic on uploaded changes.")
+        parser.add_argument(
+            "--wip",
+            action="store_true",
+            help="Mark change as WIP.")
+        parser.add_argument(
+            "--hashtag",
+            metavar="HASHTAG",
+            help="Hashtags (comma-separated) to apply to pushed changes.")
+        parser.add_argument(
+            "--clang_version",
+            metavar="REVISION:VERSION",
+            help="REVISION (e.g. r1234) and VERSION (e.g. 10.0.0) to use " +\
+                 "instead of fetching this from clang_bin.")
         args = parser.parse_args()
         self.bug_number = args.bug_number
         self.clang_bin = args.clang_bin
@@ -79,6 +100,10 @@ class KernelToolchainUpdater():
         self.kernel_relpath = args.kernel_relpath
         self.dry_run = args.d
         self.no_push = args.n
+        self.no_topic = args.no_topic
+        self.wip = args.wip
+        self.hashtag = args.hashtag
+        self.clang_version_arg = args.clang_version
 
     def get_clang_versions(self):
         output = subprocess.check_output([self.clang_bin, "--version"])
@@ -132,8 +157,14 @@ Bug: %s
         output = subprocess.check_output(["repo", "--no-pager", "info"],
                                          cwd=self.repo_dir)
         repo_branch = output.split("\n")[1].split(" ")[3].split("/")[2]
-        command = "git push origin HEAD:refs/for/%s -o topic=%s" % (repo_branch,
-                                                                    self.topic)
+        command = "git push origin HEAD:refs/for/" + repo_branch
+
+        if self.wip:
+            command += '%wip' # note: no preceding space needed here.
+        if not self.no_topic:
+            command += " -o topic=" + self.topic
+        if self.hashtag:
+            command += " -o hashtag=" + self.hashtag
         if self.dry_run or self.no_push:
             print(command)
             return
@@ -180,8 +211,14 @@ Bug: %s
                                          cwd=self.kernel_dir).strip()
         for project in ET.parse(xml_path).iter("project"):
             if (project.get("path") == self.kernel_relpath):
-                command = "git push %s HEAD:refs/for/%s -o topic=%s" % (
-                    remote, project.get("revision"), self.topic)
+                command = "git push %s HEAD:refs/for/%s" % (
+                        remote, project.get("revision"))
+                if self.wip:
+                    command += '%wip' # note: no preceding space needed here.
+                if not self.no_topic:
+                    command += " -o topic=" + self.topic
+                if self.hashtag:
+                    command += " -o hashtag=" + self.hashtag
                 if self.dry_run or self.no_push:
                     print(command)
                     return
