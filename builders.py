@@ -269,9 +269,14 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         filename = 'libclang_rt.builtins-' + sarch + '-android.a'
         src_path = self.output_dir / 'lib' / 'android' / filename
 
-        shutil.copy2(src_path, self.toolchain.resource_dir / filename)
+        shutil.copy2(src_path, self.output_toolchain.resource_dir / filename)
 
-        dst_dir = self.toolchain.path / 'runtimes_ndk_cxx'
+        # Also install to self.toolchain.resource_dir, if it's different, for
+        # use when building target libraries.
+        if self.toolchain.resource_dir != self.output_toolchain.resource_dir:
+            shutil.copy2(src_path, self.toolchain.resource_dir / filename)
+
+        dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
         dst_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_path, dst_dir / filename)
 
@@ -451,17 +456,25 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
         src_file = self.output_dir / 'lib64' / 'libunwind.a'
         arch = self._config.target_arch
 
-        res_dir = self.toolchain.resource_dir / arch.value
-        res_dir.mkdir(parents=True, exist_ok=True)
+        install_toolchains = [self.output_toolchain]
+        # Also install to self.toolchain.resource_dir, if it's different, for
+        # use when building runtimes.
+        if self.toolchain != self.output_toolchain:
+            install_toolchains.append(self.toolchain)
 
-        if self.is_exported:
-            shutil.copy2(src_file, res_dir / 'libunwind-exported.a')
-        else:
-            shutil.copy2(src_file, res_dir / 'libunwind.a')
+        for install_toolchain in install_toolchains:
+            res_dir = install_toolchain.resource_dir / arch.value
+            res_dir.mkdir(parents=True, exist_ok=True)
 
-            ndk_dir = self.toolchain.path / 'runtimes_ndk_cxx' / arch.value
-            ndk_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_file, ndk_dir / 'libunwind.a')
+            if self.is_exported:
+                shutil.copy2(src_file, res_dir / 'libunwind-exported.a')
+            else:
+                shutil.copy2(src_file, res_dir / 'libunwind.a')
+
+                ndk_dir = (install_toolchain.path / 'runtimes_ndk_cxx' /
+                           arch.value)
+                ndk_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_file, ndk_dir / 'libunwind.a')
 
 
 class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
