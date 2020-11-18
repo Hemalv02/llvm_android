@@ -31,7 +31,6 @@ import mapfile
 import paths
 import toolchains
 import utils
-import win_sdk
 
 class AsanMapFileBuilder(base_builders.Builder):
     name: str = 'asan-mapfile'
@@ -520,35 +519,47 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         shutil.copy2(src_lib, dst_dir / libname)
 
 
+class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
+    name: str = 'libncurses'
+    src_dir: Path = paths.LIBNCURSES_SRC_DIR
+    config_list: List[configs.Config] = [configs.host_config()]
+    lib_version: str = '6'
+
+    @property
+    def config_flags(self) -> List[str]:
+        return super().config_flags + [
+            '--with-shared',
+        ]
+
+    @property
+    def _lib_names(self) -> List[str]:
+        return ['libncurses', 'libform', 'libpanel']
+
+
 class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     name: str = 'libedit'
     src_dir: Path = paths.LIBEDIT_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
-
-    def install(self) -> None:
-        super().install()
-        if self._config.target_os.is_darwin:
-            # Updates LC_ID_DYLIB so that users of libedit won't link with absolute path.
-            libedit_path = self.link_library
-            cmd = ['install_name_tool',
-                   '-id', f'@rpath/{libedit_path.name}',
-                   str(libedit_path)]
-            utils.check_call(cmd)
+    libncurses: base_builders.LibInfo
+    lib_version: str = '0'
 
     @property
-    def include_dir(self) -> Path:
-        return self.install_dir / 'include'
+    def ldflags(self) -> List[str]:
+        return [
+            f'-L{self.libncurses.link_libraries[0].parent}',
+        ] + super().ldflags
 
     @property
-    def link_library(self) -> Path:
-        return {
-            hosts.Host.Linux: self.install_dir / 'lib' / 'libedit.so.0',
-            hosts.Host.Darwin: self.install_dir / 'lib' / 'libedit.0.dylib',
-        }[self._config.target_os]
+    def cflags(self) -> List[str]:
+        flags = []
+        flags.append('-I' + str(self.libncurses.include_dir))
+        flags.append('-I' + str(self.libncurses.include_dir / 'ncurses'))
+        return flags + super().cflags
 
-    @property
-    def install_library(self) -> Path:
-        return self.link_library
+
+    def build(self) -> None:
+        files: List[Path] = []
+        super().build()
 
 
 class SwigBuilder(base_builders.AutoconfBuilder):
@@ -571,29 +582,17 @@ class SwigBuilder(base_builders.AutoconfBuilder):
 
 
 class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
-    name: str = 'xz'
+    name: str = 'liblzma'
     src_dir: Path = paths.XZ_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
-
-    @property
-    def include_dir(self) -> Path:
-        return self.install_dir / 'include'
-
-    @property
-    def link_library(self) -> Path:
-        if self._config.target_os.is_windows and win_sdk.is_enabled():
-            return self.install_dir / 'lib' / 'liblzma.lib'
-        return self.install_dir / 'lib' / 'liblzma.a'
-
-    @property
-    def install_library(self) -> Optional[Path]:
-        return None
+    static_lib: bool = True
 
 
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
     src_dir: Path = paths.LIBXML2_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
+    lib_version: str = '2.9.10'
 
     @contextlib.contextmanager
     def _backup_file(self, file_to_backup: Path) -> Iterator[None]:
@@ -625,22 +624,6 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     @property
     def include_dir(self) -> Path:
         return self.install_dir / 'include' / 'libxml2'
-
-    @property
-    def link_library(self) -> Path:
-        if self._config.target_os.is_windows and win_sdk.is_enabled():
-            return self.install_dir / 'lib' / 'libxml2.lib'
-        return {
-            hosts.Host.Linux: self.install_dir / 'lib' / 'libxml2.so.2.9.10',
-            hosts.Host.Darwin: self.install_dir / 'lib' / 'libxml2.2.9.10.dylib',
-            hosts.Host.Windows: self.install_dir / 'lib' / 'libxml2.dll.a',
-        }[self._config.target_os]
-
-    @property
-    def install_library(self) -> Path:
-        if self._config.target_os.is_windows:
-            return self.install_dir / 'bin' / 'libxml2.dll'
-        return self.link_library
 
     @property
     def symlinks(self) -> List[Path]:
