@@ -136,5 +136,8 @@ git_stage-aosp-master:
 
 
 aosp_kernel-common-android-mainline:
-    kernel_cf_i686:
     kernel_aarch64:
+    kernel_arm_allmodconfig:
+    kernel_cf_kasan_aarch64:
+    kernel_cf_i686:
+    kernel_cf_x86_64:
