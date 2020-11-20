@@ -185,6 +185,29 @@ def extract_clang_version(clang_install: Path) -> version.Version:
     return version.Version(version_file)
 
 
+def invoke_llvm_tools(profiler: ClangProfileHandler):
+    """Collect profiles from llvm tools.
+
+    For now, just use '--help' to invoke the tools.
+    """
+
+    # This directory is actually created by build.py.  Hardcode this even though
+    # this creates an implicit dependence that we had avoided by invoking
+    # build.py instead of calling its internal functions.
+    stage2_install = paths.OUT_DIR / 'stage2-install'
+    env = dict(os.environ)
+    key, val = profiler.getProfileFileEnvVar()
+    env[key] = val
+
+    for tool in (stage2_install / 'bin').iterdir():
+        # unchecked call since the tools may have non-zero exit code with
+        # '--help'.
+        utils.unchecked_call([tool, '--help'],
+                             stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL,
+                             env=env)
+
+
 def build_target(android_base: Path, clang_version: version.Version, target : str,
                  max_jobs: int, redirect_stderr: bool, with_tidy: bool,
                  profiler: Optional[ClangProfileHandler]=None) -> None:
@@ -341,6 +364,7 @@ def main():
                          args.redirect_stderr, args.with_tidy, profiler)
 
         if profiler is not None:
+            invoke_llvm_tools(profiler)
             profiler.mergeProfiles()
 
     else:
