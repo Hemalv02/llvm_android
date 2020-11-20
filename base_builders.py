@@ -574,6 +574,9 @@ class LLVMBuilder(LLVMBaseBuilder):
             if utils.is_available_mac_ver('10.11'):
                 raise RuntimeError('libcompression can be enabled for macOS 10.11 and above.')
             defines['HAVE_LIBCOMPRESSION'] = '0'
+            if utils.is_available_mac_ver('10.13'):
+                raise RuntimeError('futimens can be enabled for macOS 10.13 and above.')
+            defines['HAVE_FUTIMENS'] = '0'
 
         # libxml2 is used by lld and lldb.
         if self.libxml2:
