@@ -53,6 +53,18 @@ def set_default_toolchain(toolchain: toolchains.Toolchain) -> None:
     Builder.toolchain = toolchain
 
 
+def extract_profdata() -> Optional[Path]:
+    tar = paths.pgo_profdata_tar()
+    if not tar:
+        return None
+    utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(tar)])
+    profdata_file = paths.OUT_DIR / paths.pgo_profdata_filename()
+    if not profdata_file.exists():
+        raise RuntimeError(
+            f'Failed to extract profdata from {tar} to {paths.OUT_DIR}')
+    return profdata_file
+
+
 def build_llvm_for_windows(enable_assertions: bool,
                            build_name: str,
                            build_lldb: bool,
@@ -635,8 +647,7 @@ def main():
 
     if need_host:
         if not args.no_pgo:
-            profdata_filename = paths.pgo_profdata_filename()
-            profdata = paths.pgo_profdata_file(profdata_filename)
+            profdata = extract_profdata()
         else:
             profdata = None
 

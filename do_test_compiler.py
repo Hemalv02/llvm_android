@@ -17,6 +17,7 @@
 # pylint: disable=not-callable, relative-import
 
 import argparse
+import logging
 import multiprocessing
 import os
 from pathlib import Path
@@ -54,15 +55,22 @@ class ClangProfileHandler(object):
 
     def mergeProfiles(self):
         stage1_install = paths.OUT_DIR / 'stage1-install'
-        profdata = stage1_install / 'bin' / 'llvm-profdata'
+        profdata_tool = stage1_install / 'bin' / 'llvm-profdata'
 
-        profdata_file = paths.pgo_profdata_filename()
+        profdata_dir = paths.OUT_DIR
+        profdata_filename = paths.pgo_profdata_filename()
+        utils.check_call([
+            str(profdata_tool), 'merge', '-o',
+            str(profdata_dir / profdata_filename),
+            str(self.profiles_dir)
+        ])
 
         dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
-        out_file = dist_dir / profdata_file
-
-        cmd = [str(profdata), 'merge', '-o', str(out_file), str(self.profiles_dir)]
-        subprocess.check_call(cmd)
+        utils.check_call([
+            'tar', '-cjC',
+            str(profdata_dir), profdata_filename, '-f',
+            str(dist_dir / paths.pgo_profdata_tarname())
+        ])
 
 
 def parse_args():
@@ -341,6 +349,8 @@ def extract_packaged_clang(package_path: Path) -> Path:
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
+
     args = parse_args()
     if args.clang_path is not None:
         clang_path = Path(args.clang_path)

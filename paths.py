@@ -68,14 +68,21 @@ KYTHE_CXX_EXTRACTOR = (PREBUILTS_DIR / 'clang-tools' / hosts.build_host().os_tag
                        'cxx_extractor')
 KYTHE_OUTPUT_DIR = OUT_DIR / 'kythe-files'
 
+
 def pgo_profdata_filename() -> str:
     svn_revision = android_version.get_svn_revision_number()
     return f'r{svn_revision}.profdata'
 
-def pgo_profdata_file(profdata_file) -> Optional[Path]:
+
+def pgo_profdata_tarname() -> str:
+    return pgo_profdata_filename() + '.tar.bz2'
+
+
+def pgo_profdata_tar() -> Optional[Path]:
     profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
-               profdata_file)
+               pgo_profdata_tarname())
     return profile if profile.exists() else None
+
 
 def get_package_install_path(host: hosts.Host, package_name) -> Path:
     return OUT_DIR / 'install' / host.os_tag / package_name
