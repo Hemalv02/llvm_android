@@ -210,6 +210,12 @@
         "end_version": 410815
     },
     {
+        "comment": "[OpenMP] fix asm code for for arm64 (AARCH64) for Darwin/macOS",
+        "rel_patch_path": "cherry/7b5254223acbf2ef9cd278070c5a84ab278d7e5f.patch",
+        "start_version": 399163,
+        "end_version": 411939
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
