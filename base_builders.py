@@ -33,8 +33,6 @@ import paths
 import toolchains
 import utils
 
-ORIG_ENV = dict(os.environ)
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -130,9 +128,9 @@ class Builder:  # pylint: disable=too-few-public-methods
     @property
     def env(self) -> Dict[str, str]:
         """Environment variables used when building."""
-        env = dict(ORIG_ENV)
+        env = dict(utils.ORIG_ENV)
         env.update(self._config.env)
-        paths = [self._config.env.get('PATH'), ORIG_ENV.get('PATH')]
+        paths = [self._config.env.get('PATH'), utils.ORIG_ENV.get('PATH')]
         env['PATH'] = os.pathsep.join(p for p in paths if p)
         return env
 
@@ -231,8 +229,9 @@ class AutoconfBuilder(Builder):
         env['CC'] = f'{self._cc} @{cflags_file}'
         env['CXX'] = f'{self._cxx} @{cxxflags_file}'
 
-        config_cmd = [self.src_dir / 'configure', f'--prefix={self.install_dir}']
+        config_cmd = [str(self.src_dir / 'configure'), f'--prefix={self.install_dir}']
         config_cmd.extend(self.config_flags)
+        utils.create_script(self.output_dir / 'config_invocation.sh', config_cmd, env)
         utils.check_call(config_cmd, cwd=self.output_dir, env=env)
 
         make_cmd = ['make', f'-j{multiprocessing.cpu_count()}']
@@ -339,16 +338,6 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 shutil.rmtree(os.path.join(dirpath, 'CMakeFiles'))
 
-    def _record_cmake_command(self, cmake_cmd: List[str],
-                              env: Dict[str, str]) -> None:
-        script_path = self.output_dir / 'cmake_invocation.sh'
-        with script_path.open('w') as outf:
-            for k, v in env.items():
-                if v != ORIG_ENV.get(k):
-                    outf.write(f'{k}={v}\n')
-            outf.write(utils.list2cmdline(cmake_cmd) + '\n')
-        script_path.chmod(0o755)
-
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_dir)
@@ -364,7 +353,7 @@ class CMakeBuilder(Builder):
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         env = self.env
-        self._record_cmake_command(cmake_cmd, env)
+        utils.create_script(self.output_dir / 'cmake_invocation.sh', cmake_cmd, env)
         utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
         ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]

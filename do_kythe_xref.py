@@ -27,8 +27,6 @@ import hosts
 import paths
 import utils
 
-ORIG_ENV = dict(os.environ)
-
 def build_llvm() -> builders.Stage2Builder:
     stage2 = builders.Stage2Builder()
     stage2.toolchain_name = 'prebuilt'
@@ -108,7 +106,7 @@ def package(build_name: str) -> None:
                        'bin' / 'merge_zips')
 
     # Call: merge_zips $DIST_DIR/<build_name>.kzip <kzip files>
-    output = os.path.join(ORIG_ENV.get('DIST_DIR', paths.OUT_DIR),
+    output = os.path.join(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR),
                           build_name + '.kzip')
 
     kythe_out_dir = paths.KYTHE_OUTPUT_DIR

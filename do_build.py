@@ -41,8 +41,6 @@ import utils
 from version import Version
 import win_sdk
 
-ORIG_ENV = dict(os.environ)
-
 def logger():
     """Returns the module level logger."""
     return logging.getLogger(__name__)
@@ -286,7 +284,7 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
                       strip=True, create_tar=True, llvm_next=False):
-    dist_dir = Path(ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
+    dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     build_dir = toolchain_builder.install_dir
     host = toolchain_builder.config_list[0].target_os
     build_name = toolchain_builder.build_name

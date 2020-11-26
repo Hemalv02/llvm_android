@@ -19,14 +19,17 @@ import contextlib
 import datetime
 import logging
 import os
+from pathlib import Path
 import shlex
 import shutil
 import stat
 import subprocess
-from typing import List
+from typing import Dict, List
 
 import constants
 
+
+ORIG_ENV = dict(os.environ)
 
 def logger():
     """Returns the module level logger."""
@@ -75,6 +78,16 @@ def list2cmdline(args: List[str]) -> str:
     escaping rather than MSVCRT escaping.
     """
     return ' '.join([shlex.quote(os.fsdecode(arg)) for arg in args])
+
+
+def create_script(script_path: Path, cmd: List[str], env: Dict[str, str]) -> None:
+    with script_path.open('w') as outf:
+        outf.write('#!/bin/sh\n')
+        for k, v in env.items():
+            if v != ORIG_ENV.get(k):
+                outf.write(f'export {k}="{v}"\n')
+        outf.write(list2cmdline(cmd) + '$@\n')
+    script_path.chmod(0o755)
 
 
 def check_gcertstatus() -> None:
