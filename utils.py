@@ -93,7 +93,9 @@ def create_script(script_path: Path, cmd: List[str], env: Dict[str, str]) -> Non
 def check_gcertstatus() -> None:
     """Ensure gcert valid for > 1 hour."""
     try:
-        check_call(['gcertstatus', '-quiet', '-check_remaining=1h'])
+        check_call([
+            'gcertstatus', '-quiet', '-check_ssh=false', '-check_remaining=1h'
+        ])
     except subprocess.CalledProcessError:
         print('Run prodaccess before executing this script.')
         raise
