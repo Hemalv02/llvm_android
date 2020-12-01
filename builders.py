@@ -619,6 +619,9 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
         defines = super().cmake_defines
         defines['LIBXML2_WITH_PYTHON'] = 'OFF'
         defines['LIBXML2_WITH_PROGRAMS'] = 'OFF'
+        defines['LIBXML2_WITH_LZMA'] = 'OFF'
+        defines['LIBXML2_WITH_ICONV'] = 'OFF'
+        defines['LIBXML2_WITH_ZLIB'] = 'OFF'
         return defines
 
     @property
