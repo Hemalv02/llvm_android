@@ -3,6 +3,10 @@ git_master:
         groups: x86 smoke
         tests:
             - avd/avd_boot_health_check
+    cf_x86_64_phone-userdebug:
+        groups: x86_64 smoke
+        tests:
+            - avd/avd_boot_health_check
     blueline-userdebug:
         groups: arm64
         tests:
