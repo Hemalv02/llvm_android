@@ -614,6 +614,8 @@ class LLVMBuilder(LLVMBaseBuilder):
             if utils.is_available_mac_ver('10.13'):
                 raise RuntimeError('futimens can be enabled for macOS 10.13 and above.')
             defines['HAVE_FUTIMENS'] = '0'
+            # Codesign binaries with an ad-hoc certificate, mandatory for arm64 Darwin.
+            defines['LLVM_CODESIGNING_IDENTITY'] = '-'
 
         # libxml2 is used by lld and lldb.
         if self.libxml2:
