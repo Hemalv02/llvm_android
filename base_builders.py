@@ -490,12 +490,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         if self.swig_executable:
             defines['SWIG_EXECUTABLE'] = str(self.swig_executable)
-            py_prefix = 'Python3' if target.is_windows else 'PYTHON'
-            if int(android_version.get_svn_revision_number()) >= 404259:
-                py_prefix = 'Python3'
-                if not android_version.is_llvm_next():
-                    raise RuntimeError(
-                        'Remove check when updating release toolchain')
+            py_prefix = 'Python3'
             defines['LLDB_ENABLE_PYTHON'] = 'ON'
             defines[f'{py_prefix}_LIBRARY'] = str(paths.get_python_lib(target))
             defines[f'{py_prefix}_LIBRARIES'] = str(paths.get_python_lib(target))
