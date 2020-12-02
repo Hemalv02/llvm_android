@@ -41,6 +41,7 @@ DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
 # We may introduce some new warnings after rebasing and we need to disable them
 # before we fix those warnings.
 DISABLED_WARNINGS = [
+    '-fno-sanitize=unsigned-shift-base',
 ]
 
 
