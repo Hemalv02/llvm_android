@@ -216,6 +216,18 @@
         "end_version": 411939
     },
     {
+        "comment": "[cmake] Unconditionally set the force flag when codesigning",
+        "rel_patch_path": "cherry/24c1660ac5d7813072b429eee7a9531338e53aea.patch",
+        "start_version": 399163,
+        "end_version": 407847
+    },
+    {
+        "comment": "[MC] Adjust StringTableBuilder for linked Mach-O binaries",
+        "rel_patch_path": "cherry/27e11d7120c0caa20a167b44ba29828446a525c0.patch",
+        "start_version": 399163,
+        "end_version": 408786
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,

@@ -1,0 +1,761 @@
+From 27e11d7120c0caa20a167b44ba29828446a525c0 Mon Sep 17 00:00:00 2001
+From: Alexander Shaposhnikov <alexshap@fb.com>
+Date: Thu, 22 Oct 2020 18:03:40 -0700
+Subject: [PATCH] [MC] Adjust StringTableBuilder for linked Mach-O binaries
+
+LD64 emits string tables which start with a space and a zero byte.
+This diff adjusts StringTableBuilder for linked Mach-O binaries to match LD64's behavior.
+
+Test plan: make check-all
+
+Differential revision: https://reviews.llvm.org/D89561
+---
+ llvm/include/llvm/MC/MCMachObjectWriter.h     |   4 +-
+ llvm/include/llvm/MC/StringTableBuilder.h     |  12 +-
+ llvm/lib/MC/StringTableBuilder.cpp            |  15 +-
+ .../MachO/basic-big-endian-64-copy.test       |   6 +-
+ .../MachO/basic-little-endian-64-copy.test    |   6 +-
+ .../llvm-objcopy/MachO/code_signature_lc.test |   6 +-
+ .../MachO/remove-swift-symbols.test           |   8 +-
+ .../llvm-objcopy/MachO/segments-vmsize.test   |   7 +-
+ .../llvm-objcopy/MachO/symbol-table.test      |  87 ++++++------
+ .../llvm-objcopy/MachO/MachOLayoutBuilder.cpp |   2 +
+ .../llvm-objcopy/MachO/MachOLayoutBuilder.h   |  13 +-
+ llvm/unittests/MC/StringTableBuilderTest.cpp  | 133 ++++++++++++++++++
+ 12 files changed, 241 insertions(+), 58 deletions(-)
+
+diff --git a/llvm/include/llvm/MC/MCMachObjectWriter.h b/llvm/include/llvm/MC/MCMachObjectWriter.h
+index 38ba68b78fe..6cdccd43712 100644
+--- a/llvm/include/llvm/MC/MCMachObjectWriter.h
++++ b/llvm/include/llvm/MC/MCMachObjectWriter.h
+@@ -114,7 +114,7 @@ class MachObjectWriter : public MCObjectWriter {
+   /// \name Symbol Table Data
+   /// @{
+ 
+-  StringTableBuilder StringTable{StringTableBuilder::MachO};
++  StringTableBuilder StringTable;
+   std::vector<MachSymbolData> LocalSymbolData;
+   std::vector<MachSymbolData> ExternalSymbolData;
+   std::vector<MachSymbolData> UndefinedSymbolData;
+@@ -129,6 +129,8 @@ public:
+   MachObjectWriter(std::unique_ptr<MCMachObjectTargetWriter> MOTW,
+                    raw_pwrite_stream &OS, bool IsLittleEndian)
+       : TargetObjectWriter(std::move(MOTW)),
++        StringTable(TargetObjectWriter->is64Bit() ? StringTableBuilder::MachO64
++                                                  : StringTableBuilder::MachO),
+         W(OS, IsLittleEndian ? support::little : support::big) {}
+ 
+   support::endian::Writer W;
+diff --git a/llvm/include/llvm/MC/StringTableBuilder.h b/llvm/include/llvm/MC/StringTableBuilder.h
+index d8bfac03f7f..3f9c91be05d 100644
+--- a/llvm/include/llvm/MC/StringTableBuilder.h
++++ b/llvm/include/llvm/MC/StringTableBuilder.h
+@@ -22,7 +22,17 @@ class raw_ostream;
+ /// Utility for building string tables with deduplicated suffixes.
+ class StringTableBuilder {
+ public:
+-  enum Kind { ELF, WinCOFF, MachO, RAW, DWARF, XCOFF };
++  enum Kind {
++    ELF,
++    WinCOFF,
++    MachO,
++    MachO64,
++    MachOLinked,
++    MachO64Linked,
++    RAW,
++    DWARF,
++    XCOFF
++  };
+ 
+ private:
+   DenseMap<CachedHashStringRef, size_t> StringIndexMap;
+diff --git a/llvm/lib/MC/StringTableBuilder.cpp b/llvm/lib/MC/StringTableBuilder.cpp
+index c9c88ec5843..973c59057cb 100644
+--- a/llvm/lib/MC/StringTableBuilder.cpp
++++ b/llvm/lib/MC/StringTableBuilder.cpp
+@@ -33,7 +33,12 @@ void StringTableBuilder::initSize() {
+   case DWARF:
+     Size = 0;
+     break;
++  case MachOLinked:
++  case MachO64Linked:
++    Size = 2;
++    break;
+   case MachO:
++  case MachO64:
+   case ELF:
+     // Start the table with a NUL byte.
+     Size = 1;
+@@ -161,8 +166,16 @@ void StringTableBuilder::finalizeStringTable(bool Optimize) {
+     }
+   }
+ 
+-  if (K == MachO)
++  if (K == MachO || K == MachOLinked)
+     Size = alignTo(Size, 4); // Pad to multiple of 4.
++  if (K == MachO64 || K == MachO64Linked)
++    Size = alignTo(Size, 8); // Pad to multiple of 8.
++
++  // According to ld64 the string table of a final linked Mach-O binary starts
++  // with " ", i.e. the first byte is ' ' and the second byte is zero. In
++  // 'initSize()' we reserved the first two bytes for holding this string.
++  if (K == MachOLinked || K == MachO64Linked)
++    StringIndexMap[CachedHashStringRef(" ")] = 0;
+ 
+   // The first byte in an ELF string table must be null, according to the ELF
+   // specification. In 'initSize()' we reserved the first byte to hold null for
+diff --git a/llvm/test/tools/llvm-objcopy/MachO/basic-big-endian-64-copy.test b/llvm/test/tools/llvm-objcopy/MachO/basic-big-endian-64-copy.test
+index 5963e57d1ce..7b659564d2e 100644
+--- a/llvm/test/tools/llvm-objcopy/MachO/basic-big-endian-64-copy.test
++++ b/llvm/test/tools/llvm-objcopy/MachO/basic-big-endian-64-copy.test
+@@ -83,7 +83,7 @@ LoadCommands:
+     symoff:          784
+     nsyms:           2
+     stroff:          816
+-    strsize:         36
++    strsize:         40
+   - cmd:             LC_DYSYMTAB
+     cmdsize:         80
+     ilocalsym:       0
+@@ -121,4 +121,8 @@ LinkEditData:
+     - _compilerrt_abort_impl
+     - ___absvdi2
+     - ''
++    - ''
++    - ''
++    - ''
++    - ''
+ ...
+diff --git a/llvm/test/tools/llvm-objcopy/MachO/basic-little-endian-64-copy.test b/llvm/test/tools/llvm-objcopy/MachO/basic-little-endian-64-copy.test
+index 8795602e51a..5e40ce815c0 100644
+--- a/llvm/test/tools/llvm-objcopy/MachO/basic-little-endian-64-copy.test
++++ b/llvm/test/tools/llvm-objcopy/MachO/basic-little-endian-64-copy.test
+@@ -83,7 +83,7 @@ LoadCommands:
+     symoff:          784
+     nsyms:           2
+     stroff:          816
+-    strsize:         36
++    strsize:         40
+   - cmd:             LC_DYSYMTAB
+     cmdsize:         80
+     ilocalsym:       0
+@@ -121,4 +121,8 @@ LinkEditData:
+     - _compilerrt_abort_impl
+     - ___absvdi2
+     - ''
++    - ''
++    - ''
++    - ''
++    - ''
+ ...
+diff --git a/llvm/test/tools/llvm-objcopy/MachO/code_signature_lc.test b/llvm/test/tools/llvm-objcopy/MachO/code_signature_lc.test
+index 917810f41a8..92f94219cb2 100644
+--- a/llvm/test/tools/llvm-objcopy/MachO/code_signature_lc.test
++++ b/llvm/test/tools/llvm-objcopy/MachO/code_signature_lc.test
+@@ -5,7 +5,7 @@
+ 
+ # CHECK:      cmd LC_CODE_SIGNATURE
+ # CHECK-NEXT: cmdsize 16
+-# CHECK-NEXT: dataoff 124
++# CHECK-NEXT: dataoff 128
+ # CHECK-NEXT: datasize 16
+ 
+ # RUN: llvm-objcopy %t %t.copy
+@@ -28,13 +28,13 @@ LoadCommands:
+     vmaddr:          4294979584
+     vmsize:          4096
+     fileoff:         120
+-    filesize:        20
++    filesize:        24
+     maxprot:         7
+     initprot:        1
+     nsects:          0
+     flags:           0
+   - cmd:             LC_CODE_SIGNATURE
+     cmdsize:         16
+-    dataoff:         124
++    dataoff:         128
+     datasize:        16
+ ...
+diff --git a/llvm/test/tools/llvm-objcopy/MachO/remove-swift-symbols.test b/llvm/test/tools/llvm-objcopy/MachO/remove-swift-symbols.test
+index a47a2dfb9f3..1d55648a540 100644
+--- a/llvm/test/tools/llvm-objcopy/MachO/remove-swift-symbols.test
++++ b/llvm/test/tools/llvm-objcopy/MachO/remove-swift-symbols.test
+@@ -19,7 +19,7 @@
+ 
+ # NO-SWIFT-SYMBOLS:      Symbols [
+ # NO-SWIFT-SYMBOLS-NEXT:  Symbol {
+-# NO-SWIFT-SYMBOLS-NEXT:    Name: _main (1)
++# NO-SWIFT-SYMBOLS-NEXT:    Name: _main (2)
+ # NO-SWIFT-SYMBOLS-NEXT:    Extern
+ # NO-SWIFT-SYMBOLS-NEXT:    Type: Section (0xE)
+ # NO-SWIFT-SYMBOLS-NEXT:    Section: __text (0x1)
+@@ -73,7 +73,7 @@
+ 
+ # SWIFT-SYMBOLS:      Symbols [
+ # SWIFT-SYMBOLS-NEXT:  Symbol {
+-# SWIFT-SYMBOLS-NEXT:    Name: _$S1a13PublicSymbol1Sivp (26)
++# SWIFT-SYMBOLS-NEXT:    Name: _$S1a13PublicSymbol1Sivp (27)
+ # SWIFT-SYMBOLS-NEXT:    Extern
+ # SWIFT-SYMBOLS-NEXT:    Type: Section (0xE)
+ # SWIFT-SYMBOLS-NEXT:    Section: __text (0x1)
+@@ -83,7 +83,7 @@
+ # SWIFT-SYMBOLS-NEXT:    Value: 0x100001160
+ # SWIFT-SYMBOLS-NEXT:  }
+ # SWIFT-SYMBOLS-NEXT:  Symbol {
+-# SWIFT-SYMBOLS-NEXT:    Name: _$s1a13PublicSymbol2Sivp (1)
++# SWIFT-SYMBOLS-NEXT:    Name: _$s1a13PublicSymbol2Sivp (2)
+ # SWIFT-SYMBOLS-NEXT:    Extern
+ # SWIFT-SYMBOLS-NEXT:    Type: Section (0xE)
+ # SWIFT-SYMBOLS-NEXT:    Section: __text (0x1)
+@@ -93,7 +93,7 @@
+ # SWIFT-SYMBOLS-NEXT:    Value: 0x100001168
+ # SWIFT-SYMBOLS-NEXT:  }
+ # SWIFT-SYMBOLS-NEXT:  Symbol {
+-# SWIFT-SYMBOLS-NEXT:    Name: _main (51)
++# SWIFT-SYMBOLS-NEXT:    Name: _main (52)
+ # SWIFT-SYMBOLS-NEXT:    Extern
+ # SWIFT-SYMBOLS-NEXT:    Type: Section (0xE)
+ # SWIFT-SYMBOLS-NEXT:    Section: __text (0x1)
+diff --git a/llvm/test/tools/llvm-objcopy/MachO/segments-vmsize.test b/llvm/test/tools/llvm-objcopy/MachO/segments-vmsize.test
+index 40fb4064bdf..18c99c8307a 100644
+--- a/llvm/test/tools/llvm-objcopy/MachO/segments-vmsize.test
++++ b/llvm/test/tools/llvm-objcopy/MachO/segments-vmsize.test
+@@ -240,20 +240,19 @@ LinkEditData:
+             Other:           0x0000000000000000
+             ImportName:      ''
+   NameList:
+-    - n_strx:          18
++    - n_strx:          19
+       n_type:          0x0F
+       n_sect:          1
+       n_desc:          16
+       n_value:         4294967296
+-    - n_strx:          1
++    - n_strx:          2
+       n_type:          0x01
+       n_sect:          0
+       n_desc:          256
+       n_value:         0
+   StringTable:
+-    - ''
++    - ' '
+     - dyld_stub_binder
+     - __mh_execute_header
+     - ''
+-    - ''
+ ...
+diff --git a/llvm/test/tools/llvm-objcopy/MachO/symbol-table.test b/llvm/test/tools/llvm-objcopy/MachO/symbol-table.test
+index 133f1744bb9..355ccd48c4d 100644
+--- a/llvm/test/tools/llvm-objcopy/MachO/symbol-table.test
++++ b/llvm/test/tools/llvm-objcopy/MachO/symbol-table.test
+@@ -24,7 +24,7 @@
+ 
+ # CHECK: Symbols [
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _PrivateSymbol (169)
++# CHECK-NEXT:     Name: _PrivateSymbol (170)
+ # CHECK-NEXT:     Type: Section (0xE)
+ # CHECK-NEXT:     Section: __bss (0x4)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -33,7 +33,7 @@
+ # CHECK-NEXT:     Value: 0x100001008
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _PrivateExternalSymbol (121)
++# CHECK-NEXT:     Name: _PrivateExternalSymbol (122)
+ # CHECK-NEXT:     PrivateExtern
+ # CHECK-NEXT:     Type: Section (0xE)
+ # CHECK-NEXT:     Section: __common (0x5)
+@@ -43,7 +43,7 @@
+ # CHECK-NEXT:     Value: 0x100001010
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: /Users/aaaaaaaa/ (191)
++# CHECK-NEXT:     Name: /Users/aaaaaaaa/ (192)
+ # CHECK-NEXT:     Type: SymDebugTable (0x64)
+ # CHECK-NEXT:     Section:  (0x0)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -52,7 +52,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: main.c (184)
++# CHECK-NEXT:     Name: main.c (185)
+ # CHECK-NEXT:     Type: SymDebugTable (0x64)
+ # CHECK-NEXT:     Section:  (0x0)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -61,7 +61,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: /var/folders/1d/zyfdpp7j2995h5hqspjy28bc0000gn/T/main-c5ac21.o (38)
++# CHECK-NEXT:     Name: /var/folders/1d/zyfdpp7j2995h5hqspjy28bc0000gn/T/main-c5ac21.o (39)
+ # CHECK-NEXT:     Type: SymDebugTable (0x66)
+ # CHECK-NEXT:     Section:  (0x3)
+ # CHECK-NEXT:     RefType: ReferenceFlagUndefinedLazy (0x1)
+@@ -70,7 +70,7 @@
+ # CHECK-NEXT:     Value: 0x5EA74C81
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name:  (207)
++# CHECK-NEXT:     Name:  (208)
+ # CHECK-NEXT:     Type: SymDebugTable (0x2E)
+ # CHECK-NEXT:     Section:  (0x1)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -79,7 +79,7 @@
+ # CHECK-NEXT:     Value: 0x100000F80
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _main (101)
++# CHECK-NEXT:     Name: _main (102)
+ # CHECK-NEXT:     Type: SymDebugTable (0x24)
+ # CHECK-NEXT:     Section:  (0x1)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -88,7 +88,7 @@
+ # CHECK-NEXT:     Value: 0x100000F80
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name:  (207)
++# CHECK-NEXT:     Name:  (208)
+ # CHECK-NEXT:     Type: SymDebugTable (0x24)
+ # CHECK-NEXT:     Section:  (0x0)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -97,7 +97,7 @@
+ # CHECK-NEXT:     Value: 0x2D
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name:  (207)
++# CHECK-NEXT:     Name:  (208)
+ # CHECK-NEXT:     Type: SymDebugTable (0x4E)
+ # CHECK-NEXT:     Section:  (0x1)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -106,7 +106,7 @@
+ # CHECK-NEXT:     Value: 0x2D
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _PrivateSymbol (169)
++# CHECK-NEXT:     Name: _PrivateSymbol (170)
+ # CHECK-NEXT:     Type: SymDebugTable (0x26)
+ # CHECK-NEXT:     Section:  (0x4)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -115,7 +115,7 @@
+ # CHECK-NEXT:     Value: 0x100001008
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _CommonSymbol (107)
++# CHECK-NEXT:     Name: _CommonSymbol (108)
+ # CHECK-NEXT:     Type: SymDebugTable (0x20)
+ # CHECK-NEXT:     Section:  (0x0)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -124,7 +124,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _PrivateExternalSymbol (121)
++# CHECK-NEXT:     Name: _PrivateExternalSymbol (122)
+ # CHECK-NEXT:     Type: SymDebugTable (0x20)
+ # CHECK-NEXT:     Section:  (0x0)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -133,7 +133,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name:  (207)
++# CHECK-NEXT:     Name:  (208)
+ # CHECK-NEXT:     Type: SymDebugTable (0x64)
+ # CHECK-NEXT:     Section:  (0x1)
+ # CHECK-NEXT:     RefType: UndefinedNonLazy (0x0)
+@@ -142,7 +142,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _CommonSymbol (107)
++# CHECK-NEXT:     Name: _CommonSymbol (108)
+ # CHECK-NEXT:     Extern
+ # CHECK-NEXT:     Type: Section (0xE)
+ # CHECK-NEXT:     Section: __common (0x5)
+@@ -152,7 +152,7 @@
+ # CHECK-NEXT:     Value: 0x10000100C
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: __mh_execute_header (18)
++# CHECK-NEXT:     Name: __mh_execute_header (19)
+ # CHECK-NEXT:     Extern
+ # CHECK-NEXT:     Type: Section (0xE)
+ # CHECK-NEXT:     Section: __text (0x1)
+@@ -163,7 +163,7 @@
+ # CHECK-NEXT:     Value: 0x100000000
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _main (101)
++# CHECK-NEXT:     Name: _main (102)
+ # CHECK-NEXT:     Extern
+ # CHECK-NEXT:     Type: Section (0xE)
+ # CHECK-NEXT:     Section: __text (0x1)
+@@ -173,7 +173,7 @@
+ # CHECK-NEXT:     Value: 0x100000F80
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: _UndefinedExternalSymbol (144)
++# CHECK-NEXT:     Name: _UndefinedExternalSymbol (145)
+ # CHECK-NEXT:     Extern
+ # CHECK-NEXT:     Type: Undef (0x0)
+ # CHECK-NEXT:     Section:  (0x0)
+@@ -184,7 +184,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT:   Symbol {
+-# CHECK-NEXT:     Name: dyld_stub_binder (1)
++# CHECK-NEXT:     Name: dyld_stub_binder (2)
+ # CHECK-NEXT:     Extern
+ # CHECK-NEXT:     Type: Undef (0x0)
+ # CHECK-NEXT:     Section:  (0x0)
+@@ -194,7 +194,7 @@
+ # CHECK-NEXT:     Value: 0x0
+ # CHECK-NEXT:   }
+ # CHECK-NEXT: ]
+- 
++
+ --- !mach-o
+ FileHeader:
+   magic:           0xFEEDFACF
+@@ -299,7 +299,7 @@ LoadCommands:
+     vmaddr:          4294975488
+     vmsize:          4096
+     fileoff:         8192
+-    filesize:        500
++    filesize:        508
+     maxprot:         1
+     initprot:        1
+     nsects:          0
+@@ -309,7 +309,7 @@ LoadCommands:
+     symoff:          8192
+     nsyms:           18
+     stroff:          8484
+-    strsize:         208
++    strsize:         216
+   - cmd:             LC_DYSYMTAB
+     cmdsize:         80
+     ilocalsym:       0
+@@ -332,98 +332,98 @@ LoadCommands:
+     nlocrel:         0
+ LinkEditData:
+   NameList:
+-    - n_strx:          169
++    - n_strx:          170
+       n_type:          0x0E
+       n_sect:          4
+       n_desc:          0
+       n_value:         4294971400
+-    - n_strx:          121
++    - n_strx:          122
+       n_type:          0x1E
+       n_sect:          5
+       n_desc:          0
+       n_value:         4294971408
+-    - n_strx:          191
++    - n_strx:          192
+       n_type:          0x64
+       n_sect:          0
+       n_desc:          0
+       n_value:         0
+-    - n_strx:          184
++    - n_strx:          185
+       n_type:          0x64
+       n_sect:          0
+       n_desc:          0
+       n_value:         0
+-    - n_strx:          38
++    - n_strx:          39
+       n_type:          0x66
+       n_sect:          3
+       n_desc:          1
+       n_value:         1588022401
+-    - n_strx:          207
++    - n_strx:          208
+       n_type:          0x2E
+       n_sect:          1
+       n_desc:          0
+       n_value:         4294971264
+-    - n_strx:          101
++    - n_strx:          102
+       n_type:          0x24
+       n_sect:          1
+       n_desc:          0
+       n_value:         4294971264
+-    - n_strx:          207
++    - n_strx:          208
+       n_type:          0x24
+       n_sect:          0
+       n_desc:          0
+       n_value:         45
+-    - n_strx:          207
++    - n_strx:          208
+       n_type:          0x4E
+       n_sect:          1
+       n_desc:          0
+       n_value:         45
+-    - n_strx:          169
++    - n_strx:          170
+       n_type:          0x26
+       n_sect:          4
+       n_desc:          0
+       n_value:         4294971400
+-    - n_strx:          107
++    - n_strx:          108
+       n_type:          0x20
+       n_sect:          0
+       n_desc:          0
+       n_value:         0
+-    - n_strx:          121
++    - n_strx:          122
+       n_type:          0x20
+       n_sect:          0
+       n_desc:          0
+       n_value:         0
+-    - n_strx:          207
++    - n_strx:          208
+       n_type:          0x64
+       n_sect:          1
+       n_desc:          0
+       n_value:         0
+-    - n_strx:          107
++    - n_strx:          108
+       n_type:          0x0F
+       n_sect:          5
+       n_desc:          0
+       n_value:         4294971404
+-    - n_strx:          18
++    - n_strx:          19
+       n_type:          0x0F
+       n_sect:          1
+       n_desc:          16
+       n_value:         4294967296
+-    - n_strx:          101
++    - n_strx:          102
+       n_type:          0x0F
+       n_sect:          1
+       n_desc:          0
+       n_value:         4294971264
+-    - n_strx:          144
++    - n_strx:          145
+       n_type:          0x01
+       n_sect:          0
+       n_desc:          65024
+       n_value:         0
+-    - n_strx:          1
++    - n_strx:          2
+       n_type:          0x01
+       n_sect:          0
+       n_desc:          256
+       n_value:         0
+   StringTable:
+-    - ''
++    - ' '
+     - dyld_stub_binder
+     - __mh_execute_header
+     - '/var/folders/1d/zyfdpp7j2995h5hqspjy28bc0000gn/T/main-c5ac21.o'
+@@ -434,4 +434,11 @@ LinkEditData:
+     - _PrivateSymbol
+     - main.c
+     - '/Users/aaaaaaaa/'
++    - ''
++    - ''
++    - ''
++    - ''
++    - ''
++    - ''
++    - ''
+ ...
+diff --git a/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.cpp b/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.cpp
+index 256c830a44a..947636ac985 100644
+--- a/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.cpp
++++ b/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.cpp
+@@ -252,6 +252,8 @@ Error MachOLayoutBuilder::layoutTail(uint64_t Offset) {
+       sizeof(uint32_t) * O.IndirectSymTable.Symbols.size();
+   uint64_t StartOfCodeSignature =
+       StartOfSymbolStrings + StrTableBuilder.getSize();
++  if (O.CodeSignatureCommandIndex)
++    StartOfCodeSignature = alignTo(StartOfCodeSignature, 16);
+   uint64_t LinkEditSize =
+       (StartOfCodeSignature + O.CodeSignature.Data.size()) - StartOfLinkEdit;
+ 
+diff --git a/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.h b/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.h
+index 21cbe56605d..a0ed02e41db 100644
+--- a/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.h
++++ b/llvm/tools/llvm-objcopy/MachO/MachOLayoutBuilder.h
+@@ -23,7 +23,7 @@ class MachOLayoutBuilder {
+ 
+   // Points to the __LINKEDIT segment if it exists.
+   MachO::macho_load_command *LinkEditLoadCommand = nullptr;
+-  StringTableBuilder StrTableBuilder{StringTableBuilder::MachO};
++  StringTableBuilder StrTableBuilder;
+ 
+   uint32_t computeSizeOfCmds() const;
+   void constructStringTable();
+@@ -33,9 +33,18 @@ class MachOLayoutBuilder {
+   uint64_t layoutRelocations(uint64_t Offset);
+   Error layoutTail(uint64_t Offset);
+ 
++  static StringTableBuilder::Kind getStringTableBuilderKind(const Object &O,
++                                                            bool Is64Bit) {
++    if (O.Header.FileType == MachO::HeaderFileType::MH_OBJECT)
++      return Is64Bit ? StringTableBuilder::MachO64 : StringTableBuilder::MachO;
++    return Is64Bit ? StringTableBuilder::MachO64Linked
++                   : StringTableBuilder::MachOLinked;
++  }
++
+ public:
+   MachOLayoutBuilder(Object &O, bool Is64Bit, uint64_t PageSize)
+-      : O(O), Is64Bit(Is64Bit), PageSize(PageSize) {}
++      : O(O), Is64Bit(Is64Bit), PageSize(PageSize),
++        StrTableBuilder(getStringTableBuilderKind(O, Is64Bit)) {}
+ 
+   // Recomputes and updates fields in the given object such as file offsets.
+   Error layout();
+diff --git a/llvm/unittests/MC/StringTableBuilderTest.cpp b/llvm/unittests/MC/StringTableBuilderTest.cpp
+index 81b7fa36bee..91f2b3b97e1 100644
+--- a/llvm/unittests/MC/StringTableBuilderTest.cpp
++++ b/llvm/unittests/MC/StringTableBuilderTest.cpp
+@@ -103,4 +103,137 @@ TEST(StringTableBuilderTest, ELFInOrder) {
+   EXPECT_EQ(9U, B.getOffset("foobar"));
+ }
+ 
++TEST(StringTableBuilderTest, MachOInOrder) {
++  StringTableBuilder B(StringTableBuilder::MachO);
++
++  B.add("foo");
++  B.add("bar");
++  B.add("fooba");
++
++  B.finalizeInOrder();
++
++  std::string Expected;
++  Expected += '\x00';
++  Expected += "foo";
++  Expected += '\x00';
++  Expected += "bar";
++  Expected += '\x00';
++  Expected += "fooba";
++  Expected += '\x00';
++
++  // Mach-O pads to 4 bytes
++  Expected += '\x00';
++
++  SmallString<64> Data;
++  raw_svector_ostream OS(Data);
++  B.write(OS);
++
++  EXPECT_EQ(Expected, Data);
++  EXPECT_EQ(1U, B.getOffset("foo"));
++  EXPECT_EQ(5U, B.getOffset("bar"));
++  EXPECT_EQ(9U, B.getOffset("fooba"));
++}
++
++TEST(StringTableBuilderTest, MachO64InOrder) {
++  StringTableBuilder B(StringTableBuilder::MachO64);
++
++  B.add("foo");
++  B.add("bar");
++  B.add("f");
++
++  B.finalizeInOrder();
++
++  std::string Expected;
++  Expected += '\x00';
++  Expected += "foo";
++  Expected += '\x00';
++  Expected += "bar";
++  Expected += '\x00';
++  Expected += "f";
++  Expected += '\x00';
++
++  // 64 bit Mach-O pads to 8 bytes
++  Expected += '\x00';
++  Expected += '\x00';
++  Expected += '\x00';
++  Expected += '\x00';
++  Expected += '\x00';
++
++  SmallString<64> Data;
++  raw_svector_ostream OS(Data);
++  B.write(OS);
++
++  EXPECT_EQ(Expected, Data);
++  EXPECT_EQ(1U, B.getOffset("foo"));
++  EXPECT_EQ(5U, B.getOffset("bar"));
++  EXPECT_EQ(9U, B.getOffset("f"));
++}
++
++TEST(StringTableBuilderTest, MachOLinkedInOrder) {
++  StringTableBuilder B(StringTableBuilder::MachOLinked);
++
++  B.add("foo");
++  B.add("bar");
++  B.add("foob");
++
++  B.finalizeInOrder();
++
++  std::string Expected;
++  Expected += ' ';
++  Expected += '\x00';
++  Expected += "foo";
++  Expected += '\x00';
++  Expected += "bar";
++  Expected += '\x00';
++  Expected += "foob";
++  Expected += '\x00';
++
++  // Mach-O pads to 4 bytes
++  Expected += '\x00';
++
++  SmallString<64> Data;
++  raw_svector_ostream OS(Data);
++  B.write(OS);
++
++  EXPECT_EQ(Expected, Data);
++  EXPECT_EQ(2U, B.getOffset("foo"));
++  EXPECT_EQ(6U, B.getOffset("bar"));
++  EXPECT_EQ(10U, B.getOffset("foob"));
++}
++
++TEST(StringTableBuilderTest, MachO64LinkedInOrder) {
++  StringTableBuilder B(StringTableBuilder::MachO64Linked);
++
++  B.add("foo");
++  B.add("ba");
++  B.add("f");
++
++  B.finalizeInOrder();
++
++  std::string Expected;
++  Expected += ' ';
++  Expected += '\x00';
++  Expected += "foo";
++  Expected += '\x00';
++  Expected += "ba";
++  Expected += '\x00';
++  Expected += "f";
++  Expected += '\x00';
++
++  // 64 bit Mach-O pads to 8 bytes
++  Expected += '\x00';
++  Expected += '\x00';
++  Expected += '\x00';
++  Expected += '\x00';
++  Expected += '\x00';
++
++  SmallString<64> Data;
++  raw_svector_ostream OS(Data);
++  B.write(OS);
++
++  EXPECT_EQ(Expected, Data);
++  EXPECT_EQ(2U, B.getOffset("foo"));
++  EXPECT_EQ(6U, B.getOffset("ba"));
++  EXPECT_EQ(9U, B.getOffset("f"));
++}
+ }
+-- 
+2.24.3 (Apple Git-128)
+
