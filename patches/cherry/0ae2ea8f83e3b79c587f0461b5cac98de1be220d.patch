@@ -1,0 +1,88 @@
+From 0ae2ea8f83e3b79c587f0461b5cac98de1be220d Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Tue, 10 Nov 2020 15:50:04 -0800
+Subject: [PATCH] hwasan: Bring back operator {new,delete} interceptors on
+ Android.
+
+It turns out that we can't remove the operator new and delete
+interceptors on Android without breaking ABI, so bring them back
+as forwards to the malloc and free functions.
+
+Differential Revision: https://reviews.llvm.org/D91219
+---
+ compiler-rt/lib/hwasan/hwasan_new_delete.cpp | 39 ++++++++++++++------
+ 1 file changed, 27 insertions(+), 12 deletions(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_new_delete.cpp b/compiler-rt/lib/hwasan/hwasan_new_delete.cpp
+index 191c17e56a7..8d01d3944f2 100644
+--- a/compiler-rt/lib/hwasan/hwasan_new_delete.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_new_delete.cpp
+@@ -16,9 +16,34 @@
+ #include "sanitizer_common/sanitizer_allocator.h"
+ #include "sanitizer_common/sanitizer_allocator_report.h"
+ 
++#include <stddef.h>
++#include <stdlib.h>
++
+ #if HWASAN_REPLACE_OPERATORS_NEW_AND_DELETE
+ 
+-#include <stddef.h>
++// TODO(alekseys): throw std::bad_alloc instead of dying on OOM.
++#define OPERATOR_NEW_BODY(nothrow) \
++  GET_MALLOC_STACK_TRACE; \
++  void *res = hwasan_malloc(size, &stack);\
++  if (!nothrow && UNLIKELY(!res)) ReportOutOfMemory(size, &stack);\
++  return res
++
++#define OPERATOR_DELETE_BODY \
++  GET_MALLOC_STACK_TRACE; \
++  if (ptr) hwasan_free(ptr, &stack)
++
++#elif defined(__ANDROID__)
++
++// We don't actually want to intercept operator new and delete on Android, but
++// since we previously released a runtime that intercepted these functions,
++// removing the interceptors would break ABI. Therefore we simply forward to
++// malloc and free.
++#define OPERATOR_NEW_BODY(nothrow) return malloc(size)
++#define OPERATOR_DELETE_BODY free(ptr)
++
++#endif
++
++#ifdef OPERATOR_NEW_BODY
+ 
+ using namespace __hwasan;
+ 
+@@ -28,12 +53,6 @@ namespace std {
+ }  // namespace std
+ 
+ 
+-// TODO(alekseys): throw std::bad_alloc instead of dying on OOM.
+-#define OPERATOR_NEW_BODY(nothrow) \
+-  GET_MALLOC_STACK_TRACE; \
+-  void *res = hwasan_malloc(size, &stack);\
+-  if (!nothrow && UNLIKELY(!res)) ReportOutOfMemory(size, &stack);\
+-  return res
+ 
+ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+ void *operator new(size_t size) { OPERATOR_NEW_BODY(false /*nothrow*/); }
+@@ -48,10 +67,6 @@ void *operator new[](size_t size, std::nothrow_t const&) {
+   OPERATOR_NEW_BODY(true /*nothrow*/);
+ }
+ 
+-#define OPERATOR_DELETE_BODY \
+-  GET_MALLOC_STACK_TRACE; \
+-  if (ptr) hwasan_free(ptr, &stack)
+-
+ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+ void operator delete(void *ptr) NOEXCEPT { OPERATOR_DELETE_BODY; }
+ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+@@ -63,4 +78,4 @@ void operator delete[](void *ptr, std::nothrow_t const&) {
+   OPERATOR_DELETE_BODY;
+ }
+ 
+-#endif // HWASAN_REPLACE_OPERATORS_NEW_AND_DELETE
++#endif // OPERATOR_NEW_BODY
+-- 
+2.29.2.576.ga3fc446d84-goog
+

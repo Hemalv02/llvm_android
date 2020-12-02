@@ -1,0 +1,142 @@
+From 08d90f72cebd72dd0a972565ffcc445e57f50d8a Mon Sep 17 00:00:00 2001
+From: Evgenii Stepanov <eugenis@google.com>
+Date: Thu, 19 Nov 2020 14:34:56 -0800
+Subject: [PATCH] [hwasan] Implement error report callback.
+
+Similar to __asan_set_error_report_callback, pass the entire report to a
+user provided callback function.
+
+Differential Revision: https://reviews.llvm.org/D91825
+---
+ .../include/sanitizer/hwasan_interface.h      |  3 ++
+ .../lib/hwasan/hwasan_interface_internal.h    |  3 ++
+ compiler-rt/lib/hwasan/hwasan_report.cpp      | 20 ++++++++++--
+ .../TestCases/set-error-report-callback.cpp   | 31 +++++++++++++++++++
+ 4 files changed, 55 insertions(+), 2 deletions(-)
+ create mode 100644 compiler-rt/test/hwasan/TestCases/set-error-report-callback.cpp
+
+diff --git a/compiler-rt/include/sanitizer/hwasan_interface.h b/compiler-rt/include/sanitizer/hwasan_interface.h
+index 4c9ad13aa0c..14035c05c63 100644
+--- a/compiler-rt/include/sanitizer/hwasan_interface.h
++++ b/compiler-rt/include/sanitizer/hwasan_interface.h
+@@ -73,6 +73,9 @@ extern "C" {
+    * accessed through the pointer in x, or -1 if the whole range is good. */
+   intptr_t __hwasan_test_shadow(const volatile void *x, size_t size);
+ 
++  /* Sets the callback function to be called during HWASan error reporting. */
++  void __hwasan_set_error_report_callback(void (*callback)(const char *));
++
+   int __sanitizer_posix_memalign(void **memptr, size_t alignment, size_t size);
+   void * __sanitizer_memalign(size_t alignment, size_t size);
+   void * __sanitizer_aligned_alloc(size_t alignment, size_t size);
+diff --git a/compiler-rt/lib/hwasan/hwasan_interface_internal.h b/compiler-rt/lib/hwasan/hwasan_interface_internal.h
+index aedda317497..25c0f94fe51 100644
+--- a/compiler-rt/lib/hwasan/hwasan_interface_internal.h
++++ b/compiler-rt/lib/hwasan/hwasan_interface_internal.h
+@@ -222,6 +222,9 @@ SANITIZER_INTERFACE_ATTRIBUTE
+ void *__hwasan_memset(void *s, int c, uptr n);
+ SANITIZER_INTERFACE_ATTRIBUTE
+ void *__hwasan_memmove(void *dest, const void *src, uptr n);
++
++SANITIZER_INTERFACE_ATTRIBUTE
++void __hwasan_set_error_report_callback(void (*callback)(const char *));
+ }  // extern "C"
+ 
+ #endif  // HWASAN_INTERFACE_INTERNAL_H
+diff --git a/compiler-rt/lib/hwasan/hwasan_report.cpp b/compiler-rt/lib/hwasan/hwasan_report.cpp
+index 894a149775f..4448d924376 100644
+--- a/compiler-rt/lib/hwasan/hwasan_report.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_report.cpp
+@@ -43,12 +43,16 @@ class ScopedReport {
+   }
+ 
+   ~ScopedReport() {
++    void (*report_cb)(const char *);
+     {
+       BlockingMutexLock lock(&error_message_lock_);
+-      if (fatal)
+-        SetAbortMessage(error_message_.data());
++      report_cb = error_report_callback_;
+       error_message_ptr_ = nullptr;
+     }
++    if (report_cb)
++      report_cb(error_message_.data());
++    if (fatal)
++      SetAbortMessage(error_message_.data());
+     if (common_flags()->print_module_map >= 2 ||
+         (fatal && common_flags()->print_module_map))
+       DumpProcessMap();
+@@ -66,6 +70,12 @@ class ScopedReport {
+     // overwrite old trailing '\0', keep new trailing '\0' untouched.
+     internal_memcpy(&(*error_message_ptr_)[old_size - 1], msg, len);
+   }
++
++  static void SetErrorReportCallback(void (*callback)(const char *)) {
++    BlockingMutexLock lock(&error_message_lock_);
++    error_report_callback_ = callback;
++  }
++
+  private:
+   ScopedErrorReportLock error_report_lock_;
+   InternalMmapVector<char> error_message_;
+@@ -73,10 +83,12 @@ class ScopedReport {
+ 
+   static InternalMmapVector<char> *error_message_ptr_;
+   static BlockingMutex error_message_lock_;
++  static void (*error_report_callback_)(const char *);
+ };
+ 
+ InternalMmapVector<char> *ScopedReport::error_message_ptr_;
+ BlockingMutex ScopedReport::error_message_lock_;
++void (*ScopedReport::error_report_callback_)(const char *);
+ 
+ // If there is an active ScopedReport, append to its error message.
+ void AppendToErrorMessageBuffer(const char *buffer) {
+@@ -650,3 +662,7 @@ void ReportRegisters(uptr *frame, uptr pc) {
+ }
+ 
+ }  // namespace __hwasan
++
++void __hwasan_set_error_report_callback(void (*callback)(const char *)) {
++  __hwasan::ScopedReport::SetErrorReportCallback(callback);
++}
+diff --git a/compiler-rt/test/hwasan/TestCases/set-error-report-callback.cpp b/compiler-rt/test/hwasan/TestCases/set-error-report-callback.cpp
+new file mode 100644
+index 00000000000..736f8a8b923
+--- /dev/null
++++ b/compiler-rt/test/hwasan/TestCases/set-error-report-callback.cpp
+@@ -0,0 +1,31 @@
++// RUN: %clangxx_hwasan %s -o %t && not %run %t 2>&1 | FileCheck %s
++
++#include <stdio.h>
++#include <stdlib.h>
++
++#include <sanitizer/hwasan_interface.h>
++
++#include "utils.h"
++
++__attribute__((no_sanitize("hwaddress"))) extern "C" void callback(const char *msg) {
++  untag_fprintf(stderr, "== error start\n%s\n== error end\n", msg);
++}
++
++int main() {
++  __hwasan_enable_allocator_tagging();
++  __hwasan_set_error_report_callback(&callback);
++  char *volatile p = (char *)malloc(16);
++  p[16] = 1;
++  free(p);
++  // CHECK: ERROR: HWAddressSanitizer:
++  // CHECK: WRITE of size 1 at
++  // CHECK: allocated here:
++  // CHECK: Memory tags around the buggy address
++
++  // CHECK: == error start
++  // CHECK: ERROR: HWAddressSanitizer:
++  // CHECK: WRITE of size 1 at
++  // CHECK: allocated here:
++  // CHECK: Memory tags around the buggy address
++  // CHECK: == error end
++}
+-- 
+2.29.2.576.ga3fc446d84-goog
+

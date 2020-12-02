@@ -228,6 +228,42 @@
         "end_version": 408786
     },
     {
+        "comment": "[UPSTREAM] hwasan: Disable operator {new,delete} interceptors when interceptors are disabled.",
+        "rel_patch_path": "cherry/fa66bcf4bc9467514dddacdba711a42e0a83cf9d.patch",
+        "start_version": 407598,
+        "end_version": 408929
+    },
+    {
+        "comment": "[UPSTREAM] [ELF] --emit-relocs: fix st_value of STT_SECTION in the presence of a gap before the first input section",
+        "rel_patch_path": "cherry/2fc704a0a529dd7eba7566a293f981a86bfa5c3e.patch",
+        "start_version": 407598,
+        "end_version": 409811
+    },
+    {
+        "comment": "[UPSTREAM] hwasan: Bring back operator {new,delete} interceptors on Android.",
+        "rel_patch_path": "cherry/0ae2ea8f83e3b79c587f0461b5cac98de1be220d.patch",
+        "start_version": 407598,
+        "end_version": 410722
+    },
+    {
+        "comment": "[UPSTREAM] Hwasan reporting check for dladdr failing",
+        "rel_patch_path": "cherry/83ac18205ec69a00ac2be3b603bc3a61293fbe89.patch",
+        "start_version": 407598,
+        "end_version": 411205
+    },
+    {
+        "comment": "[UPSTREAM] [hwasan] Fix Thread reuse (try 2).",
+        "rel_patch_path": "cherry/523cc097fdafa1bb60373dcc70df7dfd31551f56.patch",
+        "start_version": 407598,
+        "end_version": 411532
+    },
+    {
+        "comment": "[UPSTREAM] [hwasan] Implement error report callback.",
+        "rel_patch_path": "cherry/08d90f72cebd72dd0a972565ffcc445e57f50d8a.patch",
+        "start_version": 407598,
+        "end_version": 411738
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,

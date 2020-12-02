@@ -1,0 +1,40 @@
+From fa66bcf4bc9467514dddacdba711a42e0a83cf9d Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Tue, 20 Oct 2020 14:36:34 -0700
+Subject: [PATCH] hwasan: Disable operator {new,delete} interceptors when
+ interceptors are disabled.
+
+Differential Revision: https://reviews.llvm.org/D89827
+---
+ compiler-rt/lib/hwasan/hwasan.h | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan.h b/compiler-rt/lib/hwasan/hwasan.h
+index b8b7a1865e8..d4521efd089 100644
+--- a/compiler-rt/lib/hwasan/hwasan.h
++++ b/compiler-rt/lib/hwasan/hwasan.h
+@@ -21,10 +21,6 @@
+ #include "hwasan_flags.h"
+ #include "ubsan/ubsan_platform.h"
+ 
+-#ifndef HWASAN_REPLACE_OPERATORS_NEW_AND_DELETE
+-# define HWASAN_REPLACE_OPERATORS_NEW_AND_DELETE 1
+-#endif
+-
+ #ifndef HWASAN_CONTAINS_UBSAN
+ # define HWASAN_CONTAINS_UBSAN CAN_SANITIZE_UB
+ #endif
+@@ -33,6 +29,10 @@
+ #define HWASAN_WITH_INTERCEPTORS 0
+ #endif
+ 
++#ifndef HWASAN_REPLACE_OPERATORS_NEW_AND_DELETE
++#define HWASAN_REPLACE_OPERATORS_NEW_AND_DELETE HWASAN_WITH_INTERCEPTORS
++#endif
++
+ typedef u8 tag_t;
+ 
+ // TBI (Top Byte Ignore) feature of AArch64: bits [63:56] are ignored in address
+-- 
+2.29.2.576.ga3fc446d84-goog
+
