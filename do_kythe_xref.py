@@ -50,6 +50,8 @@ def build_llvm() -> builders.Stage2Builder:
 
 # runextractor is expected to fail on these sources.
 EXPECTED_ERROR_DIRS = [
+    'out/stage2/tools/clang/tools/extra/clangd/unittests',
+    'toolchain/llvm-project/clang-tools-extra/clangd/unittests',
     'toolchain/llvm-project/compiler-rt/lib/scudo/standalone/benchmarks',
     'toolchain/llvm-project/libcxx/benchmarks',
 ]
