@@ -1,0 +1,226 @@
+From 523cc097fdafa1bb60373dcc70df7dfd31551f56 Mon Sep 17 00:00:00 2001
+From: Evgenii Stepanov <eugenis@google.com>
+Date: Thu, 12 Nov 2020 15:14:48 -0800
+Subject: [PATCH] [hwasan] Fix Thread reuse (try 2).
+
+HwasanThreadList::DontNeedThread clobbers Thread::next_,
+Breaking the freelist. As a result, only the top of the freelist ever
+gets reused, and the rest of it is lost.
+
+Since the Thread object with its associated ring buffer is only 8Kb, this is
+typically only noticable in long running processes, such as fuzzers.
+
+Fix the problem by switching from an intrusive linked list to a vector.
+
+Differential Revision: https://reviews.llvm.org/D91392
+---
+ compiler-rt/lib/hwasan/hwasan_thread.h        |  2 -
+ compiler-rt/lib/hwasan/hwasan_thread_list.h   | 63 +++++++------------
+ .../hwasan/TestCases/Linux/reuse-threads.cpp  | 55 ++++++++++++++++
+ .../test/hwasan/TestCases/thread-uaf.c        |  4 +-
+ 4 files changed, 78 insertions(+), 46 deletions(-)
+ create mode 100644 compiler-rt/test/hwasan/TestCases/Linux/reuse-threads.cpp
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_thread.h b/compiler-rt/lib/hwasan/hwasan_thread.h
+index ebcdb791fb3..88958daf767 100644
+--- a/compiler-rt/lib/hwasan/hwasan_thread.h
++++ b/compiler-rt/lib/hwasan/hwasan_thread.h
+@@ -74,8 +74,6 @@ class Thread {
+   HeapAllocationsRingBuffer *heap_allocations_;
+   StackAllocationsRingBuffer *stack_allocations_;
+ 
+-  Thread *next_;  // All live threads form a linked list.
+-
+   u64 unique_id_;  // counting from zero.
+ 
+   u32 tagging_disabled_;  // if non-zero, malloc uses zero tag in this thread.
+diff --git a/compiler-rt/lib/hwasan/hwasan_thread_list.h b/compiler-rt/lib/hwasan/hwasan_thread_list.h
+index 914b632d977..e596bde3666 100644
+--- a/compiler-rt/lib/hwasan/hwasan_thread_list.h
++++ b/compiler-rt/lib/hwasan/hwasan_thread_list.h
+@@ -66,40 +66,6 @@ static uptr RingBufferSize() {
+   return 0;
+ }
+ 
+-struct ThreadListHead {
+-  Thread *list_;
+-
+-  ThreadListHead() : list_(nullptr) {}
+-
+-  void Push(Thread *t) {
+-    t->next_ = list_;
+-    list_ = t;
+-  }
+-
+-  Thread *Pop() {
+-    Thread *t = list_;
+-    if (t)
+-      list_ = t->next_;
+-    return t;
+-  }
+-
+-  void Remove(Thread *t) {
+-    Thread **cur = &list_;
+-    while (*cur != t) cur = &(*cur)->next_;
+-    CHECK(*cur && "thread not found");
+-    *cur = (*cur)->next_;
+-  }
+-
+-  template <class CB>
+-  void ForEach(CB cb) {
+-    Thread *t = list_;
+-    while (t) {
+-      cb(t);
+-      t = t->next_;
+-    }
+-  }
+-};
+-
+ struct ThreadStats {
+   uptr n_live_threads;
+   uptr total_stack_size;
+@@ -123,14 +89,15 @@ class HwasanThreadList {
+     Thread *t;
+     {
+       SpinMutexLock l(&list_mutex_);
+-      t = free_list_.Pop();
+-      if (t) {
++      if (!free_list_.empty()) {
++        t = free_list_.back();
++        free_list_.pop_back();
+         uptr start = (uptr)t - ring_buffer_size_;
+         internal_memset((void *)start, 0, ring_buffer_size_ + sizeof(Thread));
+       } else {
+         t = AllocThread();
+       }
+-      live_list_.Push(t);
++      live_list_.push_back(t);
+     }
+     t->Init((uptr)t - ring_buffer_size_, ring_buffer_size_);
+     AddThreadStats(t);
+@@ -142,12 +109,24 @@ class HwasanThreadList {
+     ReleaseMemoryPagesToOS(start, start + thread_alloc_size_);
+   }
+ 
++  void RemoveThreadFromLiveList(Thread *t) {
++    for (Thread *&t2 : live_list_)
++      if (t2 == t) {
++        // To remove t2, copy the last element of the list in t2's position, and
++        // pop_back(). This works even if t2 is itself the last element.
++        t2 = live_list_.back();
++        live_list_.pop_back();
++        return;
++      }
++    CHECK(0 && "thread not found in live list");
++  }
++
+   void ReleaseThread(Thread *t) {
+     RemoveThreadStats(t);
+     t->Destroy();
+     SpinMutexLock l(&list_mutex_);
+-    live_list_.Remove(t);
+-    free_list_.Push(t);
++    RemoveThreadFromLiveList(t);
++    free_list_.push_back(t);
+     DontNeedThread(t);
+   }
+ 
+@@ -166,7 +145,7 @@ class HwasanThreadList {
+   template <class CB>
+   void VisitAllLiveThreads(CB cb) {
+     SpinMutexLock l(&list_mutex_);
+-    live_list_.ForEach(cb);
++    for (Thread *t : live_list_) cb(t);
+   }
+ 
+   void AddThreadStats(Thread *t) {
+@@ -201,8 +180,8 @@ class HwasanThreadList {
+   uptr ring_buffer_size_;
+   uptr thread_alloc_size_;
+ 
+-  ThreadListHead free_list_;
+-  ThreadListHead live_list_;
++  InternalMmapVector<Thread *> free_list_;
++  InternalMmapVector<Thread *> live_list_;
+   SpinMutex list_mutex_;
+ 
+   ThreadStats stats_;
+diff --git a/compiler-rt/test/hwasan/TestCases/Linux/reuse-threads.cpp b/compiler-rt/test/hwasan/TestCases/Linux/reuse-threads.cpp
+new file mode 100644
+index 00000000000..590bee36945
+--- /dev/null
++++ b/compiler-rt/test/hwasan/TestCases/Linux/reuse-threads.cpp
+@@ -0,0 +1,55 @@
++// Test that Thread objects are reused.
++// RUN: %clangxx_hwasan -mllvm -hwasan-instrument-stack=0 %s -o %t && %env_hwasan_opts=verbose_threads=1 %run %t 2>&1 | FileCheck %s
++
++#include <assert.h>
++#include <fcntl.h>
++#include <pthread.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++#include <sanitizer/hwasan_interface.h>
++
++#include "../utils.h"
++
++pthread_barrier_t bar;
++
++void *threadfn(void *) {
++  pthread_barrier_wait(UNTAG(&bar));
++  return nullptr;
++}
++
++void start_stop_threads() {
++  constexpr int N = 2;
++  pthread_t threads[N];
++
++  pthread_barrier_init(UNTAG(&bar), nullptr, N + 1);
++  for (auto &t : threads)
++    pthread_create(&t, nullptr, threadfn, nullptr);
++
++  pthread_barrier_wait(UNTAG(&bar));
++
++  for (auto &t : threads)
++    pthread_join(t, nullptr);
++  pthread_barrier_destroy(UNTAG(&bar));
++}
++
++int main() {
++  // Cut off initial threads.
++  // CHECK: === test start ===
++  untag_fprintf(stderr, "=== test start ===\n");
++
++  // CHECK: Creating  : T{{[0-9]+}} [[A:0x[0-9a-f]+]] stack:
++  // CHECK: Creating  : T{{[0-9]+}} [[B:0x[0-9a-f]+]] stack:
++  start_stop_threads();
++
++  // CHECK-DAG: Creating  : T{{[0-9]+}} [[A]] stack:
++  // CHECK-DAG: Creating  : T{{[0-9]+}} [[B]] stack:
++  start_stop_threads();
++
++  // CHECK-DAG: Creating  : T{{[0-9]+}} [[A]] stack:
++  // CHECK-DAG: Creating  : T{{[0-9]+}} [[B]] stack:
++  start_stop_threads();
++
++  return 0;
++}
+diff --git a/compiler-rt/test/hwasan/TestCases/thread-uaf.c b/compiler-rt/test/hwasan/TestCases/thread-uaf.c
+index f091167e3ce..7051b2632e6 100644
+--- a/compiler-rt/test/hwasan/TestCases/thread-uaf.c
++++ b/compiler-rt/test/hwasan/TestCases/thread-uaf.c
+@@ -34,8 +34,8 @@ void *Use(void *arg) {
+   // CHECK: in Deallocate
+   // CHECK: previously allocated here:
+   // CHECK: in Allocate
+-  // CHECK: Thread: T2 0x
+-  // CHECK: Thread: T3 0x
++  // CHECK-DAG: Thread: T2 0x
++  // CHECK-DAG: Thread: T3 0x
+   // CHECK-DAG: Thread: T0 0x
+   // CHECK-DAG: Thread: T1 0x
+   __sync_fetch_and_add(&state, 1);
+-- 
+2.29.2.576.ga3fc446d84-goog
+

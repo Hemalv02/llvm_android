@@ -1,0 +1,120 @@
+From 2fc704a0a529dd7eba7566a293f981a86bfa5c3e Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Mon, 2 Nov 2020 08:37:15 -0800
+Subject: [PATCH] [ELF] --emit-relocs: fix st_value of STT_SECTION in the
+ presence of a gap before the first input section
+
+In the presence of a gap, the st_value field of a STT_SECTION symbol is the
+address of the first input section (incorrect if there is a gap). Set it to the
+output section address instead.
+
+In -r mode, this bug can cause an incorrect non-zero st_value of a STT_SECTION
+symbol (while output sections have zero addresses, input sections may have
+non-zero outSecOff).  The non-zero st_value can cause the final link to have
+incorrect relocation computation (both GNU ld and LLD add st_value of the
+STT_SECTION symbol to the output section address).
+
+Reviewed By: grimar
+
+Differential Revision: https://reviews.llvm.org/D90520
+---
+ lld/ELF/SyntheticSections.cpp     |  5 ++-
+ lld/ELF/Writer.cpp                |  5 ++-
+ lld/test/ELF/section-symbol-gap.s | 51 +++++++++++++++++++++++++++++++
+ 3 files changed, 57 insertions(+), 4 deletions(-)
+ create mode 100644 lld/test/ELF/section-symbol-gap.s
+
+diff --git a/lld/ELF/SyntheticSections.cpp b/lld/ELF/SyntheticSections.cpp
+index 0ffd6bfa81d..eccd3ef1795 100644
+--- a/lld/ELF/SyntheticSections.cpp
++++ b/lld/ELF/SyntheticSections.cpp
+@@ -2198,9 +2198,8 @@ template <class ELFT> void SymbolTableSection<ELFT>::writeTo(uint8_t *buf) {
+     else
+       eSym->st_size = sym->getSize();
+ 
+-    // st_value is usually an address of a symbol, but that has a
+-    // special meaning for uninstantiated common symbols (this can
+-    // occur if -r is given).
++    // st_value is usually an address of a symbol, but that has a special
++    // meaning for uninstantiated common symbols (--no-define-common).
+     if (BssSection *commonSec = getCommonSec(ent.sym))
+       eSym->st_value = commonSec->alignment;
+     else if (isDefinedHere)
+diff --git a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+index 78d6cd018d7..a02b08204d8 100644
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -811,9 +811,12 @@ template <class ELFT> void Writer<ELFT>::addSectionSymbols() {
+     if (isa<SyntheticSection>(isec) && !(isec->flags & SHF_MERGE))
+       continue;
+ 
++    // Set the symbol to be relative to the output section so that its st_value
++    // equals the output section address. Note, there may be a gap between the
++    // start of the output section and isec.
+     auto *sym =
+         make<Defined>(isec->file, "", STB_LOCAL, /*stOther=*/0, STT_SECTION,
+-                      /*value=*/0, /*size=*/0, isec);
++                      /*value=*/0, /*size=*/0, isec->getOutputSection());
+     in.symTab->addSymbol(sym);
+   }
+ }
+diff --git a/lld/test/ELF/section-symbol-gap.s b/lld/test/ELF/section-symbol-gap.s
+new file mode 100644
+index 00000000000..75a207d6d6f
+--- /dev/null
++++ b/lld/test/ELF/section-symbol-gap.s
+@@ -0,0 +1,51 @@
++# REQUIRES: x86
++## Test st_value of the STT_SECTION symbol equals the output section address,
++## instead of the first input section address.
++
++# RUN: split-file %s %t
++# RUN: llvm-mc -filetype=obj -triple=x86_64 %t/asm -o %t.o
++
++# RUN: ld.lld --emit-relocs -T %t/lds %t.o -o %t.out
++# RUN: llvm-readelf -S -r -s %t.out | FileCheck %s --check-prefix=EXE
++
++## In -r mode, section addresses are zeros, hence the st_value fields of
++## STT_SECTION are zeros.
++# RUN: ld.lld -r -T %t/lds %t.o -o %t.ro
++# RUN: llvm-readelf -S -r -s %t.ro | FileCheck %s --check-prefix=RO
++
++# EXE:      [Nr] Name  Type      Address
++# EXE-NEXT: [ 0]
++# EXE-NEXT: [ 1] .text PROGBITS  0000000000000000
++# EXE-NEXT: [ 2] .bss  NOBITS    000000000000000a
++
++# EXE:      R_X86_64_64 {{.*}} .bss + 1
++
++# EXE:      Symbol table '.symtab' contains 4 entries:
++# EXE-NEXT: Num:    Value          Size Type    Bind   Vis       Ndx Name
++# EXE-NEXT:   0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT   UND
++# EXE-NEXT:   1: 000000000000000a     0 SECTION LOCAL  DEFAULT     2 .bss
++# EXE-NEXT:   2: 0000000000000000     0 SECTION LOCAL  DEFAULT     1 .text
++# EXE-NEXT:   3: 0000000000000000     0 SECTION LOCAL  DEFAULT     4 .comment
++
++# RO:       [Nr] Name  Type      Address
++# RO-NEXT:  [ 0]
++# RO-NEXT:  [ 1] .bss  NOBITS    0000000000000000
++
++# RO:       R_X86_64_64 {{.*}} .bss + 1
++
++# RO:      Symbol table '.symtab' contains 3 entries:
++# RO-NEXT: Num:    Value          Size Type    Bind   Vis       Ndx Name
++# RO-NEXT:   0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT   UND
++# RO-NEXT:   1: 0000000000000000     0 SECTION LOCAL  DEFAULT     1 .bss
++# RO-NEXT:   2: 0000000000000000     0 SECTION LOCAL  DEFAULT     2 .text
++
++#--- asm
++movabsq .bss, %rax
++
++.bss
++.byte 0
++
++#--- lds
++SECTIONS {
++  .bss : { BYTE(0) *(.bss) }
++}
+-- 
+2.29.2.576.ga3fc446d84-goog
+

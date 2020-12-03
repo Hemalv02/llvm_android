@@ -1,0 +1,41 @@
+From 83ac18205ec69a00ac2be3b603bc3a61293fbe89 Mon Sep 17 00:00:00 2001
+From: Matthew Malcomson <matthew.malcomson@arm.com>
+Date: Thu, 12 Nov 2020 12:37:36 +0000
+Subject: [PATCH] Hwasan reporting check for dladdr failing
+
+In `GetGlobalSizeFromDescriptor` we use `dladdr` to get info on the the
+current address.  `dladdr` returns 0 if it failed.
+During testing on Linux this returned 0 to indicate failure, and
+populated the `info` structure with a NULL pointer which was
+dereferenced later.
+
+This patch checks for `dladdr` returning 0, and in that case returns 0
+from `GetGlobalSizeFromDescriptor` to indicate failure of identifying
+the address.
+
+This occurs when `GetModuleNameAndOffsetForPC` succeeds for some address
+not in a dynamically loaded library.  One example is when the found
+"module" is '[stack]' having come from parsing /proc/self/maps.
+
+Differential Revision: https://reviews.llvm.org/D91344
+---
+ compiler-rt/lib/hwasan/hwasan_report.cpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_report.cpp b/compiler-rt/lib/hwasan/hwasan_report.cpp
+index 0be7deeaee1..894a149775f 100644
+--- a/compiler-rt/lib/hwasan/hwasan_report.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_report.cpp
+@@ -254,7 +254,8 @@ static bool TagsEqual(tag_t tag, tag_t *tag_ptr) {
+ static uptr GetGlobalSizeFromDescriptor(uptr ptr) {
+   // Find the ELF object that this global resides in.
+   Dl_info info;
+-  dladdr(reinterpret_cast<void *>(ptr), &info);
++  if (dladdr(reinterpret_cast<void *>(ptr), &info) == 0)
++    return 0;
+   auto *ehdr = reinterpret_cast<const ElfW(Ehdr) *>(info.dli_fbase);
+   auto *phdr_begin = reinterpret_cast<const ElfW(Phdr) *>(
+       reinterpret_cast<const u8 *>(ehdr) + ehdr->e_phoff);
+-- 
+2.29.2.576.ga3fc446d84-goog
+
