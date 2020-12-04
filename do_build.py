@@ -489,7 +489,7 @@ def parse_args():
             for value in values.split(','):
                 if value not in known_components:
                     error = '\'{}\' invalid.  Choose from {}'.format(
-                        value, known_platforms)
+                        value, known_components)
                     raise argparse.ArgumentError(self, error)
             setattr(namespace, self.dest, values.split(','))
 
