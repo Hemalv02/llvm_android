@@ -26,6 +26,34 @@ If you have an additional llvm tree built and present in your `$PATH`, then
 `'libstdc++ version must be at least 4.8.'`. The solution is to remove that
 path from your `$PATH` before invoking `build.py`.
 
+
+Instructions to rebuild a particular toolchain release
+------------------------------------------------------
+
+To rebuild a particular toolchain, find the manifest file for that release:
+
+```
+$ $TOOLCHAIN_DIR/bin/clang -v
+Android (6317467 based on r365631c1) clang version 9.0.8...
+```
+
+The build number for that toolchain is `6317467` and the manifest is found in
+`$TOOLCHAIN_DIR/manifest_6317467.xml`
+
+Rebuild the toolchain with that manifest:
+
+```
+$ mkdir llvm-toolchain && cd llvm-toolchain
+$ repo init -u https://android.googlesource.com/platform/manifest -b llvm-toolchain
+$ cp $TOOLCHAIN_DIR/manifest_6317467.xml .repo/manifests
+$ repo init -m manifest_6317467.xml
+$ repo sync -c
+
+# Optional: Apply any LLVM/Clang modifications to toolchain/llvm-project
+
+$ python toolchain/llvm_android/build.py
+```
+
 More Information
 ----------------
 
