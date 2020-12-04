@@ -228,6 +228,24 @@
         "end_version": 408786
     },
     {
+        "comment": "[UPSTREAM] Revert \"[ARM][LowOverheadLoops] Adjust Start insertion.\"",
+        "rel_patch_path": "cherry/6dcbc323fd8778ba6db1c4e76c809f93fc82efc5.patch",
+        "start_version": 407598,
+        "end_version": 408442
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[CodeExtractor] Don't create bitcasts when inserting lifetime markers (NFCI)\"",
+        "rel_patch_path": "cherry/099bffe7f7df41d66195ce33e91888a4a16c6b4a.patch",
+        "start_version": 407598,
+        "end_version": 408753
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[Statepoints] Allow deopt GC pointer on VReg if gc-live bundle is empty.\"",
+        "rel_patch_path": "cherry/4f7ee55971e7f7a27af69c501e4b395c4079decb.patch",
+        "start_version": 407598,
+        "end_version": 408846
+    },
+    {
         "comment": "[UPSTREAM] hwasan: Disable operator {new,delete} interceptors when interceptors are disabled.",
         "rel_patch_path": "cherry/fa66bcf4bc9467514dddacdba711a42e0a83cf9d.patch",
         "start_version": 407598,
@@ -238,6 +256,12 @@
         "rel_patch_path": "cherry/2fc704a0a529dd7eba7566a293f981a86bfa5c3e.patch",
         "start_version": 407598,
         "end_version": 409811
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[CodeGen] [WinException] Only produce handler data at the end of the function if needed\"",
+        "rel_patch_path": "cherry/cbf25fbed5b46ec47e3ce2799ed9095f2f18ea8f.patch",
+        "start_version": 407598,
+        "end_version": 409948
     },
     {
         "comment": "[UPSTREAM] hwasan: Bring back operator {new,delete} interceptors on Android.",
@@ -262,6 +286,12 @@
         "rel_patch_path": "cherry/08d90f72cebd72dd0a972565ffcc445e57f50d8a.patch",
         "start_version": 407598,
         "end_version": 411738
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[DebugInfo] Improve dbg preservation in LSR.\"",
+        "rel_patch_path": "cherry/808fcfe5944755f08ae88722070302fcf9135e58.patch",
+        "start_version": 407598,
+        "end_version": 412204
     },
     {
         "comment": "Revert two changes that break Android builds.",
