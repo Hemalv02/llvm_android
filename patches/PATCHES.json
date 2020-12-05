@@ -228,6 +228,24 @@
         "end_version": 408786
     },
     {
+        "comment": "[UPSTREAM] Revert \"Canonicalize declaration pointers when forming APValues.\"",
+        "rel_patch_path": "cherry/9a33f027ac7d73e14ae287e78ab554142d1cbc8f.patch",
+        "start_version": 407598,
+        "end_version": 407701
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"DirectoryWatcher: add an implementation for Windows\"",
+        "rel_patch_path": "cherry/0ec1cf13f2a4e31aa2c5ccc665c5fbdcd3a94577.patch",
+        "start_version": 407598,
+        "end_version": 407821
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[clang-format] Fix AlignConsecutive on PP blocks\"",
+        "rel_patch_path": "cherry/b9e789447f14c0330edd22c82746af29e7c3b259.patch",
+        "start_version": 407598,
+        "end_version": 408204
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[ARM][LowOverheadLoops] Adjust Start insertion.\"",
         "rel_patch_path": "cherry/6dcbc323fd8778ba6db1c4e76c809f93fc82efc5.patch",
         "start_version": 407598,
@@ -274,6 +292,12 @@
         "rel_patch_path": "cherry/83ac18205ec69a00ac2be3b603bc3a61293fbe89.patch",
         "start_version": 407598,
         "end_version": 411205
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[ASTMatchers] Matcher macros with params move params instead of copying\"",
+        "rel_patch_path": "cherry/0ce32a79825f307d2f46b8a5823489a67d6d072f.patch",
+        "start_version": 407598,
+        "end_version": 412228
     },
     {
         "comment": "[UPSTREAM] [hwasan] Fix Thread reuse (try 2).",

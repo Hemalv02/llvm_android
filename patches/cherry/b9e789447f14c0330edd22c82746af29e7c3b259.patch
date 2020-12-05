@@ -1,0 +1,198 @@
+From b9e789447f14c0330edd22c82746af29e7c3b259 Mon Sep 17 00:00:00 2001
+From: Sylvestre Ledru <sylvestre@debian.org>
+Date: Sat, 17 Oct 2020 19:51:05 +0200
+Subject: [PATCH] Revert "[clang-format] Fix AlignConsecutive on PP blocks"
+
+This reverts commit b2eb439317576ce718193763c12bff9fccdfc166.
+
+Caused the regression:
+https://bugs.llvm.org/show_bug.cgi?id=47589
+
+Reviewed By: MyDeveloperDay
+
+Differential Revision: https://reviews.llvm.org/D89464
+---
+ clang/lib/Format/FormatToken.h                | 17 +++-----
+ clang/lib/Format/UnwrappedLineParser.cpp      |  2 -
+ clang/lib/Format/WhitespaceManager.cpp        | 10 ++---
+ clang/unittests/Format/FormatTest.cpp         | 42 ++++++++++---------
+ clang/unittests/Format/FormatTestComments.cpp | 20 ++++++++-
+ 5 files changed, 49 insertions(+), 42 deletions(-)
+
+diff --git a/clang/lib/Format/FormatToken.h b/clang/lib/Format/FormatToken.h
+index 9cc65bb11b5..a3cb81f1b1e 100644
+--- a/clang/lib/Format/FormatToken.h
++++ b/clang/lib/Format/FormatToken.h
+@@ -206,12 +206,11 @@ class AnnotatedLine;
+ struct FormatToken {
+   FormatToken()
+       : HasUnescapedNewline(false), IsMultiline(false), IsFirst(false),
+-        MustBreakBefore(false), MustBreakAlignBefore(false),
+-        IsUnterminatedLiteral(false), CanBreakBefore(false),
+-        ClosesTemplateDeclaration(false), StartsBinaryExpression(false),
+-        EndsBinaryExpression(false), PartOfMultiVariableDeclStmt(false),
+-        ContinuesLineCommentSection(false), Finalized(false),
+-        BlockKind(BK_Unknown), Decision(FD_Unformatted),
++        MustBreakBefore(false), IsUnterminatedLiteral(false),
++        CanBreakBefore(false), ClosesTemplateDeclaration(false),
++        StartsBinaryExpression(false), EndsBinaryExpression(false),
++        PartOfMultiVariableDeclStmt(false), ContinuesLineCommentSection(false),
++        Finalized(false), BlockKind(BK_Unknown), Decision(FD_Unformatted),
+         PackingKind(PPK_Inconclusive), Type(TT_Unknown) {}
+ 
+   /// The \c Token.
+@@ -248,12 +247,6 @@ struct FormatToken {
+   /// before the token.
+   unsigned MustBreakBefore : 1;
+ 
+-  /// Whether to not align across this token
+-  ///
+-  /// This happens for example when a preprocessor directive ended directly
+-  /// before the token, but very rarely otherwise.
+-  unsigned MustBreakAlignBefore : 1;
+-
+   /// Set to \c true if this token is an unterminated literal.
+   unsigned IsUnterminatedLiteral : 1;
+ 
+diff --git a/clang/lib/Format/UnwrappedLineParser.cpp b/clang/lib/Format/UnwrappedLineParser.cpp
+index ab1f647481d..044f034013d 100644
+--- a/clang/lib/Format/UnwrappedLineParser.cpp
++++ b/clang/lib/Format/UnwrappedLineParser.cpp
+@@ -3046,7 +3046,6 @@ void UnwrappedLineParser::readToken(int LevelDifference) {
+       }
+       FormatTok = Tokens->getNextToken();
+       FormatTok->MustBreakBefore = true;
+-      FormatTok->MustBreakAlignBefore = true;
+     }
+ 
+     if (!PPStack.empty() && (PPStack.back().Kind == PP_Unreachable) &&
+@@ -3071,7 +3070,6 @@ void UnwrappedLineParser::pushToken(FormatToken *Tok) {
+   Line->Tokens.push_back(UnwrappedLineNode(Tok));
+   if (MustBreakBeforeNextToken) {
+     Line->Tokens.back().Tok->MustBreakBefore = true;
+-    Line->Tokens.back().Tok->MustBreakAlignBefore = true;
+     MustBreakBeforeNextToken = false;
+   }
+ }
+diff --git a/clang/lib/Format/WhitespaceManager.cpp b/clang/lib/Format/WhitespaceManager.cpp
+index 2d479817118..9e47b49da3d 100644
+--- a/clang/lib/Format/WhitespaceManager.cpp
++++ b/clang/lib/Format/WhitespaceManager.cpp
+@@ -411,11 +411,9 @@ static unsigned AlignTokens(const FormatStyle &Style, F &&Matches,
+     if (Changes[i].NewlinesBefore != 0) {
+       CommasBeforeMatch = 0;
+       EndOfSequence = i;
+-      // If there is a blank line, there is a forced-align-break (eg,
+-      // preprocessor), or if the last line didn't contain any matching token,
+-      // the sequence ends here.
+-      if (Changes[i].NewlinesBefore > 1 ||
+-          Changes[i].Tok->MustBreakAlignBefore || !FoundMatchOnLine)
++      // If there is a blank line, or if the last line didn't contain any
++      // matching token, the sequence ends here.
++      if (Changes[i].NewlinesBefore > 1 || !FoundMatchOnLine)
+         AlignCurrentSequence();
+ 
+       FoundMatchOnLine = false;
+@@ -726,8 +724,6 @@ void WhitespaceManager::alignTrailingComments() {
+     if (Changes[i].StartOfBlockComment)
+       continue;
+     Newlines += Changes[i].NewlinesBefore;
+-    if (Changes[i].Tok->MustBreakAlignBefore)
+-      BreakBeforeNext = true;
+     if (!Changes[i].IsTrailingComment)
+       continue;
+ 
+diff --git a/clang/unittests/Format/FormatTest.cpp b/clang/unittests/Format/FormatTest.cpp
+index 27e76d40d12..7686e252f7c 100644
+--- a/clang/unittests/Format/FormatTest.cpp
++++ b/clang/unittests/Format/FormatTest.cpp
+@@ -12254,26 +12254,28 @@ TEST_F(FormatTest, AlignConsecutiveAssignments) {
+                Alignment);
+ 
+   // Bug 25167
+-  verifyFormat("#if A\n"
+-               "#else\n"
+-               "int aaaaaaaa = 12;\n"
+-               "#endif\n"
+-               "#if B\n"
+-               "#else\n"
+-               "int a = 12;\n"
+-               "#endif\n",
+-               Alignment);
+-  verifyFormat("enum foo {\n"
+-               "#if A\n"
+-               "#else\n"
+-               "  aaaaaaaa = 12;\n"
+-               "#endif\n"
+-               "#if B\n"
+-               "#else\n"
+-               "  a = 12;\n"
+-               "#endif\n"
+-               "};\n",
+-               Alignment);
++  /* Uncomment when fixed
++    verifyFormat("#if A\n"
++                 "#else\n"
++                 "int aaaaaaaa = 12;\n"
++                 "#endif\n"
++                 "#if B\n"
++                 "#else\n"
++                 "int a = 12;\n"
++                 "#endif\n",
++                 Alignment);
++    verifyFormat("enum foo {\n"
++                 "#if A\n"
++                 "#else\n"
++                 "  aaaaaaaa = 12;\n"
++                 "#endif\n"
++                 "#if B\n"
++                 "#else\n"
++                 "  a = 12;\n"
++                 "#endif\n"
++                 "};\n",
++                 Alignment);
++  */
+ 
+   EXPECT_EQ("int a = 5;\n"
+             "\n"
+diff --git a/clang/unittests/Format/FormatTestComments.cpp b/clang/unittests/Format/FormatTestComments.cpp
+index 47509f29744..34d6b62b26c 100644
+--- a/clang/unittests/Format/FormatTestComments.cpp
++++ b/clang/unittests/Format/FormatTestComments.cpp
+@@ -2783,7 +2783,7 @@ TEST_F(FormatTestComments, AlignTrailingComments) {
+ 
+   // Checks an edge case in preprocessor handling.
+   // These comments should *not* be aligned
+-  EXPECT_EQ(
++  EXPECT_NE( // change for EQ when fixed
+       "#if FOO\n"
+       "#else\n"
+       "long a; // Line about a\n"
+@@ -2801,6 +2801,24 @@ TEST_F(FormatTestComments, AlignTrailingComments) {
+              "long b_long_name; // Line about b\n"
+              "#endif\n",
+              getLLVMStyleWithColumns(80)));
++
++  // bug 47589
++  EXPECT_EQ(
++      "namespace m {\n\n"
++      "#define FOO_GLOBAL 0      // Global scope.\n"
++      "#define FOO_LINKLOCAL 1   // Link-local scope.\n"
++      "#define FOO_SITELOCAL 2   // Site-local scope (deprecated).\n"
++      "#define FOO_UNIQUELOCAL 3 // Unique local\n"
++      "#define FOO_NODELOCAL 4   // Loopback\n\n"
++      "} // namespace m\n",
++      format("namespace m {\n\n"
++             "#define FOO_GLOBAL 0   // Global scope.\n"
++             "#define FOO_LINKLOCAL 1  // Link-local scope.\n"
++             "#define FOO_SITELOCAL 2  // Site-local scope (deprecated).\n"
++             "#define FOO_UNIQUELOCAL 3 // Unique local\n"
++             "#define FOO_NODELOCAL 4  // Loopback\n\n"
++             "} // namespace m\n",
++             getLLVMStyleWithColumns(80)));
+ }
+ 
+ TEST_F(FormatTestComments, AlignsBlockCommentDecorations) {
+-- 
+2.29.2.576.ga3fc446d84-goog
+
