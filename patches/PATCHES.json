@@ -1,47 +1,5 @@
 [
     {
-        "comment": "[UPSTREAM] [AArch64] PAC/BTI code generation for LLVM generated functions",
-        "rel_patch_path": "cherry/a88c722e687e6780dcd6a58718350dc76fcc4cc9.patch",
-        "start_version": 399163,
-        "end_version": 406276
-    },
-    {
-        "comment": "[UPSTREAM] [AArch64] Generate .note.gnu.property based on module flags.",
-        "rel_patch_path": "cherry/a48f6079f288619fcc7656e89e8aa7cd0aac1281.patch",
-        "start_version": 399163,
-        "end_version": 406438
-    },
-    {
-        "comment": "[UPSTREAM] GlobalISel: Add utilty for getting function argument live ins",
-        "rel_patch_path": "cherry/f8fb7835d6a5e2a75d412e1482fc1c039efef1f0.patch",
-        "start_version": 399163,
-        "end_version": 401402
-    },
-    {
-        "comment": "[UPSTREAM] [AArch64] __builtin_return_address for PAuth.",
-        "rel_patch_path": "cherry/2a96f47c5ffca84cd774ad402cacd137f4bf45e2.patch",
-        "start_version": 399163,
-        "end_version": 406227
-    },
-    {
-        "comment": "[UPSTREAM] [AArch64][GlobalISel] Implement __builtin_return_address for PAC-RET ",
-        "rel_patch_path": "cherry/bd44558001e978d93fbff5a4537f38b46b0e355a.patch",
-        "start_version": 399163,
-        "end_version": 406195
-    },
-    {
-        "comment": "[UPSTREAM] [AArch64] Add -mmark-bti-property flag.",
-        "rel_patch_path": "cherry/f70baaf71f62ba8623b3522345527271add74f6b.patch",
-        "start_version": 399163,
-        "end_version": 405405
-    },
-    {
-        "comment": "[UPSTREAM] [AArch64] Add BTI to CFI jumptables.",
-        "rel_patch_path": "cherry/c5a4900e1a00e88df9d6d9bc39594ff8afd0d9b5.patch",
-        "start_version": 399163,
-        "end_version": 406546
-    },
-    {
         "comment": "[UPSTREAM] Revert \"[compiler-rt] [test] Allow expanding lit substitutions recursively\"",
         "rel_patch_path": "cherry/eafeb8af34946306a7382fa3801cf6e39a1c7226.patch",
         "start_version": 399163,
@@ -90,16 +48,34 @@
         "end_version": 399661
     },
     {
+        "comment": "[libc++] Build the dylib with -faligned-allocation",
+        "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
+        "start_version": 400107,
+        "end_version": 400234
+    },
+    {
         "comment": "[UPSTREAM] Revert \"Switch to using -debug-info-kind=constructor as default (from =limited)\"",
         "rel_patch_path": "cherry/394db2259575ef3cac8d3d37836b11eb2373c435.patch",
         "start_version": 399163,
         "end_version": 400648
     },
     {
+        "comment": "[UPSTREAM] [libunwind] Provide a way to set '_LIBUNWIND_IS_BAREMETAL' through cmake.",
+        "rel_patch_path": "cherry/380fee34d2794361f9e222fe3c8c065be3b9fff8.patch",
+        "start_version": 399163,
+        "end_version": 400742
+    },
+    {
         "comment": "[UPSTREAM] [MC] Set sh_link to 0 if the associated symbol is undefined",
         "rel_patch_path": "cherry/11bb7c220ccdff1ffec4780ff92fb5acec8f6f0b.patch",
         "start_version": 399163,
         "end_version": 401257
+    },
+    {
+        "comment": "[UPSTREAM] GlobalISel: Add utilty for getting function argument live ins",
+        "rel_patch_path": "cherry/f8fb7835d6a5e2a75d412e1482fc1c039efef1f0.patch",
+        "start_version": 399163,
+        "end_version": 401402
     },
     {
         "comment": "[UPSTREAM] [ELF] Allow SHF_LINK_ORDER sections to have sh_link=0",
@@ -126,52 +102,16 @@
         "end_version": 401729
     },
     {
-        "comment": "[UPSTREAM] hwasan: Emit the globals note even when globals are uninstrumented.",
-        "rel_patch_path": "cherry/c201f27225857a6d0ba85df6ef7d5cbcc2c04e44.patch",
-        "start_version": 399163,
-        "end_version": 402466
-    },
-    {
         "comment": "PR47138: Don't crash if the preferred alignment of an invalid record",
         "rel_patch_path": "cherry/269bc3f5df6c3b75de515a48063c6941ef8fbbe6.patch",
         "start_version": 400541,
         "end_version": 402304
     },
     {
-        "comment": "[libc++] Build the dylib with -faligned-allocation",
-        "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
-        "start_version": 400107,
-        "end_version": 400234
-    },
-    {
-        "comment": "[UPSTREAM] [ARM] Skip combining base updates for vld1x NEON intrinsics",
-        "rel_patch_path": "cherry/5f1cad4d296a20025f0b3ea30d82b278ddb8779b.patch",
+        "comment": "[UPSTREAM] hwasan: Emit the globals note even when globals are uninstrumented.",
+        "rel_patch_path": "cherry/c201f27225857a6d0ba85df6ef7d5cbcc2c04e44.patch",
         "start_version": 399163,
-        "end_version": 403816
-    },
-    {
-        "comment": "[UPSTREAM] PR47468: Fix findPHICopyInsertPoint, so that copies aren't incorrectly inserted after an INLINEASM_BR.",
-        "rel_patch_path": "cherry/f7a53d82c0902147909f28a9295a9d00b4b27d38.patch",
-        "start_version": 399163,
-        "end_version": 405613
-    },
-    {
-        "comment": "[UPSTREAM] [MinGW][clang-shlib] Build only when LLVM_LINK_LLVM_DYLIB is enabled",
-        "rel_patch_path": "cherry/3b1d018c0dba45408164f5e69cb400976efa350f.patch",
-        "start_version": 404259,
-        "end_version": 407710
-    },
-    {
-        "comment": "[UPSTREAM] Revert \"    Enable LSAN for Android\"",
-        "rel_patch_path": "cherry/25a8881b724abf7251a9278e72224af7e82cb9c2.patch",
-        "start_version": 407598,
-        "end_version": 407756
-    },
-    {
-        "comment": "[UPSTREAM] [libunwind] Provide a way to set '_LIBUNWIND_IS_BAREMETAL' through cmake.",
-        "rel_patch_path": "cherry/380fee34d2794361f9e222fe3c8c065be3b9fff8.patch",
-        "start_version": 399163,
-        "end_version": 400742
+        "end_version": 402466
     },
     {
         "comment": "[UPSTREAM] Default to disabling the libunwind frameheader cache.",
@@ -186,46 +126,52 @@
         "end_version": 403383
     },
     {
-        "comment": "Driver: Add integer sanitizers to trapping group automatically.",
-        "rel_patch_path": "cherry/c5acd3490b79703426931f7b88b544fe7c6e1ef2.patch",
-        "start_version": 403758,
-        "end_version": 408516
-    },
-    {
-        "comment": "[ARM] Fix PR 47980: Use constrainRegClass during foldImmediate opt.",
-        "rel_patch_path": "cherry/8262e94a6da77e176dbd13d9eadce76da74489d4.patch",
-        "start_version": 404259,
-        "end_version": 410707
-    },
-    {
-        "comment": "[LegalizeTypes] Legalize vector rotate operations",
-        "rel_patch_path": "cherry/62b17a76971cd17c1ebd4ce00a536b0b74af98b2.patch",
-        "start_version": 404259,
-        "end_version": 408939
-    },
-    {
-        "comment": "[llvm-objcopy] --only-keep-debug: place zero-size segment according to its parent segment",
-        "rel_patch_path": "cherry/20de1822466e87c137b2369d8601b0f4c575981b.patch",
+        "comment": "[UPSTREAM] [ARM] Skip combining base updates for vld1x NEON intrinsics",
+        "rel_patch_path": "cherry/5f1cad4d296a20025f0b3ea30d82b278ddb8779b.patch",
         "start_version": 399163,
-        "end_version": 410815
+        "end_version": 403816
     },
     {
-        "comment": "[OpenMP] fix asm code for for arm64 (AARCH64) for Darwin/macOS",
-        "rel_patch_path": "cherry/7b5254223acbf2ef9cd278070c5a84ab278d7e5f.patch",
+        "comment": "[UPSTREAM] [AArch64] Add -mmark-bti-property flag.",
+        "rel_patch_path": "cherry/f70baaf71f62ba8623b3522345527271add74f6b.patch",
         "start_version": 399163,
-        "end_version": 411939
+        "end_version": 405405
     },
     {
-        "comment": "[cmake] Unconditionally set the force flag when codesigning",
-        "rel_patch_path": "cherry/24c1660ac5d7813072b429eee7a9531338e53aea.patch",
+        "comment": "[UPSTREAM] PR47468: Fix findPHICopyInsertPoint, so that copies aren't incorrectly inserted after an INLINEASM_BR.",
+        "rel_patch_path": "cherry/f7a53d82c0902147909f28a9295a9d00b4b27d38.patch",
         "start_version": 399163,
-        "end_version": 407847
+        "end_version": 405613
     },
     {
-        "comment": "[MC] Adjust StringTableBuilder for linked Mach-O binaries",
-        "rel_patch_path": "cherry/27e11d7120c0caa20a167b44ba29828446a525c0.patch",
+        "comment": "[UPSTREAM] [AArch64][GlobalISel] Implement __builtin_return_address for PAC-RET ",
+        "rel_patch_path": "cherry/bd44558001e978d93fbff5a4537f38b46b0e355a.patch",
         "start_version": 399163,
-        "end_version": 408786
+        "end_version": 406195
+    },
+    {
+        "comment": "[UPSTREAM] [AArch64] __builtin_return_address for PAuth.",
+        "rel_patch_path": "cherry/2a96f47c5ffca84cd774ad402cacd137f4bf45e2.patch",
+        "start_version": 399163,
+        "end_version": 406227
+    },
+    {
+        "comment": "[UPSTREAM] [AArch64] PAC/BTI code generation for LLVM generated functions",
+        "rel_patch_path": "cherry/a88c722e687e6780dcd6a58718350dc76fcc4cc9.patch",
+        "start_version": 399163,
+        "end_version": 406276
+    },
+    {
+        "comment": "[UPSTREAM] [AArch64] Generate .note.gnu.property based on module flags.",
+        "rel_patch_path": "cherry/a48f6079f288619fcc7656e89e8aa7cd0aac1281.patch",
+        "start_version": 399163,
+        "end_version": 406438
+    },
+    {
+        "comment": "[UPSTREAM] [AArch64] Add BTI to CFI jumptables.",
+        "rel_patch_path": "cherry/c5a4900e1a00e88df9d6d9bc39594ff8afd0d9b5.patch",
+        "start_version": 399163,
+        "end_version": 406546
     },
     {
         "comment": "[UPSTREAM] Revert \"Canonicalize declaration pointers when forming APValues.\"",
@@ -234,10 +180,28 @@
         "end_version": 407701
     },
     {
+        "comment": "[UPSTREAM] [MinGW][clang-shlib] Build only when LLVM_LINK_LLVM_DYLIB is enabled",
+        "rel_patch_path": "cherry/3b1d018c0dba45408164f5e69cb400976efa350f.patch",
+        "start_version": 404259,
+        "end_version": 407710
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"    Enable LSAN for Android\"",
+        "rel_patch_path": "cherry/25a8881b724abf7251a9278e72224af7e82cb9c2.patch",
+        "start_version": 407598,
+        "end_version": 407756
+    },
+    {
         "comment": "[UPSTREAM] Revert \"DirectoryWatcher: add an implementation for Windows\"",
         "rel_patch_path": "cherry/0ec1cf13f2a4e31aa2c5ccc665c5fbdcd3a94577.patch",
         "start_version": 407598,
         "end_version": 407821
+    },
+    {
+        "comment": "[cmake] Unconditionally set the force flag when codesigning",
+        "rel_patch_path": "cherry/24c1660ac5d7813072b429eee7a9531338e53aea.patch",
+        "start_version": 399163,
+        "end_version": 407847
     },
     {
         "comment": "[UPSTREAM] Revert \"[clang-format] Fix AlignConsecutive on PP blocks\"",
@@ -252,10 +216,22 @@
         "end_version": 408442
     },
     {
+        "comment": "Driver: Add integer sanitizers to trapping group automatically.",
+        "rel_patch_path": "cherry/c5acd3490b79703426931f7b88b544fe7c6e1ef2.patch",
+        "start_version": 403758,
+        "end_version": 408516
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[CodeExtractor] Don't create bitcasts when inserting lifetime markers (NFCI)\"",
         "rel_patch_path": "cherry/099bffe7f7df41d66195ce33e91888a4a16c6b4a.patch",
         "start_version": 407598,
         "end_version": 408753
+    },
+    {
+        "comment": "[MC] Adjust StringTableBuilder for linked Mach-O binaries",
+        "rel_patch_path": "cherry/27e11d7120c0caa20a167b44ba29828446a525c0.patch",
+        "start_version": 399163,
+        "end_version": 408786
     },
     {
         "comment": "[UPSTREAM] Revert \"[Statepoints] Allow deopt GC pointer on VReg if gc-live bundle is empty.\"",
@@ -270,6 +246,12 @@
         "end_version": 408929
     },
     {
+        "comment": "[LegalizeTypes] Legalize vector rotate operations",
+        "rel_patch_path": "cherry/62b17a76971cd17c1ebd4ce00a536b0b74af98b2.patch",
+        "start_version": 404259,
+        "end_version": 408939
+    },
+    {
         "comment": "[UPSTREAM] [ELF] --emit-relocs: fix st_value of STT_SECTION in the presence of a gap before the first input section",
         "rel_patch_path": "cherry/2fc704a0a529dd7eba7566a293f981a86bfa5c3e.patch",
         "start_version": 407598,
@@ -282,22 +264,28 @@
         "end_version": 409948
     },
     {
+        "comment": "[ARM] Fix PR 47980: Use constrainRegClass during foldImmediate opt.",
+        "rel_patch_path": "cherry/8262e94a6da77e176dbd13d9eadce76da74489d4.patch",
+        "start_version": 404259,
+        "end_version": 410707
+    },
+    {
         "comment": "[UPSTREAM] hwasan: Bring back operator {new,delete} interceptors on Android.",
         "rel_patch_path": "cherry/0ae2ea8f83e3b79c587f0461b5cac98de1be220d.patch",
         "start_version": 407598,
         "end_version": 410722
     },
     {
+        "comment": "[llvm-objcopy] --only-keep-debug: place zero-size segment according to its parent segment",
+        "rel_patch_path": "cherry/20de1822466e87c137b2369d8601b0f4c575981b.patch",
+        "start_version": 399163,
+        "end_version": 410815
+    },
+    {
         "comment": "[UPSTREAM] Hwasan reporting check for dladdr failing",
         "rel_patch_path": "cherry/83ac18205ec69a00ac2be3b603bc3a61293fbe89.patch",
         "start_version": 407598,
         "end_version": 411205
-    },
-    {
-        "comment": "[UPSTREAM] Revert \"[ASTMatchers] Matcher macros with params move params instead of copying\"",
-        "rel_patch_path": "cherry/0ce32a79825f307d2f46b8a5823489a67d6d072f.patch",
-        "start_version": 407598,
-        "end_version": 412228
     },
     {
         "comment": "[UPSTREAM] [hwasan] Fix Thread reuse (try 2).",
@@ -312,10 +300,22 @@
         "end_version": 411738
     },
     {
+        "comment": "[OpenMP] fix asm code for for arm64 (AARCH64) for Darwin/macOS",
+        "rel_patch_path": "cherry/7b5254223acbf2ef9cd278070c5a84ab278d7e5f.patch",
+        "start_version": 399163,
+        "end_version": 411939
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[DebugInfo] Improve dbg preservation in LSR.\"",
         "rel_patch_path": "cherry/808fcfe5944755f08ae88722070302fcf9135e58.patch",
         "start_version": 407598,
         "end_version": 412204
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[ASTMatchers] Matcher macros with params move params instead of copying\"",
+        "rel_patch_path": "cherry/0ce32a79825f307d2f46b8a5823489a67d6d072f.patch",
+        "start_version": 407598,
+        "end_version": 412228
     },
     {
         "comment": "Revert two changes that break Android builds.",
