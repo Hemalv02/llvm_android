@@ -210,6 +210,12 @@
         "end_version": 395394
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Fix Thread reuse (try 2).",
+        "rel_patch_path": "cherry/523cc097fdafa1bb60373dcc70df7dfd31551f56.patch",
+        "start_version": 383902,
+        "end_version": 411532
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
