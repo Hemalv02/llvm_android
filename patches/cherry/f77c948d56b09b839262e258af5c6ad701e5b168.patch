@@ -1,0 +1,605 @@
+From f77c948d56b09b839262e258af5c6ad701e5b168 Mon Sep 17 00:00:00 2001
+From: Ahmed Bougacha <ahmed@bougacha.org>
+Date: Thu, 3 Sep 2020 08:43:21 -0700
+Subject: [PATCH] [Triple][MachO] Define "arm64e", an AArch64 subarch for
+ Pointer Auth.
+
+This also teaches MachO writers/readers about the MachO cpu subtype,
+beyond the minimal subtype reader support present at the moment.
+
+This also defines a preprocessor macro to allow users to distinguish
+__arm64__ from __arm64e__.
+
+arm64e defaults to an "apple-a12" CPU, which supports v8.3a, allowing
+pointer-authentication codegen.
+It also currently defaults to ios14 and macos11.
+
+Differential Revision: https://reviews.llvm.org/D87095
+---
+ clang/lib/Basic/Targets/AArch64.cpp           |  3 ++
+ clang/lib/Driver/ToolChain.cpp                |  8 ++++-
+ clang/lib/Driver/ToolChains/Arch/AArch64.cpp  |  7 ++++-
+ clang/lib/Driver/ToolChains/Darwin.cpp        | 15 ++++++---
+ clang/test/Driver/aarch64-cpus.c              |  3 ++
+ clang/test/Driver/arclite-link.c              |  3 ++
+ clang/test/Driver/target-triple-deployment.c  |  8 +++++
+ clang/test/Preprocessor/arm64e.c              |  5 +++
+ llvm/include/llvm/ADT/Triple.h                |  8 +++++
+ llvm/lib/BinaryFormat/MachO.cpp               |  2 +-
+ llvm/lib/LTO/LTOCodeGenerator.cpp             |  2 ++
+ llvm/lib/LTO/LTOModule.cpp                    |  2 ++
+ llvm/lib/Object/MachOObjectFile.cpp           | 31 ++++++++++++++++---
+ llvm/lib/Support/ARMTargetParser.cpp          |  2 ++
+ llvm/lib/Support/Triple.cpp                   |  7 +++++
+ .../Target/AArch64/AArch64TargetMachine.cpp   |  9 +++++-
+ .../MCTargetDesc/AArch64MCTargetDesc.cpp      |  6 +++-
+ llvm/test/MC/AArch64/arm64e-subtype.s         | 12 +++++++
+ llvm/test/MC/AArch64/arm64e.s                 |  9 ++++++
+ .../arm-darwin-version-min-load-command.s     | 23 ++++++++++++++
+ .../tools/llvm-dwarfdump/AArch64/arm64e.ll    | 17 ++++++++++
+ .../llvm-objdump/MachO/universal-arm64.test   |  2 +-
+ .../test/tools/llvm-readobj/macho-arm64e.test | 17 ++++++++++
+ llvm/unittests/ADT/TripleTest.cpp             |  5 +++
+ llvm/utils/UpdateTestChecks/asm.py            |  1 +
+ 25 files changed, 192 insertions(+), 15 deletions(-)
+ create mode 100644 clang/test/Preprocessor/arm64e.c
+ create mode 100644 llvm/test/MC/AArch64/arm64e-subtype.s
+ create mode 100644 llvm/test/MC/AArch64/arm64e.s
+ create mode 100644 llvm/test/tools/llvm-dwarfdump/AArch64/arm64e.ll
+ create mode 100644 llvm/test/tools/llvm-readobj/macho-arm64e.test
+
+diff --git a/clang/lib/Basic/Targets/AArch64.cpp b/clang/lib/Basic/Targets/AArch64.cpp
+index abdd424ea04..c8162dd5522 100644
+--- a/clang/lib/Basic/Targets/AArch64.cpp
++++ b/clang/lib/Basic/Targets/AArch64.cpp
+@@ -874,6 +874,9 @@ void DarwinAArch64TargetInfo::getOSDefines(const LangOptions &Opts,
+   Builder.defineMacro("__arm64", "1");
+   Builder.defineMacro("__arm64__", "1");
+ 
++  if (Triple.isArm64e())
++    Builder.defineMacro("__arm64e__", "1");
++
+   getDarwinDefines(Builder, Opts, Triple, PlatformName, PlatformMinVersion);
+ }
+ 
+diff --git a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
+index 85ab05cb702..11b78a14fe4 100644
+--- a/clang/lib/Driver/ToolChain.cpp
++++ b/clang/lib/Driver/ToolChain.cpp
+@@ -232,8 +232,11 @@ StringRef ToolChain::getDefaultUniversalArchName() const {
+   // the same as the ones that appear in the triple. Roughly speaking, this is
+   // an inverse of the darwin::getArchTypeForDarwinArchName() function.
+   switch (Triple.getArch()) {
+-  case llvm::Triple::aarch64:
++  case llvm::Triple::aarch64: {
++    if (getTriple().isArm64e())
++      return "arm64e";
+     return "arm64";
++  }
+   case llvm::Triple::aarch64_32:
+     return "arm64_32";
+   case llvm::Triple::ppc:
+@@ -706,6 +709,9 @@ std::string ToolChain::ComputeLLVMTriple(const ArgList &Args,
+     if (!Triple.isOSBinFormatMachO())
+       return getTripleString();
+ 
++    if (Triple.isArm64e())
++      return getTripleString();
++
+     // FIXME: older versions of ld64 expect the "arm64" component in the actual
+     // triple string and query it to determine whether an LTO file can be
+     // handled. Remove this when we don't care any more.
+diff --git a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+index 06bb705a372..0fc531b8c3a 100644
+--- a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
++++ b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+@@ -40,7 +40,12 @@ std::string aarch64::getAArch64TargetCPU(const ArgList &Args,
+   // Handle CPU name is 'native'.
+   if (CPU == "native")
+     return std::string(llvm::sys::getHostCPUName());
+-  else if (CPU.size())
++
++  // arm64e requires v8.3a and only runs on apple-a12 and later CPUs.
++  if (Triple.isArm64e())
++    return "apple-a12";
++
++  if (CPU.size())
+     return CPU;
+ 
+   if (Triple.isTargetMachineMac() &&
+diff --git a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
+index 9f856035640..eb7bd4aec89 100644
+--- a/clang/lib/Driver/ToolChains/Darwin.cpp
++++ b/clang/lib/Driver/ToolChains/Darwin.cpp
+@@ -7,6 +7,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "Darwin.h"
++#include "Arch/AArch64.h"
+ #include "Arch/ARM.h"
+ #include "CommonArgs.h"
+ #include "clang/Basic/AlignedAllocation.h"
+@@ -58,7 +59,7 @@ llvm::Triple::ArchType darwin::getArchTypeForMachOArchName(StringRef Str) {
+       .Cases("arm", "armv4t", "armv5", "armv6", "armv6m", llvm::Triple::arm)
+       .Cases("armv7", "armv7em", "armv7k", "armv7m", llvm::Triple::arm)
+       .Cases("armv7s", "xscale", llvm::Triple::arm)
+-      .Case("arm64", llvm::Triple::aarch64)
++      .Cases("arm64", "arm64e", llvm::Triple::aarch64)
+       .Case("arm64_32", llvm::Triple::aarch64_32)
+       .Case("r600", llvm::Triple::r600)
+       .Case("amdgcn", llvm::Triple::amdgcn)
+@@ -74,7 +75,7 @@ void darwin::setTripleTypeForMachOArchName(llvm::Triple &T, StringRef Str) {
+   llvm::ARM::ArchKind ArchKind = llvm::ARM::parseArch(Str);
+   T.setArch(Arch);
+ 
+-  if (Str == "x86_64h")
++  if (Str == "x86_64h" || Str == "arm64e")
+     T.setArchName(Str);
+   else if (ArchKind == llvm::ARM::ArchKind::ARMV6M ||
+            ArchKind == llvm::ARM::ArchKind::ARMV7M ||
+@@ -899,8 +900,11 @@ StringRef MachO::getMachOArchName(const ArgList &Args) const {
+   case llvm::Triple::aarch64_32:
+     return "arm64_32";
+ 
+-  case llvm::Triple::aarch64:
++  case llvm::Triple::aarch64: {
++    if (getTriple().isArm64e())
++      return "arm64e";
+     return "arm64";
++  }
+ 
+   case llvm::Triple::thumb:
+   case llvm::Triple::arm:
+@@ -1011,6 +1015,9 @@ void DarwinClang::AddLinkARCArgs(const ArgList &Args,
+     return;
+   if (isTargetAppleSiliconMac())
+     return;
++  // ARC runtime is supported everywhere on arm64e.
++  if (getTriple().isArm64e())
++    return;
+ 
+   ObjCRuntime runtime = getDefaultObjCRuntime(/*nonfragile*/ true);
+ 
+@@ -1711,7 +1718,7 @@ inferDeploymentTargetFromArch(DerivedArgList &Args, const Darwin &Toolchain,
+   llvm::Triple::OSType OSTy = llvm::Triple::UnknownOS;
+ 
+   StringRef MachOArchName = Toolchain.getMachOArchName(Args);
+-  if (MachOArchName == "arm64") {
++  if (MachOArchName == "arm64" || MachOArchName == "arm64e") {
+ #if __arm64__
+     // A clang running on an Apple Silicon mac defaults
+     // to building for mac when building for arm64 rather than
+diff --git a/clang/test/Driver/aarch64-cpus.c b/clang/test/Driver/aarch64-cpus.c
+index 131a57940b4..967a4902bd1 100644
+--- a/clang/test/Driver/aarch64-cpus.c
++++ b/clang/test/Driver/aarch64-cpus.c
+@@ -26,6 +26,9 @@
+ // ARM64-DARWIN: "-cc1"{{.*}} "-triple" "arm64{{.*}}" "-target-cpu" "apple-a7"
+ // ARM64-DARWIN-SAME: "-target-feature" "+aes"
+ 
++// RUN: %clang -target arm64-apple-darwin -arch arm64e -### -c %s 2>&1 | FileCheck -check-prefix=ARM64E-DARWIN %s
++// ARM64E-DARWIN: "-cc1"{{.*}} "-triple" "arm64e{{.*}}" "-target-cpu" "apple-a12"
++
+ // RUN: %clang -target arm64-apple-darwin -arch arm64_32 -### -c %s 2>&1 | FileCheck -check-prefix=ARM64_32-DARWIN %s
+ // ARM64_32-DARWIN: "-cc1"{{.*}} "-triple" "aarch64_32{{.*}}" "-target-cpu" "apple-s4"
+ 
+diff --git a/clang/test/Driver/arclite-link.c b/clang/test/Driver/arclite-link.c
+index a53b12daa47..e8cee3e042d 100644
+--- a/clang/test/Driver/arclite-link.c
++++ b/clang/test/Driver/arclite-link.c
+@@ -16,5 +16,8 @@
+ 
+ // CHECK-UNUSED-NOT: warning: argument unused during compilation: '-fobjc-link-runtime'
+ 
++// RUN: %clang -### -target arm64e-apple-ios8 -fobjc-link-runtime %t.o 2>&1 | FileCheck -check-prefix=CHECK-ARCLITE-ARM64E %s
++// CHECK-ARCLITE-ARM64E-NOT: libarclite
++
+ // RUN: %clang -### -target arm64-apple-macos10.8 -fobjc-link-runtime %t.o 2>&1 | FileCheck -check-prefix=CHECK-ARCLITE-ARM-MAC %s
+ // CHECK-ARCLITE-ARM-MAC-NOT: libarclite
+diff --git a/clang/test/Driver/target-triple-deployment.c b/clang/test/Driver/target-triple-deployment.c
+index 351f2ac2cdc..780d801a62a 100644
+--- a/clang/test/Driver/target-triple-deployment.c
++++ b/clang/test/Driver/target-triple-deployment.c
+@@ -9,6 +9,8 @@
+ // RUN: %clang -target armv7-apple-ios5.0 -mlinker-version=400 -### %t.o 2>> %t.log
+ // RUN: %clang -target armv7-apple-ios7.0 -mlinker-version=400 -### %t.o 2>> %t.log
+ // RUN: %clang -target arm64-apple-ios -mlinker-version=400 -### %t.o 2>> %t.log
++// RUN: %clang -target arm64e-apple-ios13.0 -mlinker-version=400 -### %t.o 2>> %t.log
++// RUN: %clang -target arm64e-apple-ios14.1 -mlinker-version=400 -### %t.o 2>> %t.log
+ //
+ // RUN: FileCheck %s < %t.log
+ 
+@@ -39,3 +41,9 @@
+ // CHECK: {{ld(.exe)?"}}
+ // CHECK: -iphoneos_version_min
+ // CHECK: 7.0.0
++// CHECK: {{ld(.exe)?"}}
++// CHECK: -iphoneos_version_min
++// CHECK: 14.0.0
++// CHECK: {{ld(.exe)?"}}
++// CHECK: -iphoneos_version_min
++// CHECK: 14.1.0
+diff --git a/clang/test/Preprocessor/arm64e.c b/clang/test/Preprocessor/arm64e.c
+new file mode 100644
+index 00000000000..26653ace585
+--- /dev/null
++++ b/clang/test/Preprocessor/arm64e.c
+@@ -0,0 +1,5 @@
++// RUN: %clang_cc1 -E -dM -ffreestanding -triple=arm64e-apple-ios < /dev/null | FileCheck %s
++
++// CHECK: #define __ARM64_ARCH_8__ 1
++// CHECK: #define __arm64__ 1
++// CHECK: #define __arm64e__ 1
+diff --git a/llvm/include/llvm/ADT/Triple.h b/llvm/include/llvm/ADT/Triple.h
+index 4e1a9499bf8..13a35857512 100644
+--- a/llvm/include/llvm/ADT/Triple.h
++++ b/llvm/include/llvm/ADT/Triple.h
+@@ -129,6 +129,8 @@ public:
+     ARMSubArch_v5te,
+     ARMSubArch_v4t,
+ 
++    AArch64SubArch_arm64e,
++
+     KalimbaSubArch_v3,
+     KalimbaSubArch_v4,
+     KalimbaSubArch_v5,
+@@ -777,6 +779,12 @@ public:
+     return getArch() == Triple::csky;
+   }
+ 
++  /// Tests whether the target is the Apple "arm64e" AArch64 subarch.
++  bool isArm64e() const {
++    return getArch() == Triple::aarch64 &&
++           getSubArch() == Triple::AArch64SubArch_arm64e;
++  }
++
+   /// Tests whether the target supports comdat
+   bool supportsCOMDAT() const {
+     return !(isOSBinFormatMachO() || isOSBinFormatXCOFF());
+diff --git a/llvm/lib/BinaryFormat/MachO.cpp b/llvm/lib/BinaryFormat/MachO.cpp
+index 0901022a614..02a515c9439 100644
+--- a/llvm/lib/BinaryFormat/MachO.cpp
++++ b/llvm/lib/BinaryFormat/MachO.cpp
+@@ -58,7 +58,7 @@ static MachO::CPUSubTypeARM64 getARM64SubType(const Triple &T) {
+   assert(T.isAArch64());
+   if (T.isArch32Bit())
+     return (MachO::CPUSubTypeARM64)MachO::CPU_SUBTYPE_ARM64_32_V8;
+-  if (T.getArchName() == "arm64e")
++  if (T.isArm64e())
+     return MachO::CPU_SUBTYPE_ARM64E;
+ 
+   return MachO::CPU_SUBTYPE_ARM64_ALL;
+diff --git a/llvm/lib/LTO/LTOCodeGenerator.cpp b/llvm/lib/LTO/LTOCodeGenerator.cpp
+index 751ea1bde57..890e9adf17e 100644
+--- a/llvm/lib/LTO/LTOCodeGenerator.cpp
++++ b/llvm/lib/LTO/LTOCodeGenerator.cpp
+@@ -377,6 +377,8 @@ bool LTOCodeGenerator::determineTarget() {
+       MCpu = "core2";
+     else if (Triple.getArch() == llvm::Triple::x86)
+       MCpu = "yonah";
++    else if (Triple.isArm64e())
++      MCpu = "apple-a12";
+     else if (Triple.getArch() == llvm::Triple::aarch64 ||
+              Triple.getArch() == llvm::Triple::aarch64_32)
+       MCpu = "cyclone";
+diff --git a/llvm/lib/LTO/LTOModule.cpp b/llvm/lib/LTO/LTOModule.cpp
+index 9c14d4ad5ad..1119622578d 100644
+--- a/llvm/lib/LTO/LTOModule.cpp
++++ b/llvm/lib/LTO/LTOModule.cpp
+@@ -222,6 +222,8 @@ LTOModule::makeLTOModule(MemoryBufferRef Buffer, const TargetOptions &options,
+       CPU = "core2";
+     else if (Triple.getArch() == llvm::Triple::x86)
+       CPU = "yonah";
++    else if (Triple.isArm64e())
++      CPU = "apple-a12";
+     else if (Triple.getArch() == llvm::Triple::aarch64 ||
+              Triple.getArch() == llvm::Triple::aarch64_32)
+       CPU = "cyclone";
+diff --git a/llvm/lib/Object/MachOObjectFile.cpp b/llvm/lib/Object/MachOObjectFile.cpp
+index a10b85c9db6..9ed2b8acc7e 100644
+--- a/llvm/lib/Object/MachOObjectFile.cpp
++++ b/llvm/lib/Object/MachOObjectFile.cpp
+@@ -2694,6 +2694,12 @@ Triple MachOObjectFile::getArchTriple(uint32_t CPUType, uint32_t CPUSubType,
+       if (ArchFlag)
+         *ArchFlag = "arm64";
+       return Triple("arm64-apple-darwin");
++    case MachO::CPU_SUBTYPE_ARM64E:
++      if (McpuDefault)
++        *McpuDefault = "apple-a12";
++      if (ArchFlag)
++        *ArchFlag = "arm64e";
++      return Triple("arm64e-apple-darwin");
+     default:
+       return Triple();
+     }
+@@ -2741,13 +2747,28 @@ bool MachOObjectFile::isValidArch(StringRef ArchFlag) {
+ }
+ 
+ ArrayRef<StringRef> MachOObjectFile::getValidArchs() {
+-  static const std::array<StringRef, 17> validArchs = {{
+-      "i386",   "x86_64", "x86_64h",  "armv4t",  "arm",    "armv5e",
+-      "armv6",  "armv6m", "armv7",    "armv7em", "armv7k", "armv7m",
+-      "armv7s", "arm64",  "arm64_32", "ppc",     "ppc64",
++  static const std::array<StringRef, 18> ValidArchs = {{
++      "i386",
++      "x86_64",
++      "x86_64h",
++      "armv4t",
++      "arm",
++      "armv5e",
++      "armv6",
++      "armv6m",
++      "armv7",
++      "armv7em",
++      "armv7k",
++      "armv7m",
++      "armv7s",
++      "arm64",
++      "arm64e",
++      "arm64_32",
++      "ppc",
++      "ppc64",
+   }};
+ 
+-  return validArchs;
++  return ValidArchs;
+ }
+ 
+ Triple::ArchType MachOObjectFile::getArch() const {
+diff --git a/llvm/lib/Support/ARMTargetParser.cpp b/llvm/lib/Support/ARMTargetParser.cpp
+index 73baac832ee..8267c82edf6 100644
+--- a/llvm/lib/Support/ARMTargetParser.cpp
++++ b/llvm/lib/Support/ARMTargetParser.cpp
+@@ -280,6 +280,8 @@ StringRef ARM::getCanonicalArchName(StringRef Arch) {
+   // Begins with "arm" / "thumb", move past it.
+   if (A.startswith("arm64_32"))
+     offset = 8;
++  else if (A.startswith("arm64e"))
++    offset = 6;
+   else if (A.startswith("arm64"))
+     offset = 5;
+   else if (A.startswith("aarch64_32"))
+diff --git a/llvm/lib/Support/Triple.cpp b/llvm/lib/Support/Triple.cpp
+index b1b4c3e6348..afc93c37141 100644
+--- a/llvm/lib/Support/Triple.cpp
++++ b/llvm/lib/Support/Triple.cpp
+@@ -407,6 +407,7 @@ static Triple::ArchType parseArch(StringRef ArchName) {
+     .Case("arc", Triple::arc)
+     .Case("arm64", Triple::aarch64)
+     .Case("arm64_32", Triple::aarch64_32)
++    .Case("arm64e", Triple::aarch64)
+     .Case("arm", Triple::arm)
+     .Case("armeb", Triple::armeb)
+     .Case("thumb", Triple::thumb)
+@@ -572,6 +573,9 @@ static Triple::SubArchType parseSubArch(StringRef SubArchName) {
+   if (SubArchName == "powerpcspe")
+     return Triple::PPCSubArch_spe;
+ 
++  if (SubArchName == "arm64e")
++    return Triple::AArch64SubArch_arm64e;
++
+   StringRef ARMSubArch = ARM::getCanonicalArchName(SubArchName);
+ 
+   // For now, this is the small part. Early return.
+@@ -1648,6 +1652,9 @@ VersionTuple Triple::getMinimumSupportedOSVersion() const {
+     // ARM64 simulators are supported for iOS 14+.
+     if (isMacCatalystEnvironment() || isSimulatorEnvironment())
+       return VersionTuple(14, 0, 0);
++    // ARM64e slice is supported starting from iOS 14.
++    if (isArm64e())
++      return VersionTuple(14, 0, 0);
+     break;
+   case Triple::TvOS:
+     // ARM64 simulators are supported for tvOS 14+.
+diff --git a/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp b/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp
+index 5a69f25a1f6..154aebf1693 100644
+--- a/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp
++++ b/llvm/lib/Target/AArch64/AArch64TargetMachine.cpp
+@@ -229,6 +229,12 @@ static std::string computeDataLayout(const Triple &TT,
+   return "E-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128";
+ }
+ 
++static StringRef computeDefaultCPU(const Triple &TT, StringRef CPU) {
++  if (CPU.empty() && TT.isArm64e())
++    return "apple-a12";
++  return CPU;
++}
++
+ static Reloc::Model getEffectiveRelocModel(const Triple &TT,
+                                            Optional<Reloc::Model> RM) {
+   // AArch64 Darwin and Windows are always PIC.
+@@ -276,7 +282,8 @@ AArch64TargetMachine::AArch64TargetMachine(const Target &T, const Triple &TT,
+                                            bool LittleEndian)
+     : LLVMTargetMachine(T,
+                         computeDataLayout(TT, Options.MCOptions, LittleEndian),
+-                        TT, CPU, FS, Options, getEffectiveRelocModel(TT, RM),
++                        TT, computeDefaultCPU(TT, CPU), FS, Options,
++                        getEffectiveRelocModel(TT, RM),
+                         getEffectiveAArch64CodeModel(TT, CM, JIT), OL),
+       TLOF(createTLOF(getTargetTriple())), isLittle(LittleEndian) {
+   initAsmInfo();
+diff --git a/llvm/lib/Target/AArch64/MCTargetDesc/AArch64MCTargetDesc.cpp b/llvm/lib/Target/AArch64/MCTargetDesc/AArch64MCTargetDesc.cpp
+index 43af765d69f..3c2df1621e1 100644
+--- a/llvm/lib/Target/AArch64/MCTargetDesc/AArch64MCTargetDesc.cpp
++++ b/llvm/lib/Target/AArch64/MCTargetDesc/AArch64MCTargetDesc.cpp
+@@ -50,9 +50,13 @@ static MCInstrInfo *createAArch64MCInstrInfo() {
+ 
+ static MCSubtargetInfo *
+ createAArch64MCSubtargetInfo(const Triple &TT, StringRef CPU, StringRef FS) {
+-  if (CPU.empty())
++  if (CPU.empty()) {
+     CPU = "generic";
+ 
++    if (TT.isArm64e())
++      CPU = "apple-a12";
++  }
++
+   return createAArch64MCSubtargetInfoImpl(TT, CPU, /*TuneCPU*/ CPU, FS);
+ }
+ 
+diff --git a/llvm/test/MC/AArch64/arm64e-subtype.s b/llvm/test/MC/AArch64/arm64e-subtype.s
+new file mode 100644
+index 00000000000..44d414bb4e7
+--- /dev/null
++++ b/llvm/test/MC/AArch64/arm64e-subtype.s
+@@ -0,0 +1,12 @@
++; RUN: llvm-mc -triple=arm64e-apple-ios -filetype=obj %s -o - | llvm-objdump --macho -d -p - | FileCheck %s
++
++; CHECK: _foo:
++; CHECK: 0: c0 03 5f d6   ret
++
++; CHECK: Mach header
++; CHECK: magic cputype cpusubtype  caps    filetype ncmds sizeofcmds      flags
++; CHECK: MH_MAGIC_64   ARM64          E  0x00      OBJECT     3        256 0x00000000
++
++.globl _foo
++_foo:
++  ret
+diff --git a/llvm/test/MC/AArch64/arm64e.s b/llvm/test/MC/AArch64/arm64e.s
+new file mode 100644
+index 00000000000..d034f9196ac
+--- /dev/null
++++ b/llvm/test/MC/AArch64/arm64e.s
+@@ -0,0 +1,9 @@
++// RUN: not llvm-mc -triple arm64-- -show-encoding < %s 2> %t
++// RUN: FileCheck --check-prefix=CHECK-GENERIC < %t %s
++
++// RUN: llvm-mc -triple arm64e-- -show-encoding < %s |\
++// RUN: FileCheck %s --check-prefix=CHECK-ARM64E
++
++// CHECK-GENERIC:  error: instruction requires: pa
++// CHECK-ARM64E:  pacia x0, x1 // encoding: [0x20,0x00,0xc1,0xda]
++  pacia x0, x1
+diff --git a/llvm/test/MC/MachO/AArch64/arm-darwin-version-min-load-command.s b/llvm/test/MC/MachO/AArch64/arm-darwin-version-min-load-command.s
+index 0af61fbf4d7..37b95b2bd68 100644
+--- a/llvm/test/MC/MachO/AArch64/arm-darwin-version-min-load-command.s
++++ b/llvm/test/MC/MachO/AArch64/arm-darwin-version-min-load-command.s
+@@ -1,16 +1,39 @@
+ // RUN: llvm-mc -triple arm64-apple-macos10.10.2 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-MACOS-ARM64
++// RUN: llvm-mc -triple arm64e-apple-macos10.10 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-MACOS-ARM64
+ // RUN: llvm-mc -triple arm64-apple-macos11 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-MACOS-ARM64
+ // RUN: llvm-mc -triple arm64-apple-macos11.1 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-MACOS-ARM64_1
+ // RUN: llvm-mc -triple arm64-apple-ios13.0-macabi %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-MACCATALYST-ARM64
++// RUN: llvm-mc -triple arm64e-apple-ios13.0-macabi %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-MACCATALYST-ARM64
+ // RUN: llvm-mc -triple arm64-apple-ios14.1-macabi %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-MACCATALYST-ARM64_1
+ 
++// RUN: llvm-mc -triple arm64e-apple-ios10.3 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOS-ARM64E
++// RUN: llvm-mc -triple arm64e-apple-ios13 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOS-ARM64E
++// RUN: llvm-mc -triple arm64e-apple-ios14.1 %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOS-ARM64E3
++
+ // RUN: llvm-mc -triple arm64-apple-ios10-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOSSIM2
++// RUN: llvm-mc -triple arm64e-apple-ios10-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOSSIM2
+ // RUN: llvm-mc -triple arm64-apple-ios13-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOSSIM2
+ // RUN: llvm-mc -triple arm64-apple-ios14-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOSSIM2
+ // RUN: llvm-mc -triple arm64-apple-ios14.1-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-IOSSIM3
+ // RUN: llvm-mc -triple arm64-apple-tvos10-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-TVOSSIM2
+ // RUN: llvm-mc -triple arm64-apple-watchos3-simulator %s -filetype=obj -o - | llvm-objdump --macho --private-headers - | FileCheck %s --check-prefix=CHECK-BUILD-WATCHOSSIM2
+ 
++// CHECK-BUILD-IOS-ARM64E:           cmd LC_BUILD_VERSION
++// CHECK-BUILD-IOS-ARM64E-NEXT:  cmdsize 24
++// CHECK-BUILD-IOS-ARM64E-NEXT: platform ios
++// CHECK-BUILD-IOS-ARM64E-NEXT:      sdk n/a
++// CHECK-BUILD-IOS-ARM64E-NEXT:    minos 14.0
++// CHECK-BUILD-IOS-ARM64E-NEXT:   ntools 0
++// CHECK-BUILD-IOS-ARM64E-NOT: LC_VERSION_MIN
++
++// CHECK-BUILD-IOS-ARM64E3:           cmd LC_BUILD_VERSION
++// CHECK-BUILD-IOS-ARM64E3-NEXT:  cmdsize 24
++// CHECK-BUILD-IOS-ARM64E3-NEXT: platform ios
++// CHECK-BUILD-IOS-ARM64E3-NEXT:      sdk n/a
++// CHECK-BUILD-IOS-ARM64E3-NEXT:    minos 14.1
++// CHECK-BUILD-IOS-ARM64E3-NEXT:   ntools 0
++// CHECK-BUILD-IOS-ARM64E3-NOT: LC_VERSION_MIN
++
+ // CHECK-BUILD-IOSSIM2:           cmd LC_BUILD_VERSION
+ // CHECK-BUILD-IOSSIM2-NEXT:  cmdsize 24
+ // CHECK-BUILD-IOSSIM2-NEXT: platform iossim
+diff --git a/llvm/test/tools/llvm-dwarfdump/AArch64/arm64e.ll b/llvm/test/tools/llvm-dwarfdump/AArch64/arm64e.ll
+new file mode 100644
+index 00000000000..d03fd1941f5
+--- /dev/null
++++ b/llvm/test/tools/llvm-dwarfdump/AArch64/arm64e.ll
+@@ -0,0 +1,17 @@
++; RUN: llc -O0 %s -filetype=obj -o - \
++; RUN:   | llvm-dwarfdump -arch arm64e - | FileCheck %s
++; CHECK: file format Mach-O arm64
++
++source_filename = "/tmp/empty.c"
++target datalayout = "e-m:o-i64:64-i128:128-n32:64-S128"
++target triple = "arm64e-apple-ios"
++
++!llvm.module.flags = !{!1, !2, !3, !4}
++!llvm.dbg.cu = !{!5}
++
++!1 = !{i32 2, !"Dwarf Version", i32 4}
++!2 = !{i32 2, !"Debug Info Version", i32 3}
++!3 = !{i32 1, !"wchar_size", i32 4}
++!4 = !{i32 7, !"PIC Level", i32 2}
++!5 = distinct !DICompileUnit(language: DW_LANG_C99, file: !6, producer: "Apple clang", isOptimized: false, runtimeVersion: 0, emissionKind: FullDebug)
++!6 = !DIFile(filename: "/tmp/empty.c", directory: "/Volumes/Data/llvm-project")
+diff --git a/llvm/test/tools/llvm-objdump/MachO/universal-arm64.test b/llvm/test/tools/llvm-objdump/MachO/universal-arm64.test
+index bcd841eff78..e15b31159d2 100644
+--- a/llvm/test/tools/llvm-objdump/MachO/universal-arm64.test
++++ b/llvm/test/tools/llvm-objdump/MachO/universal-arm64.test
+@@ -22,7 +22,7 @@
+ # CHECK-NEXT:     offset 16384
+ # CHECK-NEXT:     size 384
+ # CHECK-NEXT:     align 2^14 (16384)
+-# CHECK-NEXT: architecture
++# CHECK-NEXT: architecture arm64e
+ # CHECK-NEXT:     cputype CPU_TYPE_ARM64
+ # CHECK-NEXT:     cpusubtype CPU_SUBTYPE_ARM64E
+ # CHECK-NEXT:     capabilities 0x0
+diff --git a/llvm/test/tools/llvm-readobj/macho-arm64e.test b/llvm/test/tools/llvm-readobj/macho-arm64e.test
+new file mode 100644
+index 00000000000..d3471fbe33a
+--- /dev/null
++++ b/llvm/test/tools/llvm-readobj/macho-arm64e.test
+@@ -0,0 +1,17 @@
++# RUN: yaml2obj %s -o %t.o
++# RUN: llvm-readobj -h %t.o | FileCheck %s
++
++# CHECK: Magic: Magic64 (0xFEEDFACF)
++# CHECK: CpuType: Arm64 (0x100000C)
++# CHECK: CpuSubType: CPU_SUBTYPE_ARM64E (0x2)
++
++--- !mach-o
++FileHeader:
++  magic:           0xFEEDFACF
++  cputype:         0x0100000C
++  cpusubtype:      0x00000002
++  filetype:        0x00000001
++  ncmds:           0
++  sizeofcmds:      0
++  flags:           0x00000000
++  reserved:        0x00000000
+diff --git a/llvm/unittests/ADT/TripleTest.cpp b/llvm/unittests/ADT/TripleTest.cpp
+index 9b1c5acff42..7a356ae999c 100644
+--- a/llvm/unittests/ADT/TripleTest.cpp
++++ b/llvm/unittests/ADT/TripleTest.cpp
+@@ -1590,5 +1590,10 @@ TEST(TripleTest, ParseARMArch) {
+     Triple T = Triple("aarch64_be");
+     EXPECT_EQ(Triple::aarch64_be, T.getArch());
+   }
++  {
++    Triple T = Triple("arm64e");
++    EXPECT_EQ(Triple::aarch64, T.getArch());
++    EXPECT_EQ(Triple::AArch64SubArch_arm64e, T.getSubArch());
++  }
+ }
+ } // end anonymous namespace
+diff --git a/llvm/utils/UpdateTestChecks/asm.py b/llvm/utils/UpdateTestChecks/asm.py
+index 538604453b8..24090fc2ea7 100644
+--- a/llvm/utils/UpdateTestChecks/asm.py
++++ b/llvm/utils/UpdateTestChecks/asm.py
+@@ -336,6 +336,7 @@ def build_function_body_dictionary_for_triple(args, raw_tool_output, triple,
+       'amdgcn': (scrub_asm_amdgpu, ASM_FUNCTION_AMDGPU_RE),
+       'arm': (scrub_asm_arm_eabi, ASM_FUNCTION_ARM_RE),
+       'arm64': (scrub_asm_arm_eabi, ASM_FUNCTION_AARCH64_RE),
++      'arm64e': (scrub_asm_arm_eabi, ASM_FUNCTION_AARCH64_DARWIN_RE),
+       'arm64-apple-ios': (scrub_asm_arm_eabi, ASM_FUNCTION_AARCH64_DARWIN_RE),
+       'armv7-apple-ios' : (scrub_asm_arm_eabi, ASM_FUNCTION_ARM_IOS_RE),
+       'armv7-apple-darwin': (scrub_asm_arm_eabi, ASM_FUNCTION_ARM_DARWIN_RE),
+-- 
+2.29.2.684.gfbc64c5ab5-goog
+

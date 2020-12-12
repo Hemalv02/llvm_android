@@ -222,6 +222,12 @@
         "end_version": 408516
     },
     {
+        "comment": "[UPSTREAM] [driver][arm64] Set target CPU to A12 for compiler invocations that target Apple Silicon macOS machines",
+        "rel_patch_path": "cherry/de1016ce5cdca2df51c00fbc5d3a750d5d72364a.patch",
+        "start_version": 407598,
+        "end_version": 408679
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[CodeExtractor] Don't create bitcasts when inserting lifetime markers (NFCI)\"",
         "rel_patch_path": "cherry/099bffe7f7df41d66195ce33e91888a4a16c6b4a.patch",
         "start_version": 407598,
@@ -316,6 +322,18 @@
         "rel_patch_path": "cherry/0ce32a79825f307d2f46b8a5823489a67d6d072f.patch",
         "start_version": 407598,
         "end_version": 412228
+    },
+    {
+        "comment": "[UPSTREAM] arm64: count Triple::aarch64_32 as an aarch64 target and enable leaf frame pointers",
+        "rel_patch_path": "cherry/152df3add156b68aca7bfb06b62ea85fa127f3b1.patch",
+        "start_version": 407598,
+        "end_version": 412709
+    },
+    {
+        "comment": "[UPSTREAM] [Triple][MachO] Define \"arm64e\", an AArch64 subarch for Pointer Auth.",
+        "rel_patch_path": "cherry/f77c948d56b09b839262e258af5c6ad701e5b168.patch",
+        "start_version": 407598,
+        "end_version": 412730
     },
     {
         "comment": "Revert two changes that break Android builds.",
