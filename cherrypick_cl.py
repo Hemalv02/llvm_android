@@ -22,6 +22,7 @@ import dataclasses
 from dataclasses import dataclass
 from functools import lru_cache
 import json
+from pathlib import Path
 import re
 import sys
 from typing import Any, Dict, List, Optional
@@ -130,6 +131,8 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
     fetch_upstream_once()
     result = PatchList()
     for sha in sha_list:
+        if len(sha) < 40:
+            sha = get_full_sha(upstream_dir, sha)
         file_path = paths.SCRIPTS_DIR / 'patches' / 'cherry' / f'{sha}.patch'
         assert not file_path.exists(), f'{file_path} already exists'
         with open(file_path, 'w') as fh:
@@ -143,6 +146,10 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
         end_version = sha_to_revision(sha)
         result.append(PatchItem(comment, rel_patch_path, start_version, end_version))
     return result
+
+
+def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
+    return check_output(['git', 'rev-parse', short_sha], cwd=upstream_dir).strip()
 
 
 def sha_to_revision(sha: str) -> int:
