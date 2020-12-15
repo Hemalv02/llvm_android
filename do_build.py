@@ -556,6 +556,13 @@ def parse_args():
         help='Skip the packaging, and only do the build step')
 
     parser.add_argument(
+        '--skip-source-setup',
+        action='store_true',
+        default=False,
+        help='Skip setting up source code, which can be slow on rotational disks. Only use this if \
+        no code has changed since previous build.')
+
+    parser.add_argument(
         '--create-tar',
         action='store_true',
         default=False,
@@ -632,7 +639,8 @@ def main():
                   do_runtimes, do_package, need_windows))
 
     # Clone sources to be built and apply patches.
-    source_manager.setup_sources(source_dir=paths.LLVM_PATH)
+    if not args.skip_source_setup:
+        source_manager.setup_sources(source_dir=paths.LLVM_PATH)
 
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
