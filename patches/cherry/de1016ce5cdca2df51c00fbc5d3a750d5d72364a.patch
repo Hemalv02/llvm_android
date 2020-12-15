@@ -1,0 +1,91 @@
+From de1016ce5cdca2df51c00fbc5d3a750d5d72364a Mon Sep 17 00:00:00 2001
+From: Alex Lorenz <arphaman@gmail.com>
+Date: Wed, 21 Oct 2020 22:43:10 -0700
+Subject: [PATCH] [driver][arm64] Set target CPU to A12 for compiler
+ invocations that target Apple Silicon macOS machines
+
+Differential Revision: https://reviews.llvm.org/D82699
+---
+ clang/lib/Driver/ToolChains/Arch/AArch64.cpp  |  6 ++++++
+ clang/test/Driver/aarch64-mac-cpus.c          | 20 +++++++++++++++++++
+ .../Preprocessor/aarch64-target-features.c    |  2 +-
+ llvm/include/llvm/ADT/Triple.h                |  6 ++++++
+ 4 files changed, 33 insertions(+), 1 deletion(-)
+ create mode 100644 clang/test/Driver/aarch64-mac-cpus.c
+
+diff --git a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+index fe742b4bcfc..06bb705a372 100644
+--- a/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
++++ b/clang/lib/Driver/ToolChains/Arch/AArch64.cpp
+@@ -43,6 +43,12 @@ std::string aarch64::getAArch64TargetCPU(const ArgList &Args,
+   else if (CPU.size())
+     return CPU;
+ 
++  if (Triple.isTargetMachineMac() &&
++      Triple.getArch() == llvm::Triple::aarch64) {
++    // Apple Silicon macs default to A12 CPUs.
++    return "apple-a12";
++  }
++
+   // Make sure we pick the appropriate Apple CPU if -arch is used or when
+   // targetting a Darwin OS.
+   if (Args.getLastArg(options::OPT_arch) || Triple.isOSDarwin())
+diff --git a/clang/test/Driver/aarch64-mac-cpus.c b/clang/test/Driver/aarch64-mac-cpus.c
+new file mode 100644
+index 00000000000..437c3837654
+--- /dev/null
++++ b/clang/test/Driver/aarch64-mac-cpus.c
+@@ -0,0 +1,20 @@
++// arm64 Mac-based targets default to Apple A12.
++
++// RUN: %clang -target arm64-apple-macos             -### -c %s 2>&1 | FileCheck %s
++// RUN: %clang -target arm64-apple-ios-macabi        -### -c %s 2>&1 | FileCheck %s
++// RUN: %clang -target arm64-apple-ios-simulator     -### -c %s 2>&1 | FileCheck %s
++// RUN: %clang -target arm64-apple-watchos-simulator -### -c %s 2>&1 | FileCheck %s
++// RUN: %clang -target arm64-apple-tvos-simulator    -### -c %s 2>&1 | FileCheck %s
++
++// RUN: %clang -target arm64-apple-macos -arch arm64 -### -c %s 2>&1 | FileCheck %s
++
++// RUN: %clang -target arm64-apple-macos -mcpu=apple-a11 -### -c %s 2>&1 | FileCheck --check-prefix=EXPLICIT-A11 %s
++// RUN: %clang -target arm64-apple-macos -mcpu=apple-a7  -### -c %s 2>&1 | FileCheck --check-prefix=EXPLICIT-A7 %s
++// RUN: %clang -target arm64-apple-macos -mcpu=apple-a13 -### -c %s 2>&1 | FileCheck --check-prefix=EXPLICIT-A13 %s
++
++// CHECK: "-cc1"{{.*}} "-triple" "arm64{{.*}}" "-target-cpu" "apple-a12"
++// CHECK-SAME: "-target-feature" "+v8.3a"
++
++// EXPLICIT-A11: "-cc1"{{.*}} "-triple" "arm64{{.*}}" "-target-cpu" "apple-a11"
++// EXPLICIT-A7: "-cc1"{{.*}} "-triple" "arm64{{.*}}" "-target-cpu" "apple-a7"
++// EXPLICIT-A13: "-cc1"{{.*}} "-triple" "arm64{{.*}}" "-target-cpu" "apple-a13"
+diff --git a/clang/test/Preprocessor/aarch64-target-features.c b/clang/test/Preprocessor/aarch64-target-features.c
+index ad84ba93ccf..0529a3a3d53 100644
+--- a/clang/test/Preprocessor/aarch64-target-features.c
++++ b/clang/test/Preprocessor/aarch64-target-features.c
+@@ -247,7 +247,7 @@
+ // CHECK-MCPU-CARMEL: "-cc1"{{.*}} "-triple" "aarch64{{.*}}" "-target-feature" "+v8.2a" "-target-feature" "+fp-armv8" "-target-feature" "+neon" "-target-feature" "+crc" "-target-feature" "+crypto" "-target-feature" "+fullfp16" "-target-feature" "+ras" "-target-feature" "+lse" "-target-feature" "+rdm" "-target-feature" "+sha2" "-target-feature" "+aes"
+ 
+ // RUN: %clang -target x86_64-apple-macosx -arch arm64 -### -c %s 2>&1 | FileCheck --check-prefix=CHECK-ARCH-ARM64 %s
+-// CHECK-ARCH-ARM64: "-target-cpu" "apple-a7" "-target-feature" "+fp-armv8" "-target-feature" "+neon" "-target-feature" "+crypto" "-target-feature" "+zcm" "-target-feature" "+zcz"
++// CHECK-ARCH-ARM64: "-target-cpu" "apple-a12" "-target-feature" "+v8.3a" "-target-feature" "+fp-armv8" "-target-feature" "+neon" "-target-feature" "+crc" "-target-feature" "+crypto" "-target-feature" "+fullfp16" "-target-feature" "+ras" "-target-feature" "+lse" "-target-feature" "+rdm" "-target-feature" "+rcpc" "-target-feature" "+zcm" "-target-feature" "+zcz"
+ 
+ // RUN: %clang -target x86_64-apple-macosx -arch arm64_32 -### -c %s 2>&1 | FileCheck --check-prefix=CHECK-ARCH-ARM64_32 %s
+ // CHECK-ARCH-ARM64_32: "-target-cpu" "apple-s4" "-target-feature" "+v8.3a" "-target-feature" "+fp-armv8" "-target-feature" "+neon" "-target-feature" "+crc" "-target-feature" "+crypto" "-target-feature" "+fullfp16" "-target-feature" "+ras" "-target-feature" "+lse" "-target-feature" "+rdm" "-target-feature" "+rcpc" "-target-feature" "+zcm" "-target-feature" "+zcz" "-target-feature" "+sha2" "-target-feature" "+aes"
+diff --git a/llvm/include/llvm/ADT/Triple.h b/llvm/include/llvm/ADT/Triple.h
+index 57b283c3c84..2d1d43d3c66 100644
+--- a/llvm/include/llvm/ADT/Triple.h
++++ b/llvm/include/llvm/ADT/Triple.h
+@@ -486,6 +486,12 @@ public:
+     return getEnvironment() == Triple::MacABI;
+   }
+ 
++  /// Returns true for targets that run on a macOS machine.
++  bool isTargetMachineMac() const {
++    return isMacOSX() || (isOSDarwin() && (isSimulatorEnvironment() ||
++                                           isMacCatalystEnvironment()));
++  }
++
+   bool isOSNetBSD() const {
+     return getOS() == Triple::NetBSD;
+   }
+-- 
+2.29.2.684.gfbc64c5ab5-goog
+
