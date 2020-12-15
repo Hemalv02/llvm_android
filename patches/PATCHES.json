@@ -388,5 +388,11 @@
         "rel_patch_path": "Revert-windows-debug-directory.patch",
         "start_version": 399163,
         "end_version": null
+    },
+    {
+        "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
+        "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.patch",
+        "start_version": 407598,
+        "end_version": null
     }
 ]
