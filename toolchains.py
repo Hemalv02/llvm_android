@@ -53,6 +53,11 @@ class Toolchain:
         return self.path / 'bin' / 'llvm-ar'
 
     @property
+    def lipo(self) -> Path:
+        """Returns the path to llvm-lipo."""
+        return self.path / 'bin' / 'llvm-lipo'
+
+    @property
     def lld(self) -> Path:
         """Returns the path to ld.lld."""
         return self.path / 'bin' / 'ld.lld'

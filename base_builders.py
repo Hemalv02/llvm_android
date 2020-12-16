@@ -328,6 +328,7 @@ class CMakeBuilder(Builder):
 
             'CMAKE_ADDR2LINE': str(self.toolchain.addr2line),
             'CMAKE_AR': str(self.toolchain.ar),
+            'CMAKE_LIPO': str(self.toolchain.lipo),
             'CMAKE_NM': str(self.toolchain.nm),
             'CMAKE_OBJCOPY': str(self.toolchain.objcopy),
             'CMAKE_OBJDUMP': str(self.toolchain.objdump),
