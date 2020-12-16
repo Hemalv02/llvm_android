@@ -1,0 +1,92 @@
+From 152df3add156b68aca7bfb06b62ea85fa127f3b1 Mon Sep 17 00:00:00 2001
+From: Tim Northover <t.p.northover@gmail.com>
+Date: Tue, 10 Nov 2020 11:15:08 +0000
+Subject: [PATCH] arm64: count Triple::aarch64_32 as an aarch64 target and
+ enable leaf frame pointers
+
+---
+ clang/lib/Driver/ToolChain.cpp         |  4 ++--
+ clang/test/Driver/frame-pointer-elim.c |  2 ++
+ llvm/include/llvm/ADT/Triple.h         | 12 +++++++++++-
+ llvm/lib/BinaryFormat/MachO.cpp        |  6 ++----
+ 4 files changed, 17 insertions(+), 7 deletions(-)
+
+diff --git a/clang/lib/Driver/ToolChain.cpp b/clang/lib/Driver/ToolChain.cpp
+index 0330afdcec4..85ab05cb702 100644
+--- a/clang/lib/Driver/ToolChain.cpp
++++ b/clang/lib/Driver/ToolChain.cpp
+@@ -1075,9 +1075,9 @@ SanitizerMask ToolChain::getSupportedSanitizers() const {
+       getTriple().isAArch64())
+     Res |= SanitizerKind::CFIICall;
+   if (getTriple().getArch() == llvm::Triple::x86_64 ||
+-      getTriple().isAArch64() || getTriple().isRISCV())
++      getTriple().isAArch64(64) || getTriple().isRISCV())
+     Res |= SanitizerKind::ShadowCallStack;
+-  if (getTriple().isAArch64())
++  if (getTriple().isAArch64(64))
+     Res |= SanitizerKind::MemTag;
+   return Res;
+ }
+diff --git a/clang/test/Driver/frame-pointer-elim.c b/clang/test/Driver/frame-pointer-elim.c
+index fd74da7768e..83dbf3816b6 100644
+--- a/clang/test/Driver/frame-pointer-elim.c
++++ b/clang/test/Driver/frame-pointer-elim.c
+@@ -97,6 +97,8 @@
+ // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+ // RUN: %clang -### -target x86_64-scei-ps4 -S -O2 %s 2>&1 | \
+ // RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
++// RUN: %clang -### -target aarch64-apple-darwin -arch arm64_32 -S %s 2>&1 | \
++// RUN:   FileCheck --check-prefix=KEEP-NON-LEAF %s
+ 
+ // RUN: %clang -### -target powerpc64 -S %s 2>&1 | \
+ // RUN:   FileCheck --check-prefix=KEEP-ALL %s
+diff --git a/llvm/include/llvm/ADT/Triple.h b/llvm/include/llvm/ADT/Triple.h
+index 6bfdfe691c2..4e1a9499bf8 100644
+--- a/llvm/include/llvm/ADT/Triple.h
++++ b/llvm/include/llvm/ADT/Triple.h
+@@ -714,7 +714,17 @@ public:
+ 
+   /// Tests whether the target is AArch64 (little and big endian).
+   bool isAArch64() const {
+-    return getArch() == Triple::aarch64 || getArch() == Triple::aarch64_be;
++    return getArch() == Triple::aarch64 || getArch() == Triple::aarch64_be ||
++           getArch() == Triple::aarch64_32;
++  }
++
++  /// Tests whether the target is AArch64 and pointers are the size specified by
++  /// \p PointerWidth.
++  bool isAArch64(int PointerWidth) const {
++    assert(PointerWidth == 64 || PointerWidth == 32);
++    if (!isAArch64())
++      return false;
++    return isArch64Bit() ? PointerWidth == 64 : PointerWidth == 32;
+   }
+ 
+   /// Tests whether the target is MIPS 32-bit (little and big endian).
+diff --git a/llvm/lib/BinaryFormat/MachO.cpp b/llvm/lib/BinaryFormat/MachO.cpp
+index 2b9eb802552..0901022a614 100644
+--- a/llvm/lib/BinaryFormat/MachO.cpp
++++ b/llvm/lib/BinaryFormat/MachO.cpp
+@@ -55,7 +55,7 @@ static MachO::CPUSubTypeARM getARMSubType(const Triple &T) {
+ }
+ 
+ static MachO::CPUSubTypeARM64 getARM64SubType(const Triple &T) {
+-  assert(T.isAArch64() || T.getArch() == Triple::aarch64_32);
++  assert(T.isAArch64());
+   if (T.isArch32Bit())
+     return (MachO::CPUSubTypeARM64)MachO::CPU_SUBTYPE_ARM64_32_V8;
+   if (T.getArchName() == "arm64e")
+@@ -84,9 +84,7 @@ Expected<uint32_t> MachO::getCPUType(const Triple &T) {
+   if (T.isARM() || T.isThumb())
+     return MachO::CPU_TYPE_ARM;
+   if (T.isAArch64())
+-    return MachO::CPU_TYPE_ARM64;
+-  if (T.getArch() == Triple::aarch64_32)
+-    return MachO::CPU_TYPE_ARM64_32;
++    return T.isArch32Bit() ? MachO::CPU_TYPE_ARM64_32 : MachO::CPU_TYPE_ARM64;
+   if (T.getArch() == Triple::ppc)
+     return MachO::CPU_TYPE_POWERPC;
+   if (T.getArch() == Triple::ppc64)
+-- 
+2.29.2.684.gfbc64c5ab5-goog
+
