@@ -306,7 +306,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description=inspect.getdoc(sys.modules[__name__]))
 
-    parser.add_argument('--build', help='Toolchain build number (from go/ab/).')
+    parser.add_argument(
+        '--build', help='Toolchain build number (from go/ab/).', required=True)
     parser.add_argument(
         '--prebuilt_cl',
         help='Prebuilts CL (to prebuilts/clang/host/linux-x86)')
