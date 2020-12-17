@@ -93,19 +93,29 @@ class AndroidBuildClient():
                 workDone = worknode['status'] == 'complete'
                 continue
 
-            workOutput = worknode['workOutput']
-            success = workOutput['success']
+            workOutput = worknode.get('workOutput', None)
+            success = workOutput and workOutput['success']
             if msg == 'pendingChangeBuild':
                 work_type = 'BUILD'
                 params = worknode['workParameters']['submitQueue']
-                build_id = workOutput['buildOutput']['buildId']
+
+                # If workOutput is absent, Try to get build Id from
+                # workParameters.
+                if workOutput:
+                    build_id = workOutput['buildOutput']['buildId']
+                elif 'buildIds' in worknode['workParameters']['submitQueue']:
+                    # Just pick the first build Id.
+                    build_id = worknode['workParameters']['submitQueue'][
+                        'buildIds'][0]
+                else:
+                    build_id = 'NA'
                 test_name = 'NA'
                 ants_id = 'NA'
                 display_message = 'NA'
             elif msg == 'atpTest':
                 work_type = 'TEST'
                 params = worknode['workParameters']['atpTestParameters']
-                if 'testOutput' in workOutput:
+                if workOutput and 'testOutput' in workOutput:
                     build_id = workOutput['testOutput']['buildId']
                     ants_id = workOutput['testOutput']['antsInvocationId']
                 else:
