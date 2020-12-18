@@ -394,5 +394,11 @@
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.patch",
         "start_version": 407598,
         "end_version": null
+    },
+    {
+        "comment": "Ensure that we use our toolchain's lipo, and not the system version",
+        "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
+        "start_version": 407598,
+        "end_version": null
     }
 ]
