@@ -241,19 +241,37 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'builtins'
     src_dir: Path = paths.LLVM_PATH / 'compiler-rt' / 'lib' / 'builtins'
 
-    # Only build the builtins library for the NDK, not the platform, then
-    # install it into the resource dir and runtimes_ndk_cxx. Clang references
-    # the builtins using an absolute path to its resource dir, and it will use
-    # the single library in the stage2 resource dir for the remainder of the
-    # LLVM NDK and platform builders, which makes it difficult to have separate
-    # NDK+platform builds. The builtins static library references `stderr` which
-    # is `__sF` in older API levels.
-    config_list: List[configs.Config] = configs.android_configs(platform=False)
+    # Only target the NDK, not the platform. The NDK copy is sufficient for the
+    # platform builders, and both NDK+platform builders use the same toolchain,
+    # which can only have a single copy installed into its resource directory.
+    @property
+    def config_list(self) -> List[configs.Config]:
+        result = configs.android_configs(platform=False, extra_config={'is_exported': False})
+        # For arm32 and x86, build a special version of the builtins library
+        # where the symbols are exported, not hidden. This version is needed
+        # to continue exporting builtins from libc.so and libm.so.
+        for arch in [configs.AndroidARMConfig(), configs.AndroidI386Config()]:
+            arch.platform = False
+            arch.extra_config = {'is_exported': True}
+            result.append(arch)
+        return result
+
+    @property
+    def is_exported(self) -> bool:
+        return cast(Dict[str, bool], self._config.extra_config)['is_exported']
+
+    @property
+    def output_dir(self) -> Path:
+        old_path = super().output_dir
+        suffix = '-exported' if self.is_exported else ''
+        return old_path.parent / (old_path.name + suffix)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         arch = self._config.target_arch
+        defines['COMPILER_RT_BUILTINS_HIDE_SYMBOLS'] = \
+            'TRUE' if not self.is_exported else 'FALSE'
         defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = arch.llvm_triple
         # For CMake feature testing, create an archive instead of an executable,
         # because we can't link an executable until builtins have been built.
@@ -266,18 +284,25 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         arch = self._config.target_arch
         sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
         filename = 'libclang_rt.builtins-' + sarch + '-android.a'
+        filename_exported = 'libclang_rt.builtins-' + sarch + '-android-exported.a'
         src_path = self.output_dir / 'lib' / 'android' / filename
 
-        shutil.copy2(src_path, self.output_toolchain.resource_dir / filename)
+        if self.is_exported:
+            # This special copy exports its symbols and is only intended for use
+            # in Bionic's libc.so.
+            shutil.copy2(src_path, self.output_toolchain.resource_dir / filename_exported)
+        else:
+            shutil.copy2(src_path, self.output_toolchain.resource_dir / filename)
 
-        # Also install to self.toolchain.resource_dir, if it's different, for
-        # use when building target libraries.
-        if self.toolchain.resource_dir != self.output_toolchain.resource_dir:
-            shutil.copy2(src_path, self.toolchain.resource_dir / filename)
+            # Also install to self.toolchain.resource_dir, if it's different,
+            # for use when building target libraries.
+            if self.toolchain.resource_dir != self.output_toolchain.resource_dir:
+                shutil.copy2(src_path, self.toolchain.resource_dir / filename)
 
-        dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
-        dst_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_path, dst_dir / filename)
+            # Make a copy for the NDK.
+            dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
+            dst_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, dst_dir / filename)
 
 
 class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
@@ -411,6 +436,12 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
 class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'libunwind'
     src_dir: Path = paths.LLVM_PATH / 'libunwind'
+
+    # Build two copies of the builtins library:
+    #  - A copy targeting the NDK with hidden symbols.
+    #  - A copy targeting the platform with exported symbols.
+    # Bionic's libc.so exports the unwinder, so it needs a copy with exported
+    # symbols. Everything else uses the NDK copy.
     config_list: List[configs.Config] = (
         configs.android_configs(platform=True) +
         configs.android_configs(platform=False)
@@ -452,28 +483,29 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
 
     def install_config(self) -> None:
         # We need to install libunwind manually.
-        src_file = self.output_dir / 'lib64' / 'libunwind.a'
+        src_path = self.output_dir / 'lib64' / 'libunwind.a'
         arch = self._config.target_arch
+        out_res_dir = self.output_toolchain.resource_dir / arch.value
+        out_res_dir.mkdir(parents=True, exist_ok=True)
 
-        install_toolchains = [self.output_toolchain]
-        # Also install to self.toolchain.resource_dir, if it's different, for
-        # use when building runtimes.
-        if self.toolchain != self.output_toolchain:
-            install_toolchains.append(self.toolchain)
+        if self.is_exported:
+            # This special copy exports its symbols and is only intended for use
+            # in Bionic's libc.so.
+            shutil.copy2(src_path, out_res_dir / 'libunwind-exported.a')
+        else:
+            shutil.copy2(src_path, out_res_dir / 'libunwind.a')
 
-        for install_toolchain in install_toolchains:
-            res_dir = install_toolchain.resource_dir / arch.value
-            res_dir.mkdir(parents=True, exist_ok=True)
+            # Also install to self.toolchain.resource_dir, if it's different, for
+            # use when building runtimes.
+            if self.toolchain.resource_dir != self.output_toolchain.resource_dir:
+                res_dir = self.toolchain.resource_dir / arch.value
+                res_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, res_dir / 'libunwind.a')
 
-            if self.is_exported:
-                shutil.copy2(src_file, res_dir / 'libunwind-exported.a')
-            else:
-                shutil.copy2(src_file, res_dir / 'libunwind.a')
-
-                ndk_dir = (install_toolchain.path / 'runtimes_ndk_cxx' /
-                           arch.value)
-                ndk_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_file, ndk_dir / 'libunwind.a')
+            # Make a copy for the NDK.
+            ndk_dir = self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
+            ndk_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src_path, ndk_dir / 'libunwind.a')
 
 
 class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
