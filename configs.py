@@ -359,6 +359,12 @@ class AndroidAArch64Config(AndroidConfig):
     _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'aarch64-linux-android-4.9' /
                             'prebuilt' / 'linux-x86_64' / 'aarch64-linux-android' / 'lib64')
 
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-mbranch-protection=standard')
+        return cflags
+
 
 class AndroidX64Config(AndroidConfig):
     """Configs for android x86_64 targets."""
