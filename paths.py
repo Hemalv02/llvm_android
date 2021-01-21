@@ -42,6 +42,7 @@ BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 
 GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
+MAKE_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'make'
 NINJA_BIN_PATH: Path = PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag / 'bin' / 'ninja'
 
 LIBNCURSES_SRC_DIR: Path = EXTERNAL_DIR / 'libncurses'

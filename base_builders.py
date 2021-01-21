@@ -281,14 +281,14 @@ class AutoconfBuilder(Builder):
         utils.create_script(self.output_dir / 'config_invocation.sh', config_cmd, env)
         utils.check_call(config_cmd, cwd=self.output_dir, env=env)
 
-        make_cmd = ['make', f'-j{multiprocessing.cpu_count()}']
+        make_cmd = [str(paths.MAKE_BIN_PATH), f'-j{multiprocessing.cpu_count()}']
         utils.check_call(make_cmd, cwd=self.output_dir)
 
         self.install_config()
 
     def install_config(self) -> None:
         """Installs built artifacts for current config."""
-        install_cmd = ['make', 'install']
+        install_cmd = [str(paths.MAKE_BIN_PATH), 'install']
         utils.check_call(install_cmd, cwd=self.output_dir)
         if isinstance(self, LibInfo):
             cast(LibInfo, self).update_lib_id()
