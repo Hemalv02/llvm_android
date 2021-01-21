@@ -400,5 +400,23 @@
         "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
         "start_version": 407598,
         "end_version": null
+    },
+    {
+        "comment": "Revert \"[ARM] Prevent constants from iCmp instruction from being hoisted if part of a min(max()) pattern\"",
+        "rel_patch_path": "Revert-ARM-Prevent-constants-from-iCmp-instruction-from-being-hoisted-if-part-of-a-min-max-pattern.patch",
+        "start_version": 407598,
+        "end_version": null
+    },
+    {
+        "comment": "Revert \"[ARM] Added more patterns to generate SSAT/USAT with shift\"",
+        "rel_patch_path": "Revert-ARM-Added-more-patterns-to-generate-SSAT-USAT-with-shift.patch",
+        "start_version": 407598,
+        "end_version": null
+    },
+    {
+        "comment": "Revert \"[ARM][TTI] Prevents constants in a min(max) or max(min) pattern from being hoisted when in a loop\"",
+        "rel_patch_path": "Revert-ARM-TTI-Prevents-constants-in-a-min-max-or-max-min-pattern-from-being-hoisted-when-in-a-loop.patch",
+        "start_version": 407598,
+        "end_version": null
     }
 ]
