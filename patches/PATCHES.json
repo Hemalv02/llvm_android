@@ -336,6 +336,12 @@
         "end_version": 412730
     },
     {
+        "comment": "[UPSTREAM] [InitLLVM] Ensure SIGPIPE handler installed before sigaction()",
+        "rel_patch_path": "cherry/e05baf40de8a3bbfcf4a765761b1147e94b7309c.patch",
+        "start_version": 407598,
+        "end_version": 415546
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
