@@ -153,7 +153,7 @@ def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
 
 
 def sha_to_revision(sha: str) -> int:
-    git_llvm_rev.MAIN_BRANCH = 'upstream-master'
+    git_llvm_rev.MAIN_BRANCH = 'upstream-main'
     fetch_upstream_once()
     llvm_config = git_llvm_rev.LLVMConfig(remote='aosp', dir=str(paths.TOOLCHAIN_LLVM_PATH))
     rev = git_llvm_rev.translate_sha_to_rev(llvm_config, sha)
