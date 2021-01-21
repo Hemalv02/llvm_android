@@ -342,6 +342,12 @@
         "end_version": 415546
     },
     {
+        "comment": "[UPSTREAM] [libunwind] Unwind through aarch64/Linux sigreturn frame",
+        "rel_patch_path": "cherry/c82deed6764cbc63966374baf9721331901ca958.patch",
+        "start_version": 407598,
+        "end_version": 415963
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
