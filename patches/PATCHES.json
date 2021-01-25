@@ -348,6 +348,18 @@
         "end_version": 415963
     },
     {
+        "comment": "[UPSTREAM] [ARM] Add new and regenerate SSAT tests. NFC",
+        "rel_patch_path": "cherry/476de8cea3530cb9bf9339502f77cdd18d5f98b6.patch",
+        "start_version": 407598,
+        "end_version": 416713
+    },
+    {
+        "comment": "[UPSTREAM] [ARM] Disable sign extended SSAT pattern recognition.",
+        "rel_patch_path": "cherry/af0332498405b3a4074cef09845bbacfd4fd594f.patch",
+        "start_version": 407598,
+        "end_version": 416728
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
@@ -410,24 +422,6 @@
     {
         "comment": "Ensure that we use our toolchain's lipo, and not the system version",
         "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
-        "start_version": 407598,
-        "end_version": null
-    },
-    {
-        "comment": "Revert \"[ARM] Prevent constants from iCmp instruction from being hoisted if part of a min(max()) pattern\"",
-        "rel_patch_path": "Revert-ARM-Prevent-constants-from-iCmp-instruction-from-being-hoisted-if-part-of-a-min-max-pattern.patch",
-        "start_version": 407598,
-        "end_version": null
-    },
-    {
-        "comment": "Revert \"[ARM] Added more patterns to generate SSAT/USAT with shift\"",
-        "rel_patch_path": "Revert-ARM-Added-more-patterns-to-generate-SSAT-USAT-with-shift.patch",
-        "start_version": 407598,
-        "end_version": null
-    },
-    {
-        "comment": "Revert \"[ARM][TTI] Prevents constants in a min(max) or max(min) pattern from being hoisted when in a loop\"",
-        "rel_patch_path": "Revert-ARM-TTI-Prevents-constants-in-a-min-max-or-max-min-pattern-from-being-hoisted-when-in-a-loop.patch",
         "start_version": 407598,
         "end_version": null
     }
