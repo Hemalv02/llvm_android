@@ -363,6 +363,12 @@
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
+        "end_version": 412851
+    },
+    {
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
+        "start_version": 412851,
         "end_version": null
     },
     {
@@ -399,13 +405,7 @@
         "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
         "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms.patch",
         "start_version": 395739,
-        "end_version": 407598
-    },
-    {
-        "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
-        "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms-v2.patch",
-        "start_version": 407598,
-        "end_version": null
+        "end_version": 407227
     },
     {
         "comment": "Revert \"[llvm-objcopy] [COFF] Fix a misconception about debug directory payloads\"",
