@@ -1,0 +1,70 @@
+From 8342c2d3deb73a21e975d4f736d8fd70639ae207 Mon Sep 17 00:00:00 2001
+From: Chih-Hung Hsieh <chh@google.com>
+Date: Wed, 27 Jan 2021 16:50:23 -0800
+Subject: [PATCH] No shm_name on Android.
+
+Change-Id: I8057a1d1b981671ac676015068aa98c75830faf8
+---
+ openmp/runtime/src/kmp_runtime.cpp | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/openmp/runtime/src/kmp_runtime.cpp b/openmp/runtime/src/kmp_runtime.cpp
+index cdcfdb0be178..7e7d7bf1f0c4 100644
+--- a/openmp/runtime/src/kmp_runtime.cpp
++++ b/openmp/runtime/src/kmp_runtime.cpp
+@@ -6392,7 +6392,7 @@ void __kmp_register_library_startup(void) {
+ 
+     char *value = NULL; // Actual value of the environment variable.
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__ // shared memory is with dynamic library
+     char *shm_name = __kmp_str_format("/%s", name);
+     int shm_preexist = 0;
+     char *data1;
+@@ -6497,7 +6497,7 @@ void __kmp_register_library_startup(void) {
+       } break;
+       case 2: { // Neighbor is dead.
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__ // shared memory is with dynamic library
+         // close shared memory.
+         shm_unlink(shm_name); // this removes file in /dev/shm
+ #else
+@@ -6509,7 +6509,7 @@ void __kmp_register_library_startup(void) {
+       }
+     }
+     KMP_INTERNAL_FREE((void *)value);
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__ // shared memory is with dynamic library
+     KMP_INTERNAL_FREE((void *)shm_name);
+ #endif
+   } // while
+@@ -6522,7 +6522,7 @@ void __kmp_unregister_library(void) {
+   char *name = __kmp_reg_status_name();
+   char *value = NULL;
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__ // shared memory is with dynamic library
+   char *shm_name = __kmp_str_format("/%s", name);
+   int fd1 = shm_open(shm_name, O_RDONLY, 0666);
+   if (fd1 == -1) {
+@@ -6543,14 +6543,14 @@ void __kmp_unregister_library(void) {
+   KMP_DEBUG_ASSERT(__kmp_registration_str != NULL);
+   if (value != NULL && strcmp(value, __kmp_registration_str) == 0) {
+ //  Ok, this is our variable. Delete it.
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__ // shared memory is with dynamic library
+     shm_unlink(shm_name); // this removes file in /dev/shm
+ #else
+     __kmp_env_unset(name);
+ #endif
+   }
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__ // shared memory is with dynamic library
+   KMP_INTERNAL_FREE(shm_name);
+ #endif
+ 
+-- 
+2.30.0.280.ga3ce27912f-goog
+
