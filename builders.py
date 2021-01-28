@@ -937,6 +937,7 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+        defines['LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS'] = 'ON'
         defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
         defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
 
