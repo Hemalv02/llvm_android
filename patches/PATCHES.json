@@ -405,7 +405,13 @@
         "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
         "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms.patch",
         "start_version": 395739,
-        "end_version": 407227
+        "end_version": 407598
+    },
+    {
+        "comment": "Revert \"[libc++] Remove workarounds for the lack of clock_gettime on older macOS platforms\"",
+        "rel_patch_path": "Revert-Remove-workarounds-for-the-lack-of-clock_gettime-on-older-macOS-platforms-v2.patch",
+        "start_version": 407598,
+        "end_version": 412851
     },
     {
         "comment": "Revert \"[llvm-objcopy] [COFF] Fix a misconception about debug directory payloads\"",
@@ -434,6 +440,12 @@
     {
         "comment": "Undef FS macro for Android x86_64",
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
+        "start_version": 412851,
+        "end_version": null
+    },
+    {
+        "comment": "Revert babd3aefc91 and 5 changes after it",
+        "rel_patch_path": "Revert-babd3aefc91-and-5-changes-after-it.patch",
         "start_version": 412851,
         "end_version": null
     }
