@@ -985,7 +985,7 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        proj = {'clang', 'clang-tools-extra', 'lld'}
+        proj = {'clang', 'clang-tools-extra', 'lld', 'polly'}
         if self.build_lldb:
             proj.add('lldb')
         return proj
