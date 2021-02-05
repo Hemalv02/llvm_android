@@ -366,6 +366,12 @@
         "end_version": 417334
     },
     {
+        "comment": "[UPSTREAM] [clang][Arm] Fix handling of -Wa,-march=",
+        "rel_patch_path": "cherry/1d51c699b9e2ebc5bcfdbe85c74cc871426333d4.patch",
+        "start_version": 412851,
+        "end_version": 418022
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
