@@ -338,8 +338,6 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         # lib/android instead of lib/linux.
         del defines['CMAKE_SYSTEM_NAME']
         libs: List[str] = []
-        if arch == 'arm':
-            libs += ['-latomic']
         if self._config.api_level < 21:
             libs += ['-landroid_support']
         # Currently, -rtlib=compiler-rt (even with -unwindlib=libunwind) does
