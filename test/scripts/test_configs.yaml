@@ -17,10 +17,6 @@ git_master:
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
-    crosshatch_hwasan-userdebug:
-        groups: arm64 hwasan
-        test:
-            - apct/device_boot_health_check_extra
     cf_x86_phone-userdebug_coverage:
         groups: x86 coverage
         tests:
@@ -34,6 +30,10 @@ git_master:
         groups: arm64
         tests:
             - apct/bionic/native_test
+            - apct/device_boot_health_check_extra
+    flame_hwasan-userdebug:
+        groups: arm64 hwasan
+        test:
             - apct/device_boot_health_check_extra
     bonito-userdebug:
         groups: arm64
