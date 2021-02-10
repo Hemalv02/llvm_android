@@ -346,6 +346,11 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         # not automatically link libunwind.a on Android.
         libs += ['-lunwind']
         defines['SANITIZER_COMMON_LINK_LIBS'] = ' '.join(libs)
+        # compiler-rt's CMakeLists.txt file deletes -Wl,-z,defs from
+        # CMAKE_SHARED_LINKER_FLAGS when COMPILER_RT_USE_BUILTINS_LIBRARY is
+        # set. We want this flag on instead to catch unresolved references
+        # early.
+        defines['SANITIZER_COMMON_LINK_FLAGS'] = '-Wl,-z,defs'
         if self._config.platform:
             defines['COMPILER_RT_HWASAN_WITH_INTERCEPTORS'] = 'OFF'
         return defines
