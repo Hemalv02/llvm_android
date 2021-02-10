@@ -66,7 +66,7 @@ copy_dlls() {
     out/soong/.intermediates/external/llvm/libLLVM_android/windows_x86_shared/libLLVM_android.dll
     out/soong/.intermediates/frameworks/compile/libbcc/lib/libbcc/windows_x86_shared/libbcc.dll
     out/soong/.intermediates/frameworks/compile/libbcc/bcinfo/libbcinfo/windows_x86_shared/libbcinfo.dll
-    out/soong/.intermediates/system/core/liblog/liblog/windows_x86_shared/liblog.dll
+    out/soong/.intermediates/system/logging/liblog/liblog/windows_x86_shared/liblog.dll
 
     out/host/windows-x86/obj/SHARED_LIBRARIES/libziparchive_intermediates/libziparchive.dll
     out/host/windows-x86/obj/SHARED_LIBRARIES/liblzma_intermediates/liblzma.dll
@@ -76,7 +76,7 @@ copy_dlls() {
   local dlls_64=(
     prebuilts/gcc/linux-x86/host/x86_64-w64-mingw32-4.8/x86_64-w64-mingw32/bin/libwinpthread-1.dll
     out/soong/.intermediates/system/libbase/libbase/windows_x86_64_shared/libbase.dll
-    out/soong/.intermediates/system/core/liblog/liblog/windows_x86_64_shared/liblog.dll
+    out/soong/.intermediates/system/logging/liblog/liblog/windows_x86_64_shared/liblog.dll
 
     out/host/windows-x86/obj64/SHARED_LIBRARIES/libziparchive_intermediates/libziparchive.dll
     out/host/windows-x86/obj64/SHARED_LIBRARIES/liblzma_intermediates/liblzma.dll
