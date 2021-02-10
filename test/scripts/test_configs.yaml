@@ -1,8 +1,4 @@
 git_master:
-    cf_x86_phone-userdebug:
-        groups: x86 smoke
-        tests:
-            - avd/avd_boot_health_check
     cf_x86_64_phone-userdebug:
         groups: x86_64 smoke
         tests:
