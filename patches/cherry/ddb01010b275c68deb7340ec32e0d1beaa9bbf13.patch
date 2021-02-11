@@ -1,0 +1,59 @@
+From ddb01010b275c68deb7340ec32e0d1beaa9bbf13 Mon Sep 17 00:00:00 2001
+From: Artem Dergachev <artem.dergachev@gmail.com>
+Date: Tue, 9 Feb 2021 23:21:20 -0800
+Subject: [PATCH] Revert "[analyzer] RetainCountChecker: Add a suppression for
+ OSSymbols."
+
+This reverts commit 3500cc8d891bb3825bb3275affe6db8b12f2f695.
+
+This old commit was made over a completely false premise. OSSymbols
+aren't different from other OSObjects and we shouldn't treat them
+differently for the purposes of static analysis.
+---
+ clang/lib/Analysis/RetainSummaryManager.cpp     |  4 +---
+ clang/test/Analysis/osobject-retain-release.cpp | 10 ----------
+ 2 files changed, 1 insertion(+), 13 deletions(-)
+
+diff --git a/clang/lib/Analysis/RetainSummaryManager.cpp b/clang/lib/Analysis/RetainSummaryManager.cpp
+index 9f45a8efe546..00bc854a8804 100644
+--- a/clang/lib/Analysis/RetainSummaryManager.cpp
++++ b/clang/lib/Analysis/RetainSummaryManager.cpp
+@@ -146,9 +146,7 @@ static bool isSubclass(const Decl *D,
+ }
+ 
+ static bool isOSObjectSubclass(const Decl *D) {
+-  // OSSymbols are particular OSObjects that are allocated globally
+-  // and therefore aren't really refcounted, so we ignore them.
+-  return D && isSubclass(D, "OSMetaClassBase") && !isSubclass(D, "OSSymbol");
++  return D && isSubclass(D, "OSMetaClassBase");
+ }
+ 
+ static bool isOSObjectDynamicCast(StringRef S) {
+diff --git a/clang/test/Analysis/osobject-retain-release.cpp b/clang/test/Analysis/osobject-retain-release.cpp
+index d88349dcd807..41606a30c39f 100644
+--- a/clang/test/Analysis/osobject-retain-release.cpp
++++ b/clang/test/Analysis/osobject-retain-release.cpp
+@@ -53,9 +53,6 @@ struct MyArray : public OSArray {
+   OSObject *generateObject(OSObject *input) override;
+ };
+ 
+-// These are never refcounted.
+-struct OSSymbol : OSObject {};
+-
+ struct OtherStruct {
+   static void doNothingToArray(OSArray *array);
+   OtherStruct(OSArray *arr);
+@@ -757,10 +754,3 @@ void test() {
+   b(0);
+ }
+ } // namespace inherited_constructor_crash
+-
+-namespace ossymbol_suppression {
+-OSSymbol *createSymbol();
+-void test() {
+-  OSSymbol *sym = createSymbol(); // no-warning
+-}
+-} // namespace ossymbol_suppression
+-- 
+2.30.0.478.g8a0d178c01-goog
+
