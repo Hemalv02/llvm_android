@@ -475,6 +475,10 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
         defines = super().cmake_defines
         defines['LIBUNWIND_HERMETIC_STATIC_LIBRARY'] = 'TRUE' if not self.is_exported else 'FALSE'
         defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
+        if self.enable_assertions:
+            defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'TRUE'
+        else:
+            defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'FALSE'
         # TODO: Enable the FrameHeaderCache, for the platform only (not the
         # NDK), after (a) upgrading libunwind to a version with this config
         # setting and (b) upgrading the prebuilt NDK to r21 (which adds
