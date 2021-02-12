@@ -336,12 +336,6 @@
         "end_version": 412730
     },
     {
-        "comment": "[UPSTREAM] Revert \"Revert \"Revert \"Revert \"[analyzer] NFC: Move path diagnostic consumer implementations to libAnalysis.\"\"\"\"",
-        "rel_patch_path": "cherry/ea6641085d025ca0a5cef940465ef14d0ccace02.patch",
-        "start_version": 412851,
-        "end_version": 413455
-    },
-    {
         "comment": "[UPSTREAM] Revert \"[MachineDebugify] Insert synthetic DBG_VALUE instructions\"",
         "rel_patch_path": "cherry/841f9c937f6e593c926a26aedf054436eb807fe6.patch",
         "start_version": 412851,
@@ -412,12 +406,6 @@
         "rel_patch_path": "cherry/a680bc3a31d36d321ccf3801bdcff74d58842bfa.patch",
         "start_version": 412851,
         "end_version": 418680
-    },
-    {
-        "comment": "[UPSTREAM] Revert \"[analyzer] RetainCountChecker: Add a suppression for OSSymbols.\"",
-        "rel_patch_path": "cherry/ddb01010b275c68deb7340ec32e0d1beaa9bbf13.patch",
-        "start_version": 412851,
-        "end_version": 418492
     },
     {
         "comment": "Revert two changes that break Android builds.",
