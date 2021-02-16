@@ -360,6 +360,12 @@
         "end_version": 405613
     },
     {
+        "comment": "[UPSTREAM] [ARM][RegisterScavenging] Don't consider LR liveout if it is not reloaded",
+        "rel_patch_path": "cherry/b9ed8ebe0e2ffa803b0bda60f9bbc9bb26f95000.patch",
+        "start_version": 399163,
+        "end_version": 417334
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v2.patch",
         "start_version": 377782,
