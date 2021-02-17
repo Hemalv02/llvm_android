@@ -1,11 +1,5 @@
 [
     {
-        "comment": "[UPSTREAM] [BFI] Use CallbackVH to notify BFI about deletion of basic blocks",
-        "rel_patch_path": "cherry/b313897b3e9bc049bb7cada11c237ead77c30e2f.patch",
-        "start_version": 383902,
-        "end_version": 386572
-    },
-    {
         "comment": "[UPSTREAM] Revert \"[ARM] Improve codegen of volatile load/store of i64\"",
         "rel_patch_path": "cherry/af2a38458197e07cbd03ea9446714008488826d8.patch",
         "start_version": 383902,
@@ -48,6 +42,12 @@
         "end_version": 384546
     },
     {
+        "comment": "[UPSTREAM] [ELF] Fix a null pointer dereference when --emit-relocs and --strip-debug are used together",
+        "rel_patch_path": "cherry/6c73246179376442705b3a545f4e1f1478777a04.patch",
+        "start_version": 377782,
+        "end_version": 384549
+    },
+    {
         "comment": "[UPSTREAM] [JumpThreading] Skip unconditional PredBB when threading jumps through two basic blocks",
         "rel_patch_path": "cherry/13a97305ba77f44eccba16087320c8aa016ac6da.patch",
         "start_version": 383902,
@@ -66,10 +66,22 @@
         "end_version": 385581
     },
     {
+        "comment": "[UPSTREAM] [ASTMatchers] Adds a matcher called `hasAnyOperatorName`",
+        "rel_patch_path": "cherry/6a0c066c6102cd463e8ad48881e91e596547507a.patch",
+        "start_version": 383902,
+        "end_version": 385583
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[LICM] Support hosting of dynamic allocas out of loops\"",
         "rel_patch_path": "cherry/14845b2c459021e3dbf2ead52d707d4a7db40cbb.patch",
         "start_version": 383902,
         "end_version": 385655
+    },
+    {
+        "comment": "[llvm-objcopy] Enable --discard-all for MachO",
+        "rel_patch_path": "cherry/f79b81fbe2870ff631ad72a75f7e077b15b52a22.patch",
+        "start_version": 383902,
+        "end_version": 385798
     },
     {
         "comment": "[UPSTREAM] [MC][ARM] Resolve some pcrel fixups at assembly time (PR44929)",
@@ -96,6 +108,12 @@
         "end_version": 386178
     },
     {
+        "comment": "[UPSTREAM] [BFI] Use CallbackVH to notify BFI about deletion of basic blocks",
+        "rel_patch_path": "cherry/b313897b3e9bc049bb7cada11c237ead77c30e2f.patch",
+        "start_version": 383902,
+        "end_version": 386572
+    },
+    {
         "comment": "[UPSTREAM] [cmake] By default do not build compiler-rt with PGO",
         "rel_patch_path": "cherry/20dfcf189d224e637377970318a021c81d2fbde0.patch",
         "start_version": 383902,
@@ -106,6 +124,18 @@
         "rel_patch_path": "cherry/cfc3e7f458f8798782c01a0dadf872c60340c23e.patch",
         "start_version": 383902,
         "end_version": 386785
+    },
+    {
+        "comment": "[UPSTREAM] [ASTMatchers] Add hasAnyOverloadedOperatorName matcher",
+        "rel_patch_path": "cherry/77eec38626cb9e796f6cbb108ea9be5ee6e0ce81.patch",
+        "start_version": 383902,
+        "end_version": 386793
+    },
+    {
+        "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
+        "rel_patch_path": "cherry/0f9e1e3ae750df483b7fff905a8bc89262e3179e.patch",
+        "start_version": 383902,
+        "end_version": 386795
     },
     {
         "comment": "[UPSTREAM] [CUDA] Warn about unsupported CUDA SDK version only if it's used.",
@@ -132,34 +162,10 @@
         "end_version": 387824
     },
     {
-        "comment": "[UPSTREAM] [ELF] Fix a null pointer dereference when --emit-relocs and --strip-debug are used together",
-        "rel_patch_path": "cherry/6c73246179376442705b3a545f4e1f1478777a04.patch",
-        "start_version": 377782,
-        "end_version": 384549
-    },
-    {
-        "comment": "[UPSTREAM] [ASTMatchers] Adds a matcher called `hasAnyOperatorName`",
-        "rel_patch_path": "cherry/6a0c066c6102cd463e8ad48881e91e596547507a.patch",
-        "start_version": 383902,
-        "end_version": 385583
-    },
-    {
-        "comment": "[UPSTREAM] [ASTMatchers] Add hasAnyOverloadedOperatorName matcher",
-        "rel_patch_path": "cherry/77eec38626cb9e796f6cbb108ea9be5ee6e0ce81.patch",
-        "start_version": 383902,
-        "end_version": 386793
-    },
-    {
         "comment": "[UPSTREAM] Revert \"[GISel]: Fix incorrect IRTranslation while translating null pointer types\"",
         "rel_patch_path": "cherry/b8fc192d42af56b17b7d940e6c226f4969e0d851.patch",
         "start_version": 383902,
         "end_version": 388672
-    },
-    {
-        "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
-        "rel_patch_path": "cherry/0f9e1e3ae750df483b7fff905a8bc89262e3179e.patch",
-        "start_version": 383902,
-        "end_version": 386795
     },
     {
         "comment": "[UPSTREAM] [clang-tidy]: fix false positive of cert-oop54-cpp check",
@@ -192,12 +198,6 @@
         "end_version": 390723
     },
     {
-        "comment": "[llvm-objcopy] Enable --discard-all for MachO",
-        "rel_patch_path": "cherry/f79b81fbe2870ff631ad72a75f7e077b15b52a22.patch",
-        "start_version": 383902,
-        "end_version": 385798
-    },
-    {
         "comment": "Reland D76675 [llvm-objcopy] Match GNU behaviour regarding file symbols",
         "rel_patch_path": "cherry/b14e9e3c0cab6fb4c53e5814b6a2454d4688a49e.patch",
         "start_version": 383902,
@@ -210,9 +210,15 @@
         "end_version": 391926
     },
     {
+        "comment": "[CMake] Fix building with -DBUILD_SHARED_LIBS=ON on mingw",
+        "rel_patch_path": "cherry/609ef948387ba40e3693c2bd693d82ca34dcdc02.patch",
+        "start_version": 391452,
+        "end_version": 392981
+    },
+    {
         "comment": "Use IPv4 for Android connections",
         "rel_patch_path": "cherry/a9d7b458c094d62a8c11ada11e39bf0d4da596c8.patch",
-        "start_version":383902,
+        "start_version": 383902,
         "end_version": 393766
     },
     {
@@ -232,12 +238,6 @@
         "rel_patch_path": "cherry/d1a6e4d2db493c0ce27ccba7f287acfeac1776a6.patch",
         "start_version": 383902,
         "end_version": 395394
-    },
-    {
-        "comment": "[CMake] Fix building with -DBUILD_SHARED_LIBS=ON on mingw",
-        "rel_patch_path": "cherry/609ef948387ba40e3693c2bd693d82ca34dcdc02.patch",
-        "start_version": 391452,
-        "end_version": 392981
     },
     {
         "comment": "[UPSTREAM] [Driver] Search computed sysroot for libc++ header paths",
@@ -294,6 +294,12 @@
         "end_version": 399661
     },
     {
+        "comment": "[libc++] Build the dylib with -faligned-allocation",
+        "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
+        "start_version": 400107,
+        "end_version": 400234
+    },
+    {
         "comment": "[UPSTREAM] Revert \"Switch to using -debug-info-kind=constructor as default (from =limited)\"",
         "rel_patch_path": "cherry/394db2259575ef3cac8d3d37836b11eb2373c435.patch",
         "start_version": 399163,
@@ -330,22 +336,16 @@
         "end_version": 401729
     },
     {
-        "comment": "[UPSTREAM] hwasan: Emit the globals note even when globals are uninstrumented.",
-        "rel_patch_path": "cherry/c201f27225857a6d0ba85df6ef7d5cbcc2c04e44.patch",
-        "start_version": 399163,
-        "end_version": 402466
-    },
-    {
         "comment": "PR47138: Don't crash if the preferred alignment of an invalid record",
         "rel_patch_path": "cherry/269bc3f5df6c3b75de515a48063c6941ef8fbbe6.patch",
         "start_version": 400541,
         "end_version": 402304
     },
     {
-        "comment": "[libc++] Build the dylib with -faligned-allocation",
-        "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
-        "start_version": 400107,
-        "end_version": 400234
+        "comment": "[UPSTREAM] hwasan: Emit the globals note even when globals are uninstrumented.",
+        "rel_patch_path": "cherry/c201f27225857a6d0ba85df6ef7d5cbcc2c04e44.patch",
+        "start_version": 399163,
+        "end_version": 402466
     },
     {
         "comment": "[UPSTREAM] [ARM] Skip combining base updates for vld1x NEON intrinsics",
