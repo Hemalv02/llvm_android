@@ -294,6 +294,12 @@
         "end_version": 399661
     },
     {
+        "comment": "[UPSTREAM] [Windows] Fix limit on command line size",
+        "rel_patch_path": "cherry/dab898f9ab62275f55eb2a7e76ea0cd01696f68e.patch",
+        "start_version": 399163,
+        "end_version": 400162
+    },
+    {
         "comment": "[libc++] Build the dylib with -faligned-allocation",
         "rel_patch_path": "cherry/918ba933673a515240db867ce9467879ceb4da9f.patch",
         "start_version": 400107,

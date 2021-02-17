@@ -1,0 +1,199 @@
+From dab898f9ab62275f55eb2a7e76ea0cd01696f68e Mon Sep 17 00:00:00 2001
+From: Serge Pavlov <sepavloff@gmail.com>
+Date: Tue, 14 Jul 2020 17:57:04 +0700
+Subject: [PATCH] [Windows] Fix limit on command line size
+
+This reapplies commit d4020ef7c474, reverted in ac0edc55887b because it
+broke build of LLDB. This commit contains appropriate changes for LLDB.
+The original commit message is below.
+
+Documentation on CreateProcessW states that maximal size of command line
+is 32767 characters including ternimation null character. In the
+function llvm::sys::commandLineFitsWithinSystemLimits this limit was set
+to 32768. As a result if command line was exactly 32768 characters long,
+a response file was not created and CreateProcessW was called with
+too long command line.
+
+Differential Revision: https://reviews.llvm.org/D83772
+---
+ .../Host/windows/ProcessLauncherWindows.cpp   | 16 ++++---
+ llvm/include/llvm/Support/Program.h           |  2 +-
+ llvm/lib/Support/Windows/Program.inc          | 45 +++++++++++--------
+ llvm/unittests/Support/CommandLineTest.cpp    | 12 +++++
+ 4 files changed, 49 insertions(+), 26 deletions(-)
+
+diff --git a/lldb/source/Host/windows/ProcessLauncherWindows.cpp b/lldb/source/Host/windows/ProcessLauncherWindows.cpp
+index 00470f558e94..bbfe4d0d0175 100644
+--- a/lldb/source/Host/windows/ProcessLauncherWindows.cpp
++++ b/lldb/source/Host/windows/ProcessLauncherWindows.cpp
+@@ -42,7 +42,7 @@ void CreateEnvironmentBuffer(const Environment &env,
+   buffer.push_back(0);
+ }
+ 
+-bool GetFlattenedWindowsCommandString(Args args, std::string &command) {
++bool GetFlattenedWindowsCommandString(Args args, std::wstring &command) {
+   if (args.empty())
+     return false;
+ 
+@@ -50,7 +50,12 @@ bool GetFlattenedWindowsCommandString(Args args, std::string &command) {
+   for (auto &entry : args.entries())
+     args_ref.push_back(entry.ref());
+ 
+-  command = llvm::sys::flattenWindowsCommandLine(args_ref);
++  llvm::ErrorOr<std::wstring> result =
++      llvm::sys::flattenWindowsCommandLine(args_ref);
++  if (result.getError())
++    return false;
++
++  command = *result;
+   return true;
+ }
+ } // namespace
+@@ -61,7 +66,6 @@ ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
+   error.Clear();
+ 
+   std::string executable;
+-  std::string commandLine;
+   std::vector<char> environment;
+   STARTUPINFO startupinfo = {};
+   PROCESS_INFORMATION pi = {};
+@@ -99,11 +103,11 @@ ProcessLauncherWindows::LaunchProcess(const ProcessLaunchInfo &launch_info,
+   env_block = environment.data();
+ 
+   executable = launch_info.GetExecutableFile().GetPath();
+-  GetFlattenedWindowsCommandString(launch_info.GetArguments(), commandLine);
++  std::wstring wcommandLine;
++  GetFlattenedWindowsCommandString(launch_info.GetArguments(), wcommandLine);
+ 
+-  std::wstring wexecutable, wcommandLine, wworkingDirectory;
++  std::wstring wexecutable, wworkingDirectory;
+   llvm::ConvertUTF8toWide(executable, wexecutable);
+-  llvm::ConvertUTF8toWide(commandLine, wcommandLine);
+   llvm::ConvertUTF8toWide(launch_info.GetWorkingDirectory().GetCString(),
+                           wworkingDirectory);
+   // If the command line is empty, it's best to pass a null pointer to tell
+diff --git a/llvm/include/llvm/Support/Program.h b/llvm/include/llvm/Support/Program.h
+index dbda064cda05..d729d3883650 100644
+--- a/llvm/include/llvm/Support/Program.h
++++ b/llvm/include/llvm/Support/Program.h
+@@ -218,7 +218,7 @@ namespace sys {
+   /// to build a single flat command line appropriate for calling CreateProcess
+   /// on
+   /// Windows.
+-  std::string flattenWindowsCommandLine(ArrayRef<StringRef> Args);
++  ErrorOr<std::wstring> flattenWindowsCommandLine(ArrayRef<StringRef> Args);
+ #endif
+   }
+ }
+diff --git a/llvm/lib/Support/Windows/Program.inc b/llvm/lib/Support/Windows/Program.inc
+index 9fe05d24ec2e..36840016db39 100644
+--- a/llvm/lib/Support/Windows/Program.inc
++++ b/llvm/lib/Support/Windows/Program.inc
+@@ -189,7 +189,13 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
+   // Windows wants a command line, not an array of args, to pass to the new
+   // process.  We have to concatenate them all, while quoting the args that
+   // have embedded spaces (or are empty).
+-  std::string Command = flattenWindowsCommandLine(Args);
++  auto Result = flattenWindowsCommandLine(Args);
++  if (std::error_code ec = Result.getError()) {
++    SetLastError(ec.value());
++    MakeErrMsg(ErrMsg, std::string("Unable to convert command-line to UTF-16"));
++    return false;
++  }
++  std::wstring Command = *Result;
+ 
+   // The pointer to the environment block for the new process.
+   std::vector<wchar_t> EnvBlock;
+@@ -271,18 +277,11 @@ static bool Execute(ProcessInfo &PI, StringRef Program,
+     return false;
+   }
+ 
+-  SmallVector<wchar_t, MAX_PATH> CommandUtf16;
+-  if (std::error_code ec = windows::UTF8ToUTF16(Command, CommandUtf16)) {
+-    SetLastError(ec.value());
+-    MakeErrMsg(ErrMsg,
+-               std::string("Unable to convert command-line to UTF-16"));
+-    return false;
+-  }
+-
+-  BOOL rc = CreateProcessW(ProgramUtf16.data(), CommandUtf16.data(), 0, 0,
+-                           TRUE, CREATE_UNICODE_ENVIRONMENT,
+-                           EnvBlock.empty() ? 0 : EnvBlock.data(), 0, &si,
+-                           &pi);
++  std::vector<wchar_t> CommandUtf16(Command.size() + 1, 0);
++  std::copy(Command.begin(), Command.end(), CommandUtf16.begin());
++  BOOL rc = CreateProcessW(ProgramUtf16.data(), CommandUtf16.data(), 0, 0, TRUE,
++                           CREATE_UNICODE_ENVIRONMENT,
++                           EnvBlock.empty() ? 0 : EnvBlock.data(), 0, &si, &pi);
+   DWORD err = GetLastError();
+ 
+   // Regardless of whether the process got created or not, we are done with
+@@ -376,7 +375,7 @@ static std::string quoteSingleArg(StringRef Arg) {
+ }
+ 
+ namespace llvm {
+-std::string sys::flattenWindowsCommandLine(ArrayRef<StringRef> Args) {
++ErrorOr<std::wstring> sys::flattenWindowsCommandLine(ArrayRef<StringRef> Args) {
+   std::string Command;
+   for (StringRef Arg : Args) {
+     if (argNeedsQuotes(Arg))
+@@ -387,7 +386,11 @@ std::string sys::flattenWindowsCommandLine(ArrayRef<StringRef> Args) {
+     Command.push_back(' ');
+   }
+ 
+-  return Command;
++  SmallVector<wchar_t, MAX_PATH> CommandUtf16;
++  if (std::error_code ec = windows::UTF8ToUTF16(Command, CommandUtf16))
++    return ec;
++
++  return std::wstring(CommandUtf16.begin(), CommandUtf16.end());
+ }
+ 
+ ProcessInfo sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
+@@ -532,12 +535,16 @@ llvm::sys::writeFileWithEncoding(StringRef FileName, StringRef Contents,
+ 
+ bool llvm::sys::commandLineFitsWithinSystemLimits(StringRef Program,
+                                                   ArrayRef<StringRef> Args) {
+-  // The documented max length of the command line passed to CreateProcess.
+-  static const size_t MaxCommandStringLength = 32768;
++  // The documentation on CreateProcessW states that the size of the argument
++  // lpCommandLine must not be greater than 32767 characters, including the
++  // Unicode terminating null character. We use smaller value to reduce risk
++  // of getting invalid command line due to unaccounted factors.
++  static const size_t MaxCommandStringLength = 32000;
+   SmallVector<StringRef, 8> FullArgs;
+   FullArgs.push_back(Program);
+   FullArgs.append(Args.begin(), Args.end());
+-  std::string Result = flattenWindowsCommandLine(FullArgs);
+-  return (Result.size() + 1) <= MaxCommandStringLength;
++  auto Result = flattenWindowsCommandLine(FullArgs);
++  assert(!Result.getError());
++  return (Result->size() + 1) <= MaxCommandStringLength;
+ }
+ }
+diff --git a/llvm/unittests/Support/CommandLineTest.cpp b/llvm/unittests/Support/CommandLineTest.cpp
+index e1b706e2a78e..e8c2cef18e36 100644
+--- a/llvm/unittests/Support/CommandLineTest.cpp
++++ b/llvm/unittests/Support/CommandLineTest.cpp
+@@ -763,6 +763,18 @@ TEST(CommandLineTest, DefaultOptions) {
+ TEST(CommandLineTest, ArgumentLimit) {
+   std::string args(32 * 4096, 'a');
+   EXPECT_FALSE(llvm::sys::commandLineFitsWithinSystemLimits("cl", args.data()));
++  std::string args2(256, 'a');
++  EXPECT_TRUE(llvm::sys::commandLineFitsWithinSystemLimits("cl", args2.data()));
++  if (Triple(sys::getProcessTriple()).isOSWindows()) {
++    // We use 32000 as a limit for command line length. Program name ('cl'),
++    // separating spaces and termination null character occupy 5 symbols.
++    std::string long_arg(32000 - 5, 'b');
++    EXPECT_TRUE(
++        llvm::sys::commandLineFitsWithinSystemLimits("cl", long_arg.data()));
++    long_arg += 'b';
++    EXPECT_FALSE(
++        llvm::sys::commandLineFitsWithinSystemLimits("cl", long_arg.data()));
++  }
+ }
+ 
+ TEST(CommandLineTest, ResponseFileWindows) {
+-- 
+2.30.0.478.g8a0d178c01-goog
+
