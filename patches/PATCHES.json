@@ -417,6 +417,12 @@
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
+        "end_version": 416183
+    },
+    {
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
+        "start_version": 416183,
         "end_version": null
     },
     {
@@ -471,6 +477,12 @@
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.patch",
         "start_version": 407598,
+        "end_version": 416183
+    },
+    {
+        "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
+        "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v2.patch",
+        "start_version": 416183,
         "end_version": null
     },
     {
@@ -495,6 +507,12 @@
         "comment": "Revert babd3aefc91 and 5 changes after it",
         "rel_patch_path": "Revert-babd3aefc91-and-5-changes-after-it.patch",
         "start_version": 412851,
+        "end_version": 416183
+    },
+    {
+        "comment": "Revert babd3aefc91 and 6 changes after it",
+        "rel_patch_path": "Revert-babd3aefc91-and-6-changes-after-it.patch",
+        "start_version": 416183,
         "end_version": null
     }
 ]
