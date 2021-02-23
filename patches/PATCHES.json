@@ -408,6 +408,12 @@
         "end_version": 418680
     },
     {
+        "comment": "[UPSTREAM] [THUMB2] add .w suffixes for ldr/str (immediate) T4",
+        "rel_patch_path": "cherry/1e204ac78952cf7e4fcf335423e80007388d3979.patch",
+        "start_version": 412851,
+        "end_version": 419786
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
