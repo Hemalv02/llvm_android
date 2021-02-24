@@ -414,6 +414,18 @@
         "end_version": 419786
     },
     {
+        "comment": "[UPSTREAM] [MC][ARM] add .w suffixes for BL (T1) and DBG",
+        "rel_patch_path": "cherry/404843a94dbf2f9d91b9bb1dfc8608a4d7ae58c7.patch",
+        "start_version": 412851,
+        "end_version": 419919
+    },
+    {
+        "comment": "[UPSTREAM] [MC][ARM] make Thumb function also if type attribute is set",
+        "rel_patch_path": "cherry/a921aaf789912d981cbb2036bdc91ad7289e1523.patch",
+        "start_version": 412851,
+        "end_version": 419946
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
