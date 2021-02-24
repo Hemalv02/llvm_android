@@ -466,8 +466,7 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
 
     @property
     def ldflags(self) -> List[str]:
-        # This flag is currently unnecessary but will become necessary if the
-        # default -unwindlib changes to libunwind. libunwind.a doesn't exist
+        # Override the default -unwindlib=libunwind. libunwind.a doesn't exist
         # when libunwind is built, and libunwind can't use
         # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY because
         # LIBUNWIND_HAS_PTHREAD_LIB must be set to false.
@@ -476,7 +475,7 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        defines['LIBUNWIND_HERMETIC_STATIC_LIBRARY'] = 'TRUE' if not self.is_exported else 'FALSE'
+        defines['LIBUNWIND_HIDE_SYMBOLS'] = 'TRUE' if not self.is_exported else 'FALSE'
         defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
         if self.enable_assertions:
             defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'TRUE'
