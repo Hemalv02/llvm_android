@@ -460,6 +460,15 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         if not self._config.target_os.is_darwin:
             defines['LLVM_ENABLE_LLD'] = 'ON'
 
+        # Use Python for any host build (not Android targets, however)
+        target = self._config.target_os
+        if target != hosts.Host.Android:
+            defines['Python3_LIBRARY'] = str(paths.get_python_lib(target))
+            defines['Python3_LIBRARIES'] = str(paths.get_python_lib(target))
+            defines['Python3_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
+            defines['Python3_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
+            defines['Python3_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
+
         return defines
 
 
@@ -530,13 +539,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         if self.swig_executable:
             defines['SWIG_EXECUTABLE'] = str(self.swig_executable)
-            py_prefix = 'Python3'
             defines['LLDB_ENABLE_PYTHON'] = 'ON'
-            defines[f'{py_prefix}_LIBRARY'] = str(paths.get_python_lib(target))
-            defines[f'{py_prefix}_LIBRARIES'] = str(paths.get_python_lib(target))
-            defines[f'{py_prefix}_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
-            defines[f'{py_prefix}_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
-            defines[f'{py_prefix}_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
             defines['LLDB_EMBED_PYTHON_HOME'] = 'OFF'
         else:
             defines['LLDB_ENABLE_PYTHON'] = 'OFF'
