@@ -354,6 +354,12 @@
         "end_version": 414005
     },
     {
+        "comment": "[UPSTREAM] [AsmParser] make .ascii support spaces as separators",
+        "rel_patch_path": "cherry/e0963ae274be5b071d1e1b00f5e4e019483c09e9.patch",
+        "start_version": 412851,
+        "end_version": 414368
+    },
+    {
         "comment": "[UPSTREAM] [InitLLVM] Ensure SIGPIPE handler installed before sigaction()",
         "rel_patch_path": "cherry/e05baf40de8a3bbfcf4a765761b1147e94b7309c.patch",
         "start_version": 407598,
@@ -424,6 +430,12 @@
         "rel_patch_path": "cherry/a921aaf789912d981cbb2036bdc91ad7289e1523.patch",
         "start_version": 412851,
         "end_version": 419946
+    },
+    {
+        "comment": "[UPSTREAM] [ARM] support symbolic expressions as branch target in b.w",
+        "rel_patch_path": "cherry/c35105055ee4565ee6726d5b155538dd5c0307d3.patch",
+        "start_version": 412851,
+        "end_version": 420366
     },
     {
         "comment": "Revert two changes that break Android builds.",

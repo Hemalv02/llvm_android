@@ -1,0 +1,77 @@
+From c35105055ee4565ee6726d5b155538dd5c0307d3 Mon Sep 17 00:00:00 2001
+From: Jian Cai <jiancai@google.com>
+Date: Mon, 1 Mar 2021 15:03:42 -0800
+Subject: [PATCH] [ARM] support symbolic expressions as branch target in b.w
+
+Currently ARM backend validates the range of branch targets before the
+layout of fragments is finalized. This causes build failure if symbolic
+expressions are used, with the exception of a single symbolic value.
+For example, "b.w ." works but "b.w . + 2" currently fails to
+assemble. This fixes the issue by delaying this check (in
+ARMAsmParser::validateInstruction) of b.w instructions until the symbol
+expressions are resolved (in ARMAsmBackend::adjustFixupValue).
+
+Link:
+https://github.com/ClangBuiltLinux/linux/issues/1286
+
+Reviewed By: MaskRay
+
+Differential Revision: https://reviews.llvm.org/D97568
+---
+ llvm/lib/Target/ARM/AsmParser/ARMAsmParser.cpp |  5 ++++-
+ llvm/test/MC/ARM/thumb2-b.w-target.s           | 12 ++++++++++++
+ llvm/test/MC/ARM/thumb2-branch-ranges.s        |  6 ++++++
+ 3 files changed, 22 insertions(+), 1 deletion(-)
+ create mode 100644 llvm/test/MC/ARM/thumb2-b.w-target.s
+
+diff --git a/llvm/lib/Target/ARM/AsmParser/ARMAsmParser.cpp b/llvm/lib/Target/ARM/AsmParser/ARMAsmParser.cpp
+index b64637cfb37b..9a2d94e3972c 100644
+--- a/llvm/lib/Target/ARM/AsmParser/ARMAsmParser.cpp
++++ b/llvm/lib/Target/ARM/AsmParser/ARMAsmParser.cpp
+@@ -7950,7 +7950,10 @@ bool ARMAsmParser::validateInstruction(MCInst &Inst,
+     break;
+   case ARM::t2B: {
+     int op = (Operands[2]->isImm()) ? 2 : 3;
+-    if (!static_cast<ARMOperand &>(*Operands[op]).isSignedOffset<24, 1>())
++    ARMOperand &Operand = static_cast<ARMOperand &>(*Operands[op]);
++    // Delay the checks of symbolic expressions until they are resolved.
++    if (!isa<MCBinaryExpr>(Operand.getImm()) &&
++        !Operand.isSignedOffset<24, 1>())
+       return Error(Operands[op]->getStartLoc(), "branch target out of range");
+     break;
+   }
+diff --git a/llvm/test/MC/ARM/thumb2-b.w-target.s b/llvm/test/MC/ARM/thumb2-b.w-target.s
+new file mode 100644
+index 000000000000..1323730552f0
+--- /dev/null
++++ b/llvm/test/MC/ARM/thumb2-b.w-target.s
+@@ -0,0 +1,12 @@
++// RUN: llvm-mc -triple=thumbv7 -filetype=obj %s | llvm-objdump --triple=thumbv7 -d - | FileCheck %s
++
++.syntax unified
++
++// CHECK-LABEL: start
++// CHECK-NEXT:	b.w	#16777208
++// CHECK-NEXT:  b.w	#2
++start:
++  b.w start - 1f + 0x1000000
++1:
++  b.w . + (2f - 1b + 2)
++2:
+diff --git a/llvm/test/MC/ARM/thumb2-branch-ranges.s b/llvm/test/MC/ARM/thumb2-branch-ranges.s
+index 6f537d85b449..83cb0259d741 100644
+--- a/llvm/test/MC/ARM/thumb2-branch-ranges.s
++++ b/llvm/test/MC/ARM/thumb2-branch-ranges.s
+@@ -94,3 +94,9 @@ start6:
+ // CHECK: [[@LINE+2]]:{{[0-9]}}: error: Relocation out of range
+ // CHECK-LABEL: beq.w start6
+         beq.w start6
++
++start7:
++// branch to thumb function resolved at assembly time
++// CHECK: [[#@LINE+1]]:{{[0-9]}}: error: Relocation out of range
++        b.w start8 - start7 + 0x1000000
++start8:
+-- 
+2.30.1.766.gb4fecdf3b7-goog
+
