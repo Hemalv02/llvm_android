@@ -1,0 +1,270 @@
+From aac056c528cf139e6881211ee7fe6743c79a68d4 Mon Sep 17 00:00:00 2001
+From: Oliver Stannard <oliver.stannard@linaro.org>
+Date: Tue, 2 Mar 2021 13:49:14 +0000
+Subject: [PATCH] [objdump][ARM] Use correct offset when printing ARM/Thumb
+ branch targets
+
+llvm-objdump only uses one MCInstrAnalysis object, so if ARM and Thumb
+code is mixed in one object, or if an object is disassembled without
+explicitly setting the triple to match the ISA used, then branch and
+call targets will be printed incorrectly.
+
+This could be fixed by creating two MCInstrAnalysis objects in
+llvm-objdump, like we currently do for SubtargetInfo. However, I don't
+think there's any reason we need two separate sub-classes of
+MCInstrAnalysis, so instead these can be merged into one, and the ISA
+determined by checking the opcode of the instruction.
+
+Differential revision: https://reviews.llvm.org/D97766
+---
+ lld/test/ELF/arm-thunk-many-passes.s          | 35 +++++-----
+ llvm/lib/Target/ARM/ARMInstrInfo.td           |  1 +
+ .../ARM/MCTargetDesc/ARMMCTargetDesc.cpp      | 69 +++++-------------
+ .../llvm-objdump/ELF/ARM/branch-symbols.s     | 70 +++++++++++++++++++
+ 4 files changed, 109 insertions(+), 66 deletions(-)
+ create mode 100644 llvm/test/tools/llvm-objdump/ELF/ARM/branch-symbols.s
+
+diff --git a/lld/test/ELF/arm-thunk-many-passes.s b/lld/test/ELF/arm-thunk-many-passes.s
+index e7efb81c580e..9e8f428bb01f 100644
+--- a/lld/test/ELF/arm-thunk-many-passes.s
++++ b/lld/test/ELF/arm-thunk-many-passes.s
+@@ -7,7 +7,7 @@
+ // RUN:       sym = .;" > %t.script
+ // RUN: ld.lld --script %t.script %t -o %t2
+ // RUN: llvm-readobj --sections --symbols %t2 | FileCheck --check-prefix=CHECK-ELF %s
+-// RUN: llvm-objdump --no-show-raw-insn --start-address=0x11000 --stop-address=0x1103c -d %t2 | FileCheck %s
++// RUN: llvm-objdump --no-show-raw-insn --start-address=0x11000 --stop-address=0x11048 -d %t2 | FileCheck %s
+ 
+ // An example of thunk generation that takes the maximum number of permitted
+ // passes to converge. We start with a set of branches of which all but one are
+@@ -35,21 +35,24 @@
+ // CHECK-ELF-NEXT:     Value: 0x101104C
+ 
+ // CHECK: 00011000 <_start>:
+-// CHECK-NEXT:    11000:        b.w     #14680132 <__Thumbv7ABSLongThunk_f3>
+-// CHECK-NEXT:    11004:        b.w     #14680128 <__Thumbv7ABSLongThunk_f3>
+-// CHECK-NEXT:    11008:        b.w     #14680128 <__Thumbv7ABSLongThunk_f4>
+-// CHECK-NEXT:    1100c:        b.w     #14680124 <__Thumbv7ABSLongThunk_f4>
+-// CHECK-NEXT:    11010:        b.w     #14680124 <__Thumbv7ABSLongThunk_f5>
+-// CHECK-NEXT:    11014:        b.w     #14680120 <__Thumbv7ABSLongThunk_f5>
+-// CHECK-NEXT:    11018:        b.w     #14680120 <__Thumbv7ABSLongThunk_f6>
+-// CHECK-NEXT:    1101c:        b.w     #14680116 <__Thumbv7ABSLongThunk_f6>
+-// CHECK-NEXT:    11020:        b.w     #14680116 <__Thumbv7ABSLongThunk_f7>
+-// CHECK-NEXT:    11024:        b.w     #14680112 <__Thumbv7ABSLongThunk_f7>
+-// CHECK-NEXT:    11028:        b.w     #14680112 <__Thumbv7ABSLongThunk_f8>
+-// CHECK-NEXT:    1102c:        b.w     #14680108 <__Thumbv7ABSLongThunk_f8>
+-// CHECK-NEXT:    11030:        b.w     #14680108 <__Thumbv7ABSLongThunk_f9>
+-// CHECK-NEXT:    11034:        b.w     #14680104 <__Thumbv7ABSLongThunk_f9>
+-// CHECK-NEXT:    11038:        b.w     #14680104 <__Thumbv7ABSLongThunk_f10>
++// CHECK-NEXT:    11000:       b.w     #14680132 <__Thumbv7ABSLongThunk_f2>
++// CHECK-NEXT:    11004:       b.w     #14680128 <__Thumbv7ABSLongThunk_f2>
++// CHECK-NEXT:    11008:       b.w     #14680128 <__Thumbv7ABSLongThunk_f3>
++// CHECK-NEXT:    1100c:       b.w     #14680124 <__Thumbv7ABSLongThunk_f3>
++// CHECK-NEXT:    11010:       b.w     #14680124 <__Thumbv7ABSLongThunk_f4>
++// CHECK-NEXT:    11014:       b.w     #14680120 <__Thumbv7ABSLongThunk_f4>
++// CHECK-NEXT:    11018:       b.w     #14680120 <__Thumbv7ABSLongThunk_f5>
++// CHECK-NEXT:    1101c:       b.w     #14680116 <__Thumbv7ABSLongThunk_f5>
++// CHECK-NEXT:    11020:       b.w     #14680116 <__Thumbv7ABSLongThunk_f6>
++// CHECK-NEXT:    11024:       b.w     #14680112 <__Thumbv7ABSLongThunk_f6>
++// CHECK-NEXT:    11028:       b.w     #14680112 <__Thumbv7ABSLongThunk_f7>
++// CHECK-NEXT:    1102c:       b.w     #14680108 <__Thumbv7ABSLongThunk_f7>
++// CHECK-NEXT:    11030:       b.w     #14680108 <__Thumbv7ABSLongThunk_f8>
++// CHECK-NEXT:    11034:       b.w     #14680104 <__Thumbv7ABSLongThunk_f8>
++// CHECK-NEXT:    11038:       b.w     #14680104 <__Thumbv7ABSLongThunk_f9>
++// CHECK-NEXT:    1103c:       b.w     #14680100 <__Thumbv7ABSLongThunk_f9>
++// CHECK-NEXT:    11040:       b.w     #14680100 <__Thumbv7ABSLongThunk_f10>
++// CHECK-NEXT:    11044:       b.w     #14680096 <__Thumbv7ABSLongThunk_f10>
+ 
+ 
+         .thumb
+diff --git a/llvm/lib/Target/ARM/ARMInstrInfo.td b/llvm/lib/Target/ARM/ARMInstrInfo.td
+index 8dcb319923ae..b96e098e07ac 100644
+--- a/llvm/lib/Target/ARM/ARMInstrInfo.td
++++ b/llvm/lib/Target/ARM/ARMInstrInfo.td
+@@ -2619,6 +2619,7 @@ def BXJ : ABI<0b0001, (outs), (ins GPR:$func), NoItinerary, "bxj", "\t$func",
+   let Inst{7-4} = 0b0010;
+   let Inst{3-0} = func;
+   let isBranch = 1;
++  let isIndirectBranch = 1;
+ }
+ 
+ // Tail calls.
+diff --git a/llvm/lib/Target/ARM/MCTargetDesc/ARMMCTargetDesc.cpp b/llvm/lib/Target/ARM/MCTargetDesc/ARMMCTargetDesc.cpp
+index 68c8d175710c..a8271257cbfe 100644
+--- a/llvm/lib/Target/ARM/MCTargetDesc/ARMMCTargetDesc.cpp
++++ b/llvm/lib/Target/ARM/MCTargetDesc/ARMMCTargetDesc.cpp
+@@ -408,54 +408,28 @@ public:
+     return MCInstrAnalysis::isConditionalBranch(Inst);
+   }
+ 
+-  bool evaluateBranch(const MCInst &Inst, uint64_t Addr,
+-                      uint64_t Size, uint64_t &Target) const override {
+-    // We only handle PCRel branches for now.
+-    if (Inst.getNumOperands() == 0 ||
+-        Info->get(Inst.getOpcode()).OpInfo[0].OperandType !=
+-            MCOI::OPERAND_PCREL)
+-      return false;
+-
+-    int64_t Imm = Inst.getOperand(0).getImm();
+-    Target = Addr+Imm+8; // In ARM mode the PC is always off by 8 bytes.
+-    return true;
+-  }
+-};
+-
+-class ThumbMCInstrAnalysis : public ARMMCInstrAnalysis {
+-public:
+-  ThumbMCInstrAnalysis(const MCInstrInfo *Info) : ARMMCInstrAnalysis(Info) {}
+-
+   bool evaluateBranch(const MCInst &Inst, uint64_t Addr, uint64_t Size,
+                       uint64_t &Target) const override {
+-    unsigned OpId;
+-    switch (Inst.getOpcode()) {
+-    default:
+-      OpId = 0;
+-      if (Inst.getNumOperands() == 0)
+-        return false;
+-      break;
+-    case ARM::MVE_WLSTP_8:
+-    case ARM::MVE_WLSTP_16:
+-    case ARM::MVE_WLSTP_32:
+-    case ARM::MVE_WLSTP_64:
+-    case ARM::t2WLS:
+-    case ARM::MVE_LETP:
+-    case ARM::t2LEUpdate:
+-      OpId = 2;
+-      break;
+-    case ARM::t2LE:
+-      OpId = 1;
+-      break;
++    const MCInstrDesc &Desc = Info->get(Inst.getOpcode());
++
++    // Find the PC-relative immediate operand in the instruction.
++    bool FoundImm = false;
++    int64_t Imm;
++    for (unsigned OpNum = 0; OpNum < Desc.getNumOperands(); ++OpNum) {
++      if (Inst.getOperand(OpNum).isImm() &&
++          Desc.OpInfo[OpNum].OperandType == MCOI::OPERAND_PCREL) {
++        Imm = Inst.getOperand(OpNum).getImm();
++        FoundImm = true;
++      }
+     }
+-
+-    // We only handle PCRel branches for now.
+-    if (Info->get(Inst.getOpcode()).OpInfo[OpId].OperandType !=
+-        MCOI::OPERAND_PCREL)
++    if (!FoundImm)
+       return false;
+ 
+-    // In Thumb mode the PC is always off by 4 bytes.
+-    Target = Addr + Inst.getOperand(OpId).getImm() + 4;
++    // For ARM instructions the PC offset is 8 bytes, for Thumb instructions it
++    // is 4 bytes.
++    uint64_t Offset = ((Desc.TSFlags & ARMII::FormMask) == ARMII::ThumbFrm) ? 4 : 8;
++
++    Target = Addr + Imm + Offset;
+     return true;
+   }
+ };
+@@ -466,10 +440,6 @@ static MCInstrAnalysis *createARMMCInstrAnalysis(const MCInstrInfo *Info) {
+   return new ARMMCInstrAnalysis(Info);
+ }
+ 
+-static MCInstrAnalysis *createThumbMCInstrAnalysis(const MCInstrInfo *Info) {
+-  return new ThumbMCInstrAnalysis(Info);
+-}
+-
+ bool ARM::isCDECoproc(size_t Coproc, const MCSubtargetInfo &STI) {
+   // Unfortunately we don't have ARMTargetInfo in the disassembler, so we have
+   // to rely on feature bits.
+@@ -517,10 +487,9 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeARMTargetMC() {
+   }
+ 
+   // Register the MC instruction analyzer.
+-  for (Target *T : {&getTheARMLETarget(), &getTheARMBETarget()})
++  for (Target *T : {&getTheARMLETarget(), &getTheARMBETarget(),
++                    &getTheThumbLETarget(), &getTheThumbBETarget()})
+     TargetRegistry::RegisterMCInstrAnalysis(*T, createARMMCInstrAnalysis);
+-  for (Target *T : {&getTheThumbLETarget(), &getTheThumbBETarget()})
+-    TargetRegistry::RegisterMCInstrAnalysis(*T, createThumbMCInstrAnalysis);
+ 
+   for (Target *T : {&getTheARMLETarget(), &getTheThumbLETarget()}) {
+     TargetRegistry::RegisterMCCodeEmitter(*T, createARMLEMCCodeEmitter);
+diff --git a/llvm/test/tools/llvm-objdump/ELF/ARM/branch-symbols.s b/llvm/test/tools/llvm-objdump/ELF/ARM/branch-symbols.s
+new file mode 100644
+index 000000000000..d967c21ae048
+--- /dev/null
++++ b/llvm/test/tools/llvm-objdump/ELF/ARM/branch-symbols.s
+@@ -0,0 +1,70 @@
++@ RUN: llvm-mc < %s --triple=armv8a   -mattr=+mve,+lob -filetype=obj | llvm-objdump -dr - --triple armv8a --mattr=+mve,+lob --no-show-raw-insn | FileCheck %s
++@ RUN: llvm-mc < %s --triple=thumbv8a -mattr=+mve,+lob -filetype=obj | llvm-objdump -dr - --triple armv8a --mattr=+mve,+lob --no-show-raw-insn | FileCheck %s
++
++foo:
++
++  // Branches
++  .arm
++  b foo
++  ble foo
++@ CHECK:       0: b       #-8 <foo>
++@ CHECK:       4: ble     #-12 <foo>
++
++  .thumb
++  b foo
++  b.w foo
++  ble foo
++  ble.w foo
++  le foo
++  le lr, foo
++  cbz r0, bar
++  cbnz r0, bar
++@ CHECK:       8: b       #-12 <foo>
++@ CHECK:       a: b.w     #-14 <foo>
++@ CHECK:       e: ble     #-18 <foo>
++@ CHECK:      10: ble.w   #-20 <foo>
++@ CHECK:      14: le      #-24 <foo>
++@ CHECK:      18: le      lr, #-28 <foo>
++@ CHECK:      1c: cbz     r0, #40 <bar>
++@ CHECK:      1e: cbnz    r0, #38 <bar>
++
++  // Calls without relocations (these offsets al correspond to label foo).
++  .arm
++  bl #-40
++  blx #-44
++  bleq #-48
++@ CHECK:      20:   bl      #-40 <foo>
++@ CHECK:      24:   blx     #-44 <foo>
++@ CHECK:      28:   bleq    #-48 <foo>
++
++  .thumb
++  bl #-48
++  blx #-52
++@ CHECK:      2c:   bl      #-48 <foo>
++@ CHECK:      30:   blx     #-52 <foo>
++
++  // Calls with relocations. These currently emit a reference to their own
++  // location, because we don't take relocations into account when printing
++  // branch targets.
++  .arm
++  bl baz
++  blx baz
++  bleq baz
++@ CHECK:      34:   bl      #-8 <$a.4>
++@ CHECK:            00000034:  R_ARM_CALL   baz
++@ CHECK:      38:   blx     #-8 <$a.4+0x4>
++@ CHECK:            00000038:  R_ARM_CALL   baz
++@ CHECK:      3c:   bleq    #-8 <$a.4+0x8>
++@ CHECK:            0000003c:  R_ARM_JUMP24 baz
++
++  .thumb
++  bl baz
++  blx baz
++@ CHECK:      40:   bl      #-4 <$t.5>
++@ CHECK:            00000040:  R_ARM_THM_CALL       baz
++@ CHECK:      44:   blx     #-4 <$t.5+0x4>
++@ CHECK:            00000044:  R_ARM_THM_CALL       baz
++
++bar:
++
++
+-- 
+2.30.1.766.gb4fecdf3b7-goog
+

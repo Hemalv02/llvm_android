@@ -438,6 +438,12 @@
         "end_version": 420366
     },
     {
+        "comment": "[UPSTREAM] [objdump][ARM] Use correct offset when printing ARM/Thumb branch targets",
+        "rel_patch_path": "cherry/aac056c528cf139e6881211ee7fe6743c79a68d4.patch",
+        "start_version": 412851,
+        "end_version": 420650
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v3.patch",
         "start_version": 394052,
