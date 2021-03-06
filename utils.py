@@ -86,7 +86,7 @@ def create_script(script_path: Path, cmd: List[str], env: Dict[str, str]) -> Non
         for k, v in env.items():
             if v != ORIG_ENV.get(k):
                 outf.write(f'export {k}="{v}"\n')
-        outf.write(list2cmdline(cmd) + '$@\n')
+        outf.write(list2cmdline(cmd) + ' $@\n')
     script_path.chmod(0o755)
 
 
