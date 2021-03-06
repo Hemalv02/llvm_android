@@ -1022,6 +1022,10 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         defines['CMAKE_CXX_STANDARD'] = '17'
         defines['LLVM_BUILD_LLVM_C_DYLIB'] = 'OFF'
 
+        defines['ZLIB_INCLUDE_DIR'] = str(paths.WIN_ZLIB_INCLUDE_PATH)
+        defines['ZLIB_LIBRARY_DEBUG'] = str(paths.WIN_ZLIB_LIB_PATH / 'libz.a')
+        defines['ZLIB_LIBRARY_RELEASE'] = str(paths.WIN_ZLIB_LIB_PATH / 'libz.a')
+
         return defines
 
     @property
