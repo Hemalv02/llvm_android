@@ -390,6 +390,12 @@
         "end_version": 416728
     },
     {
+        "comment": "[UPSTREAM] [GVN] do not repeat PRE on failure to split critical edge",
+        "rel_patch_path": "cherry/d36812892c16b551f058774babbc8727737f80cd.patch",
+        "start_version": 412851,
+        "end_version": 417022
+    },
+    {
         "comment": "[UPSTREAM] [ARM][RegisterScavenging] Don't consider LR liveout if it is not reloaded",
         "rel_patch_path": "cherry/b9ed8ebe0e2ffa803b0bda60f9bbc9bb26f95000.patch",
         "start_version": 412851,
