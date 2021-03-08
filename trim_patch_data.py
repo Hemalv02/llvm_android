@@ -70,6 +70,12 @@ def main():
             return local
         raise RuntimeError(f'Cannot find patch file {patch}')
 
+    # Start a new repo branch before trimming patches.
+    os.chdir(_LLVM_ANDROID_PATH)
+    branch_name = f'trim-patches-before-{_SVN_REVISION}'
+    utils.unchecked_call(['repo', 'abandon', branch_name, '.'])
+    utils.check_call(['repo', 'start', branch_name, '.'])
+
     removed_patches = trim_patches_json()
     if not removed_patches:
         print('No patches to remove')
@@ -78,11 +84,6 @@ def main():
     removed_patch_paths = [_get_patch_path(p) for p in removed_patches]
 
     # Apply the changes to git and commit.
-    os.chdir(_LLVM_ANDROID_PATH)
-    branch_name = f'trim-patches-before-{_SVN_REVISION}'
-    utils.unchecked_call(['repo', 'abandon', branch_name, '.'])
-    utils.check_call(['repo', 'start', branch_name, '.'])
-
     utils.check_call(['git', 'add', _PATCH_JSON])
     for patch in removed_patch_paths:
         utils.check_call(['git', 'rm', patch])
