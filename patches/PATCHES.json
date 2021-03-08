@@ -396,6 +396,12 @@
         "end_version": 417334
     },
     {
+        "comment": "[UPSTREAM] [Coverage] Propogate counter to condition of conditional operator",
+        "rel_patch_path": "cherry/4dc08cc3aa41a28ca6ec82bb9c7183048761aad5.patch",
+        "start_version": 416183,
+        "end_version": 417944
+    },
+    {
         "comment": "[UPSTREAM] [clang][Arm] Fix handling of -Wa,-march=",
         "rel_patch_path": "cherry/1d51c699b9e2ebc5bcfdbe85c74cc871426333d4.patch",
         "start_version": 412851,
@@ -412,6 +418,12 @@
         "rel_patch_path": "cherry/a680bc3a31d36d321ccf3801bdcff74d58842bfa.patch",
         "start_version": 412851,
         "end_version": 418680
+    },
+    {
+        "comment": "[UPSTREAM] [Coverage] Emit gap region after conditions when macro is present.",
+        "rel_patch_path": "cherry/d83511dd26ca8d0dd5be6302ad7b55de05cedab2.patch",
+        "start_version": 416183,
+        "end_version": 419342
     },
     {
         "comment": "[UPSTREAM] [THUMB2] add .w suffixes for ldr/str (immediate) T4",
@@ -442,6 +454,12 @@
         "rel_patch_path": "cherry/aac056c528cf139e6881211ee7fe6743c79a68d4.patch",
         "start_version": 412851,
         "end_version": 420650
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Revert \"[Coverage] Emit gap region between statements if first statements contains terminate statements.\"\"",
+        "rel_patch_path": "cherry/9783e2098800b954c55ae598a1ce5c4b93444fc0.patch",
+        "start_version": 416183,
+        "end_version": 420717
     },
     {
         "comment": "Revert two changes that break Android builds.",
