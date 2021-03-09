@@ -34,9 +34,12 @@ import test_paths
 import utils
 
 
+CODE_NAMES = ['RELEASE_BRANCH_1', 'RELEASE_BRANCH_2', 'RELEASE_BRANCH_3',
+              'DEVICE_TARGET_1']
+
 class TestConfig(NamedTuple):
     branch_private: str  # use branch property instead
-    target: str
+    target_private: str  # use branch property instead
     groups: List[str]
     tests: List[str]
 
@@ -45,9 +48,15 @@ class TestConfig(NamedTuple):
 
     @property
     def branch(self):
-        if self.branch_private == 'RELEASE_BRANCH':
-            return test_paths.release_branch_name()
+        if self.branch_private in CODE_NAMES:
+            return test_paths.internal_names()[self.branch_private]
         return self.branch_private
+
+    @property
+    def target(self):
+        if self.target_private in CODE_NAMES:
+            return test_paths.internal_names()[self.target_private]
+        return self.target_private
 
     @property
     def is_kernel_branch(self):
@@ -69,7 +78,7 @@ def _load_configs() -> List[TestConfig]:
             result.append(
                 TestConfig(
                     branch_private=branch,
-                    target=target,
+                    target_private=target,
                     groups=groups,
                     tests=tests))
 

@@ -1,4 +1,6 @@
 git_master:
+    adt3-userdebug:
+        groups: arm64
     cf_x86_64_phone-userdebug:
         groups: x86_64 smoke
         tests:
@@ -59,7 +61,7 @@ git_master:
     wembley-userdebug:
         groups: arm64
 
-RELEASE_BRANCH:
+RELEASE_BRANCH_1:
     cf_x86_phone_analyzer-userdebug:
         groups: tidy
     coral_analyzer-userdebug:
@@ -69,6 +71,18 @@ RELEASE_BRANCH:
         tests:
             - apct/perf/pgo/apk-profile-collector
             - apct/perf/pgo/profile-collector
+
+RELEASE_BRANCH_2:
+    DEVICE_TARGET_1:
+        groups: arm64
+
+RELEASE_BRANCH_3:
+    cf_x86_phone_analyzer-userdebug:
+        groups: tidy
+    coral_analyzer-userdebug:
+        groups: tidy
+    pgo-coral-config1:
+        groups: pgo
 
 git_master-art-host:
     art-test:

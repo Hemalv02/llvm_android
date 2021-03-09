@@ -113,6 +113,7 @@ def _get_device_info(target: str) -> ClusterRecord:
     target = _trimprefix(target, 'pgo-')
     target = _trimsuffix(target, '-config1')
     target = _trimsuffix(target, '_profcollect')
+    target = _trimsuffix(target, '_hwasan')
 
     if target in ClusterInfo:
         return ClusterInfo[target]
