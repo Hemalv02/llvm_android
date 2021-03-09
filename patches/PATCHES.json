@@ -36,6 +36,12 @@
         "end_version": 415963
     },
     {
+        "comment": "[UPSTREAM] Revert \"[clang] Change builtin object size when subobject is invalid\"",
+        "rel_patch_path": "cherry/b270fd59f0a86fe737853abc43e76b9d29a67eea.patch",
+        "start_version": 416183,
+        "end_version": 416525
+    },
+    {
         "comment": "[UPSTREAM] [ARM] Add new and regenerate SSAT tests. NFC",
         "rel_patch_path": "cherry/476de8cea3530cb9bf9339502f77cdd18d5f98b6.patch",
         "start_version": 407598,
