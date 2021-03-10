@@ -138,6 +138,12 @@
         "end_version": 420717
     },
     {
+        "comment": "[UPSTREAM] [Android] Default to --rtlib=compiler-rt",
+        "rel_patch_path": "cherry/a478b0a199f4928041390d1f35dd5e226936b42c.patch",
+        "start_version": 416183,
+        "end_version": 421228
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
