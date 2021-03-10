@@ -276,6 +276,7 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         # For CMake feature testing, create an archive instead of an executable,
         # because we can't link an executable until builtins have been built.
         defines['CMAKE_TRY_COMPILE_TARGET_TYPE'] = 'STATIC_LIBRARY'
+        defines['COMPILER_RT_EXCLUDE_ATOMIC_BUILTIN'] = 'OFF'
         return defines
 
     def install_config(self) -> None:
