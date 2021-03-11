@@ -15,7 +15,9 @@
 #
 """Helpers for paths used in test scripts."""
 
+from typing import Dict
 from pathlib import Path
+import yaml
 
 TEST_SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 LLVM_ANDROID_DIR: Path = TEST_SCRIPTS_DIR.parents[1]
@@ -28,8 +30,8 @@ CNS_KEY_FILE: Path = Path(
     '/google/data/ro/teams/android-llvm/tests/cns_key_file.txt')
 GCL_KEY_FILE: Path = Path(
     '/google/data/ro/teams/android-llvm/tests/gcl_key_file.txt')
-RELEASE_BRANCH_KEY_FILE: Path = Path(
-    '/google/data/ro/teams/android-llvm/tests/release_branch_key_file.txt')
+INTERNAL_NAMES_YAML: Path = Path(
+    '/google/data/ro/teams/android-llvm/tests/internal_names.yaml')
 
 SOONG_CSV: str = 'soong_cls.csv'
 KERNEL_CSV: str = 'kernel_cls.csv'
@@ -54,6 +56,13 @@ def gcl_path() -> str:
     return _read_key_file(GCL_KEY_FILE)
 
 
-def release_branch_name() -> str:
-    """Read name of release branch from RELEASE_BRANCH_KEY_FILE."""
-    return _read_key_file(RELEASE_BRANCH_KEY_FILE)
+_internal_names_dict = None
+
+def internal_names() -> Dict[str, str]:
+    """Return dict of internal names."""
+    global _internal_names_dict
+    if _internal_names_dict:
+        return _internal_names_dict
+    _internal_names_dict = yaml.load(_read_key_file(INTERNAL_NAMES_YAML),
+                                     Loader=yaml.FullLoader)
+    return _internal_names_dict
