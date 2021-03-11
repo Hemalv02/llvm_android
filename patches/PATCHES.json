@@ -72,6 +72,12 @@
         "end_version": 417334
     },
     {
+        "comment": "[UPSTREAM] Disable CFI in __get_elem to allow casting a pointer to uninitialized memory",
+        "rel_patch_path": "cherry/bab74864168bb5e28ecbc0294fe1095d8da7f569.patch",
+        "start_version": 416183,
+        "end_version": 417837
+    },
+    {
         "comment": "[UPSTREAM] [Coverage] Propogate counter to condition of conditional operator",
         "rel_patch_path": "cherry/4dc08cc3aa41a28ca6ec82bb9c7183048761aad5.patch",
         "start_version": 416183,
