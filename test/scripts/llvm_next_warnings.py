@@ -60,7 +60,7 @@ def _process_log(log: str) -> List[Warning]:
         flags=re.DOTALL)
 
     warning_re = re.compile(
-        r'^(?P<file>.*?):(?P<line>.*?):.*\[-Werror,(?P<flag>-W.*?)\]')
+        r'^(?P<file>.*?):(?P<line>.*?):.*\[(?P<flag>.*?)\]')
 
     results = set()
     for match in matches:
