@@ -47,6 +47,8 @@ def parse_args():
     parser.add_argument('--verify-merge', action='store_true',
                         help='check if patches can be applied cleanly')
     parser.add_argument('--create-cl', action='store_true', help='create a CL')
+    parser.add_argument('--bug', help='bug to reference in CLs created (if any)')
+    parser.add_argument('--reason', help='issue/reason to mention in CL subject line')
     args = parser.parse_args()
     return args
 
@@ -160,12 +162,18 @@ def sha_to_revision(sha: str) -> int:
     return rev.number
 
 
-def create_cl(new_patches: PatchList):
+def create_cl(new_patches: PatchList, bug: Optional[str], reason: Optional[str]):
     file_list = [p.rel_patch_path for p in new_patches] + ['PATCHES.json']
     file_list = [str(paths.SCRIPTS_DIR / 'patches' / f) for f in file_list]
     check_call(['git', 'add'] + file_list)
 
-    commit_lines = ['[patches] Cherry pick CLs from upstream', '']
+    if reason:
+        subject = f'[patches] Cherry pick CLS for: {reason}'
+    else:
+        subject = '[patches] Cherry pick CLs from upstream'
+    commit_lines = [subject, '']
+    if bug:
+        commit_lines += [f'Bug: http://b/{bug}', '']
     for patch in new_patches:
         sha = patch.sha[:11]
         subject = patch.comment
@@ -189,7 +197,7 @@ def main():
         print('verify merge...')
         source_manager.setup_sources(source_dir=paths.LLVM_PATH)
     if args.create_cl:
-        create_cl(new_patches)
+        create_cl(new_patches, args.bug, args.reason)
 
 
 if __name__ == '__main__':
