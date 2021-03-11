@@ -36,6 +36,12 @@
         "end_version": 415963
     },
     {
+        "comment": "[UPSTREAM] Revert \"[SLP]Merge reorder and reuse shuffles.\"",
+        "rel_patch_path": "cherry/e463bd53c03ff9183bd30030477dfe6f3b2fdd0c.patch",
+        "start_version": 416183,
+        "end_version": 416430
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[clang] Change builtin object size when subobject is invalid\"",
         "rel_patch_path": "cherry/b270fd59f0a86fe737853abc43e76b9d29a67eea.patch",
         "start_version": 416183,
@@ -76,6 +82,12 @@
         "rel_patch_path": "cherry/bab74864168bb5e28ecbc0294fe1095d8da7f569.patch",
         "start_version": 416183,
         "end_version": 417837
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[ConstantFold] Fold more operations to poison\"",
+        "rel_patch_path": "cherry/06829034ca64b8c83a5b20d8abe5ddbfe7af0004.patch",
+        "start_version": 416183,
+        "end_version": 417900
     },
     {
         "comment": "[UPSTREAM] [Coverage] Propogate counter to condition of conditional operator",
@@ -124,6 +136,12 @@
         "rel_patch_path": "cherry/a921aaf789912d981cbb2036bdc91ad7289e1523.patch",
         "start_version": 412851,
         "end_version": 419946
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[c++20] Mark class type NTTPs as done and start defining the feature test macro.\"",
+        "rel_patch_path": "cherry/564f5b0734bd5d265a0046e5ca9d08ae5bc303eb.patch",
+        "start_version": 416183,
+        "end_version": 420338
     },
     {
         "comment": "[UPSTREAM] [ARM] support symbolic expressions as branch target in b.w",
