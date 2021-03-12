@@ -55,7 +55,8 @@ class AndroidBuildClient():
             ANDROID_BUILD_API_NAME,
             ANDROID_BUILD_API_VERSION,
             credentials=creds,
-            discoveryServiceUrl=apiclient.discovery.DISCOVERY_URI)
+            discoveryServiceUrl=apiclient.discovery.DISCOVERY_URI,
+            cache_discovery=False)
 
     @staticmethod
     def _worknode_parse_general(workNodeData):
