@@ -9,7 +9,7 @@ crosshatch:
 cf_x86_phone:
     cluster: dockerized-tf-gke
     run_target: TcpDevice
-    test_bench_gcl: cloud_tf/avd-cf.gcl
+    test_bench_gcl: cloud_tf/avd-cf-coverage.gcl
 cf_x86_64_phone:
     cluster: dockerized-tf-gke
     run_target: TcpDevice
