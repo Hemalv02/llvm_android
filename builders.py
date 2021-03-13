@@ -834,39 +834,6 @@ class SysrootsBuilder(base_builders.Builder):
                     raise RuntimeError('sysroot file should have been ' +
                                        f'removed: {os.path.join(parent, f)}')
 
-        if not platform and arch in [hosts.Arch.ARM, hosts.Arch.I386]:
-            # HACK: The arm32 libunwind uses dl_unwind_find_exidx rather than
-            # __gnu_Unwind_Find_exidx. However, libc.a only provides the latter
-            # until NDK r22. Until this build system upgrades to NDK r22,
-            # replace libc.a(exidx_static.o) with an upgraded copy.
-            #
-            # HACK: The x86 libc.a from NDK r20 needs __x86.get_pc_thunk.cx from
-            # libgcc.a. This incorrect dependency will be fixed in NDK r22's
-            # libc.a. The workaround here might result in a mislinked
-            # lldb-server that crashes, but instead, lldb-server seems to be OK.
-            # See https://bugs.llvm.org/show_bug.cgi?id=45594.
-            if constants.NDK_VERSION >= 'r22':
-                raise RuntimeError('libc.a patching should be removed with r22 prebuilt: '
-                                   f'NDK_VERSION={constants.NDK_VERSION}')
-            patch_dir = paths.OUT_DIR / 'ndk_libc_patch'
-            patch_dir.mkdir(parents=True, exist_ok=True)
-            if arch == hosts.Arch.ARM:
-                patch_src = (paths.ANDROID_DIR / 'bionic' / 'libc' / 'arch-arm' /
-                             'bionic' / 'exidx_static.c')
-                patch_name = 'exidx_static'
-            else:
-                patch_src = (paths.ANDROID_DIR / 'bionic' / 'libc' / 'arch-x86' /
-                             'bionic' / '__x86.get_pc_thunk.S')
-                patch_name = '__x86.get_pc_thunk'
-            patch_obj = patch_dir / f'{patch_name}.o'
-            libc_archive = (sysroot / 'usr' / 'lib' / arch.ndk_triple / '29' /
-                            'libc.a')
-            utils.check_call([self.toolchain.cc, f'--sysroot={sysroot}', '-c',
-                              f'--target={arch.llvm_triple}', f'-o{patch_obj}',
-                              patch_src])
-            utils.check_call([self.toolchain.path / 'bin' / 'llvm-ar',
-                              'rcs', libc_archive, patch_obj])
-
         if platform:
             # Create a stub library for the platform's libc++.
             platform_stubs = paths.OUT_DIR / 'platform_stubs' / arch.ndk_arch
