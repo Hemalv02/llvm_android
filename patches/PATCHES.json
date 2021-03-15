@@ -114,6 +114,12 @@
         "end_version": 418680
     },
     {
+        "comment": "[UPSTREAM] libunwind: Don't attempt to authenticate a null return address.",
+        "rel_patch_path": "cherry/cddc53ef088b68586094c9841a76b41bee3994a4.patch",
+        "start_version": 412851,
+        "end_version": 419080
+    },
+    {
         "comment": "[UPSTREAM] [Coverage] Emit gap region after conditions when macro is present.",
         "rel_patch_path": "cherry/d83511dd26ca8d0dd5be6302ad7b55de05cedab2.patch",
         "start_version": 416183,
@@ -166,6 +172,18 @@
         "rel_patch_path": "cherry/a478b0a199f4928041390d1f35dd5e226936b42c.patch",
         "start_version": 416183,
         "end_version": 421228
+    },
+    {
+        "comment": "[UPSTREAM] [AArch64][compiler-rt] Add Pointer Authentication support for VFORK.",
+        "rel_patch_path": "cherry/201550852be4d4213d733316c38c0a7335b0d14c.patch",
+        "start_version": 412851,
+        "end_version": 421291
+    },
+    {
+        "comment": "[UPSTREAM] [AArch64][compiler-rt] Strip PAC from the link register.",
+        "rel_patch_path": "cherry/ad40453fc425ee8e1fe43c7bb6e3c1c3afa9cc3b.patch",
+        "start_version": 412851,
+        "end_version": 421672
     },
     {
         "comment": "Revert two changes that break Android builds.",
