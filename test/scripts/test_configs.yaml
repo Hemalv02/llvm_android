@@ -60,6 +60,9 @@ git_master:
             - apct/device_boot_health_check_extra
     wembley-userdebug:
         groups: arm64
+    ndk_translation_all:
+        tests:
+            - apct/gtest_host_unit_tests
 
 RELEASE_BRANCH_1:
     cf_x86_phone_analyzer-userdebug:
