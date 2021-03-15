@@ -1,0 +1,35 @@
+From cddc53ef088b68586094c9841a76b41bee3994a4 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Thu, 11 Feb 2021 16:16:51 -0800
+Subject: [PATCH] libunwind: Don't attempt to authenticate a null return
+ address.
+X-ARM-No-Footer: FoSSMail
+
+Null return addresses can appear at the bottom of the stack (i.e. the
+frame corresponding to the entry point). Authenticating these addresses
+will set the error code in the address, which will lead to a segfault
+in the sigreturn trampoline detection code. Fix this problem by not
+authenticating null addresses.
+
+Differential Revision: https://reviews.llvm.org/D96560
+---
+ libunwind/src/DwarfInstructions.hpp | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/libunwind/src/DwarfInstructions.hpp b/libunwind/src/DwarfInstructions.hpp
+index c39cabe1f783..bd13d1623153 100644
+--- a/libunwind/src/DwarfInstructions.hpp
++++ b/libunwind/src/DwarfInstructions.hpp
+@@ -213,7 +213,8 @@ int DwarfInstructions<A, R>::stepWithDwarf(A &addressSpace, pint_t pc,
+       // restored. autia1716 is used instead of autia as autia1716 assembles
+       // to a NOP on pre-v8.3a architectures.
+       if ((R::getArch() == REGISTERS_ARM64) &&
+-          prolog.savedRegisters[UNW_ARM64_RA_SIGN_STATE].value) {
++          prolog.savedRegisters[UNW_ARM64_RA_SIGN_STATE].value &&
++          returnAddress != 0) {
+ #if !defined(_LIBUNWIND_IS_NATIVE_ONLY)
+         return UNW_ECROSSRASIGNING;
+ #else
+-- 
+2.25.1
+
