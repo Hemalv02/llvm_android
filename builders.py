@@ -483,10 +483,11 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
             defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'TRUE'
         else:
             defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'FALSE'
-        # TODO: Enable the FrameHeaderCache, for the platform only (not the
-        # NDK), after (a) upgrading libunwind to a version with this config
-        # setting and (b) upgrading the prebuilt NDK to r21 (which adds
-        # dlpi_adds/dlpi_subs).
+        # Enable the FrameHeaderCache for the libc.so unwinder only. It can't be
+        # enabled generally for Android because it needs the
+        # dlpi_adds/dlpi_subs fields, which were only added to Bionic in
+        # Android R. See llvm.org/pr46743.
+        defines['LIBUNWIND_USE_FRAME_HEADER_CACHE'] = 'TRUE' if self.is_exported else 'FALSE'
         return defines
 
     def install_config(self) -> None:
