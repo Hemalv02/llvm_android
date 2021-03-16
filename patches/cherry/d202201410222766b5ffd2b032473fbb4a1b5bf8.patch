@@ -1,0 +1,748 @@
+From d202201410222766b5ffd2b032473fbb4a1b5bf8 Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Thu, 25 Feb 2021 15:43:12 -0800
+Subject: [PATCH] Reland "[builtins] Define fmax and scalbn inline"
+
+This reverts commit 680f836c2fa72166badd594a52b3f41b2ad074d2.
+
+Disable the non-default-rounding-mode scalbn[f] tests when we're using
+the MSVC libraries.
+
+Differential Revision: https://reviews.llvm.org/D91841
+---
+ compiler-rt/lib/builtins/divdc3.c             | 12 ++-
+ compiler-rt/lib/builtins/divsc3.c             | 11 ++-
+ compiler-rt/lib/builtins/divtc3.c             | 11 ++-
+ compiler-rt/lib/builtins/fp_lib.h             | 95 ++++++++++++++++++-
+ compiler-rt/lib/builtins/int_lib.h            | 13 +++
+ compiler-rt/lib/builtins/int_math.h           |  8 --
+ compiler-rt/lib/builtins/ppc/divtc3.c         | 19 ++--
+ .../builtins/Unit/compiler_rt_fmax_test.c     | 41 ++++++++
+ .../builtins/Unit/compiler_rt_fmaxf_test.c    | 39 ++++++++
+ .../builtins/Unit/compiler_rt_fmaxl_test.c    | 58 +++++++++++
+ .../builtins/Unit/compiler_rt_scalbn_test.c   | 78 +++++++++++++++
+ .../builtins/Unit/compiler_rt_scalbnf_test.c  | 77 +++++++++++++++
+ .../builtins/Unit/compiler_rt_scalbnl_test.c  | 77 +++++++++++++++
+ 13 files changed, 505 insertions(+), 34 deletions(-)
+ create mode 100644 compiler-rt/test/builtins/Unit/compiler_rt_fmax_test.c
+ create mode 100644 compiler-rt/test/builtins/Unit/compiler_rt_fmaxf_test.c
+ create mode 100644 compiler-rt/test/builtins/Unit/compiler_rt_fmaxl_test.c
+ create mode 100644 compiler-rt/test/builtins/Unit/compiler_rt_scalbn_test.c
+ create mode 100644 compiler-rt/test/builtins/Unit/compiler_rt_scalbnf_test.c
+ create mode 100644 compiler-rt/test/builtins/Unit/compiler_rt_scalbnl_test.c
+
+diff --git a/compiler-rt/lib/builtins/divdc3.c b/compiler-rt/lib/builtins/divdc3.c
+index c2cf62874603..5581182f3bfd 100644
+--- a/compiler-rt/lib/builtins/divdc3.c
++++ b/compiler-rt/lib/builtins/divdc3.c
+@@ -20,17 +20,19 @@
+ COMPILER_RT_ABI Dcomplex __divdc3(double __a, double __b, double __c,
+                                   double __d) {
+   int __ilogbw = 0;
+-  double __logbw = __compiler_rt_logb(crt_fmax(crt_fabs(__c), crt_fabs(__d)));
++  double __logbw = __compiler_rt_logb(__compiler_rt_fmax(crt_fabs(__c),
++                                                         crt_fabs(__d)));
+   if (crt_isfinite(__logbw)) {
+     __ilogbw = (int)__logbw;
+-    __c = crt_scalbn(__c, -__ilogbw);
+-    __d = crt_scalbn(__d, -__ilogbw);
++    __c = __compiler_rt_scalbn(__c, -__ilogbw);
++    __d = __compiler_rt_scalbn(__d, -__ilogbw);
+   }
+   double __denom = __c * __c + __d * __d;
+   Dcomplex z;
+-  COMPLEX_REAL(z) = crt_scalbn((__a * __c + __b * __d) / __denom, -__ilogbw);
++  COMPLEX_REAL(z) =
++      __compiler_rt_scalbn((__a * __c + __b * __d) / __denom, -__ilogbw);
+   COMPLEX_IMAGINARY(z) =
+-      crt_scalbn((__b * __c - __a * __d) / __denom, -__ilogbw);
++      __compiler_rt_scalbn((__b * __c - __a * __d) / __denom, -__ilogbw);
+   if (crt_isnan(COMPLEX_REAL(z)) && crt_isnan(COMPLEX_IMAGINARY(z))) {
+     if ((__denom == 0.0) && (!crt_isnan(__a) || !crt_isnan(__b))) {
+       COMPLEX_REAL(z) = crt_copysign(CRT_INFINITY, __c) * __a;
+diff --git a/compiler-rt/lib/builtins/divsc3.c b/compiler-rt/lib/builtins/divsc3.c
+index 1a63634dde21..aa4fd8e79e0c 100644
+--- a/compiler-rt/lib/builtins/divsc3.c
++++ b/compiler-rt/lib/builtins/divsc3.c
+@@ -20,17 +20,18 @@
+ COMPILER_RT_ABI Fcomplex __divsc3(float __a, float __b, float __c, float __d) {
+   int __ilogbw = 0;
+   float __logbw =
+-      __compiler_rt_logbf(crt_fmaxf(crt_fabsf(__c), crt_fabsf(__d)));
++      __compiler_rt_logbf(__compiler_rt_fmaxf(crt_fabsf(__c), crt_fabsf(__d)));
+   if (crt_isfinite(__logbw)) {
+     __ilogbw = (int)__logbw;
+-    __c = crt_scalbnf(__c, -__ilogbw);
+-    __d = crt_scalbnf(__d, -__ilogbw);
++    __c = __compiler_rt_scalbnf(__c, -__ilogbw);
++    __d = __compiler_rt_scalbnf(__d, -__ilogbw);
+   }
+   float __denom = __c * __c + __d * __d;
+   Fcomplex z;
+-  COMPLEX_REAL(z) = crt_scalbnf((__a * __c + __b * __d) / __denom, -__ilogbw);
++  COMPLEX_REAL(z) =
++      __compiler_rt_scalbnf((__a * __c + __b * __d) / __denom, -__ilogbw);
+   COMPLEX_IMAGINARY(z) =
+-      crt_scalbnf((__b * __c - __a * __d) / __denom, -__ilogbw);
++      __compiler_rt_scalbnf((__b * __c - __a * __d) / __denom, -__ilogbw);
+   if (crt_isnan(COMPLEX_REAL(z)) && crt_isnan(COMPLEX_IMAGINARY(z))) {
+     if ((__denom == 0) && (!crt_isnan(__a) || !crt_isnan(__b))) {
+       COMPLEX_REAL(z) = crt_copysignf(CRT_INFINITY, __c) * __a;
+diff --git a/compiler-rt/lib/builtins/divtc3.c b/compiler-rt/lib/builtins/divtc3.c
+index 37c71400e370..0e4799295f32 100644
+--- a/compiler-rt/lib/builtins/divtc3.c
++++ b/compiler-rt/lib/builtins/divtc3.c
+@@ -21,17 +21,18 @@ COMPILER_RT_ABI Lcomplex __divtc3(long double __a, long double __b,
+                                   long double __c, long double __d) {
+   int __ilogbw = 0;
+   long double __logbw =
+-      __compiler_rt_logbl(crt_fmaxl(crt_fabsl(__c), crt_fabsl(__d)));
++      __compiler_rt_logbl(__compiler_rt_fmaxl(crt_fabsl(__c), crt_fabsl(__d)));
+   if (crt_isfinite(__logbw)) {
+     __ilogbw = (int)__logbw;
+-    __c = crt_scalbnl(__c, -__ilogbw);
+-    __d = crt_scalbnl(__d, -__ilogbw);
++    __c = __compiler_rt_scalbnl(__c, -__ilogbw);
++    __d = __compiler_rt_scalbnl(__d, -__ilogbw);
+   }
+   long double __denom = __c * __c + __d * __d;
+   Lcomplex z;
+-  COMPLEX_REAL(z) = crt_scalbnl((__a * __c + __b * __d) / __denom, -__ilogbw);
++  COMPLEX_REAL(z) =
++      __compiler_rt_scalbnl((__a * __c + __b * __d) / __denom, -__ilogbw);
+   COMPLEX_IMAGINARY(z) =
+-      crt_scalbnl((__b * __c - __a * __d) / __denom, -__ilogbw);
++      __compiler_rt_scalbnl((__b * __c - __a * __d) / __denom, -__ilogbw);
+   if (crt_isnan(COMPLEX_REAL(z)) && crt_isnan(COMPLEX_IMAGINARY(z))) {
+     if ((__denom == 0.0) && (!crt_isnan(__a) || !crt_isnan(__b))) {
+       COMPLEX_REAL(z) = crt_copysignl(CRT_INFINITY, __c) * __a;
+diff --git a/compiler-rt/lib/builtins/fp_lib.h b/compiler-rt/lib/builtins/fp_lib.h
+index f22feafa4e69..3fb13a033a14 100644
+--- a/compiler-rt/lib/builtins/fp_lib.h
++++ b/compiler-rt/lib/builtins/fp_lib.h
+@@ -299,28 +299,119 @@ static __inline fp_t __compiler_rt_logbX(fp_t x) {
+     return exp - exponentBias - shift; // Unbias exponent
+   }
+ }
++
++// Avoid using scalbn from libm. Unlike libc/libm scalbn, this function never
++// sets errno on underflow/overflow.
++static __inline fp_t __compiler_rt_scalbnX(fp_t x, int y) {
++  const rep_t rep = toRep(x);
++  int exp = (rep & exponentMask) >> significandBits;
++
++  if (x == 0.0 || exp == maxExponent)
++    return x; // +/- 0.0, NaN, or inf: return x
++
++  // Normalize subnormal input.
++  rep_t sig = rep & significandMask;
++  if (exp == 0) {
++    exp += normalize(&sig);
++    sig &= ~implicitBit; // clear the implicit bit again
++  }
++
++  if (__builtin_sadd_overflow(exp, y, &exp)) {
++    // Saturate the exponent, which will guarantee an underflow/overflow below.
++    exp = (y >= 0) ? INT_MAX : INT_MIN;
++  }
++
++  // Return this value: [+/-] 1.sig * 2 ** (exp - exponentBias).
++  const rep_t sign = rep & signBit;
++  if (exp >= maxExponent) {
++    // Overflow, which could produce infinity or the largest-magnitude value,
++    // depending on the rounding mode.
++    return fromRep(sign | ((rep_t)(maxExponent - 1) << significandBits)) * 2.0f;
++  } else if (exp <= 0) {
++    // Subnormal or underflow. Use floating-point multiply to handle truncation
++    // correctly.
++    fp_t tmp = fromRep(sign | (REP_C(1) << significandBits) | sig);
++    exp += exponentBias - 1;
++    if (exp < 1)
++      exp = 1;
++    tmp *= fromRep((rep_t)exp << significandBits);
++    return tmp;
++  } else
++    return fromRep(sign | ((rep_t)exp << significandBits) | sig);
++}
++
++// Avoid using fmax from libm.
++static __inline fp_t __compiler_rt_fmaxX(fp_t x, fp_t y) {
++  // If either argument is NaN, return the other argument. If both are NaN,
++  // arbitrarily return the second one. Otherwise, if both arguments are +/-0,
++  // arbitrarily return the first one.
++  return (crt_isnan(x) || x < y) ? y : x;
++}
++
+ #endif
+ 
+ #if defined(SINGLE_PRECISION)
++
+ static __inline fp_t __compiler_rt_logbf(fp_t x) {
+   return __compiler_rt_logbX(x);
+ }
++static __inline fp_t __compiler_rt_scalbnf(fp_t x, int y) {
++  return __compiler_rt_scalbnX(x, y);
++}
++static __inline fp_t __compiler_rt_fmaxf(fp_t x, fp_t y) {
++#if defined(__aarch64__)
++  // Use __builtin_fmaxf which turns into an fmaxnm instruction on AArch64.
++  return __builtin_fmaxf(x, y);
++#else
++  // __builtin_fmaxf frequently turns into a libm call, so inline the function.
++  return __compiler_rt_fmaxX(x, y);
++#endif
++}
++
+ #elif defined(DOUBLE_PRECISION)
++
+ static __inline fp_t __compiler_rt_logb(fp_t x) {
+   return __compiler_rt_logbX(x);
+ }
++static __inline fp_t __compiler_rt_scalbn(fp_t x, int y) {
++  return __compiler_rt_scalbnX(x, y);
++}
++static __inline fp_t __compiler_rt_fmax(fp_t x, fp_t y) {
++#if defined(__aarch64__)
++  // Use __builtin_fmax which turns into an fmaxnm instruction on AArch64.
++  return __builtin_fmax(x, y);
++#else
++  // __builtin_fmax frequently turns into a libm call, so inline the function.
++  return __compiler_rt_fmaxX(x, y);
++#endif
++}
++
+ #elif defined(QUAD_PRECISION)
++
+ #if defined(CRT_LDBL_128BIT)
+ static __inline fp_t __compiler_rt_logbl(fp_t x) {
+   return __compiler_rt_logbX(x);
+ }
++static __inline fp_t __compiler_rt_scalbnl(fp_t x, int y) {
++  return __compiler_rt_scalbnX(x, y);
++}
++static __inline fp_t __compiler_rt_fmaxl(fp_t x, fp_t y) {
++  return __compiler_rt_fmaxX(x, y);
++}
+ #else
+ // The generic implementation only works for ieee754 floating point. For other
+ // floating point types, continue to rely on the libm implementation for now.
+ static __inline long double __compiler_rt_logbl(long double x) {
+   return crt_logbl(x);
+ }
+-#endif
+-#endif
++static __inline long double __compiler_rt_scalbnl(long double x, int y) {
++  return crt_scalbnl(x, y);
++}
++static __inline long double __compiler_rt_fmaxl(long double x, long double y) {
++  return crt_fmaxl(x, y);
++}
++#endif // CRT_LDBL_128BIT
++
++#endif // *_PRECISION
+ 
+ #endif // FP_LIB_HEADER
+diff --git a/compiler-rt/lib/builtins/int_lib.h b/compiler-rt/lib/builtins/int_lib.h
+index a3715898568f..fb791ebc42eb 100644
+--- a/compiler-rt/lib/builtins/int_lib.h
++++ b/compiler-rt/lib/builtins/int_lib.h
+@@ -153,6 +153,19 @@ int __inline __builtin_clzll(uint64_t value) {
+ #endif
+ 
+ #define __builtin_clzl __builtin_clzll
++
++bool __inline __builtin_sadd_overflow(int x, int y, int *result) {
++  if ((x < 0) != (y < 0)) {
++    *result = x + y;
++    return false;
++  }
++  int tmp = (unsigned int)x + (unsigned int)y;
++  if ((tmp < 0) != (x < 0))
++    return true;
++  *result = tmp;
++  return false;
++}
++
+ #endif // defined(_MSC_VER) && !defined(__clang__)
+ 
+ #endif // INT_LIB_H
+diff --git a/compiler-rt/lib/builtins/int_math.h b/compiler-rt/lib/builtins/int_math.h
+index 58d8990f31b1..48b9580f5961 100644
+--- a/compiler-rt/lib/builtins/int_math.h
++++ b/compiler-rt/lib/builtins/int_math.h
+@@ -78,12 +78,8 @@
+ #endif
+ 
+ #if defined(_MSC_VER) && !defined(__clang__)
+-#define crt_fmax(x, y) __max((x), (y))
+-#define crt_fmaxf(x, y) __max((x), (y))
+ #define crt_fmaxl(x, y) __max((x), (y))
+ #else
+-#define crt_fmax(x, y) __builtin_fmax((x), (y))
+-#define crt_fmaxf(x, y) __builtin_fmaxf((x), (y))
+ #define crt_fmaxl(x, y) __builtin_fmaxl((x), (y))
+ #endif
+ 
+@@ -94,12 +90,8 @@
+ #endif
+ 
+ #if defined(_MSC_VER) && !defined(__clang__)
+-#define crt_scalbn(x, y) scalbn((x), (y))
+-#define crt_scalbnf(x, y) scalbnf((x), (y))
+ #define crt_scalbnl(x, y) scalbnl((x), (y))
+ #else
+-#define crt_scalbn(x, y) __builtin_scalbn((x), (y))
+-#define crt_scalbnf(x, y) __builtin_scalbnf((x), (y))
+ #define crt_scalbnl(x, y) __builtin_scalbnl((x), (y))
+ #endif
+ 
+diff --git a/compiler-rt/lib/builtins/ppc/divtc3.c b/compiler-rt/lib/builtins/ppc/divtc3.c
+index afaccf5a8fd6..671bd4ddbbd7 100644
+--- a/compiler-rt/lib/builtins/ppc/divtc3.c
++++ b/compiler-rt/lib/builtins/ppc/divtc3.c
+@@ -27,15 +27,16 @@ long double _Complex __divtc3(long double a, long double b, long double c,
+ 
+   int ilogbw = 0;
+   const double logbw =
+-      __compiler_rt_logb(crt_fmax(crt_fabs(cDD.s.hi), crt_fabs(dDD.s.hi)));
++      __compiler_rt_logb(__compiler_rt_fmax(crt_fabs(cDD.s.hi),
++                                            crt_fabs(dDD.s.hi)));
+ 
+   if (crt_isfinite(logbw)) {
+     ilogbw = (int)logbw;
+ 
+-    cDD.s.hi = crt_scalbn(cDD.s.hi, -ilogbw);
+-    cDD.s.lo = crt_scalbn(cDD.s.lo, -ilogbw);
+-    dDD.s.hi = crt_scalbn(dDD.s.hi, -ilogbw);
+-    dDD.s.lo = crt_scalbn(dDD.s.lo, -ilogbw);
++    cDD.s.hi = __compiler_rt_scalbn(cDD.s.hi, -ilogbw);
++    cDD.s.lo = __compiler_rt_scalbn(cDD.s.lo, -ilogbw);
++    dDD.s.hi = __compiler_rt_scalbn(dDD.s.hi, -ilogbw);
++    dDD.s.lo = __compiler_rt_scalbn(dDD.s.lo, -ilogbw);
+   }
+ 
+   const long double denom =
+@@ -48,10 +49,10 @@ long double _Complex __divtc3(long double a, long double b, long double c,
+   DD real = {.ld = __gcc_qdiv(realNumerator, denom)};
+   DD imag = {.ld = __gcc_qdiv(imagNumerator, denom)};
+ 
+-  real.s.hi = crt_scalbn(real.s.hi, -ilogbw);
+-  real.s.lo = crt_scalbn(real.s.lo, -ilogbw);
+-  imag.s.hi = crt_scalbn(imag.s.hi, -ilogbw);
+-  imag.s.lo = crt_scalbn(imag.s.lo, -ilogbw);
++  real.s.hi = __compiler_rt_scalbn(real.s.hi, -ilogbw);
++  real.s.lo = __compiler_rt_scalbn(real.s.lo, -ilogbw);
++  imag.s.hi = __compiler_rt_scalbn(imag.s.hi, -ilogbw);
++  imag.s.lo = __compiler_rt_scalbn(imag.s.lo, -ilogbw);
+ 
+   if (crt_isnan(real.s.hi) && crt_isnan(imag.s.hi)) {
+     DD aDD = {.ld = a};
+diff --git a/compiler-rt/test/builtins/Unit/compiler_rt_fmax_test.c b/compiler-rt/test/builtins/Unit/compiler_rt_fmax_test.c
+new file mode 100644
+index 000000000000..47ac5b784994
+--- /dev/null
++++ b/compiler-rt/test/builtins/Unit/compiler_rt_fmax_test.c
+@@ -0,0 +1,41 @@
++// RUN: %clang_builtins %s %librt -o %t && %run %t
++
++#define DOUBLE_PRECISION
++#include <fenv.h>
++#include <math.h>
++#include <stdio.h>
++#include "fp_lib.h"
++
++int test__compiler_rt_fmax(fp_t x, fp_t y) {
++  fp_t crt_value = __compiler_rt_fmax(x, y);
++  fp_t libm_value = fmax(x, y);
++  // Consider +0 and -0 equal, and also disregard the sign/payload of two NaNs.
++  if (crt_value != libm_value &&
++      !(crt_isnan(crt_value) && crt_isnan(libm_value))) {
++    printf("error: in __compiler_rt_fmax(%a [%llX], %a [%llX]) = %a [%llX] "
++           "!= %a [%llX]\n",
++           x, (unsigned long long)toRep(x),
++           y, (unsigned long long)toRep(y),
++           crt_value, (unsigned long long)toRep(crt_value),
++           libm_value, (unsigned long long)toRep(libm_value));
++    return 1;
++  }
++  return 0;
++}
++
++fp_t cases[] = {
++  -NAN, NAN, -INFINITY, INFINITY, -0.0, 0.0, -1, 1, -2, 2,
++  -0x1.0p-1023, 0x1.0p-1023, -0x1.0p-1024, 0x1.0p-1024, // subnormals
++  -1.001, 1.001, -1.002, 1.002,
++};
++
++int main() {
++  const unsigned N = sizeof(cases) / sizeof(cases[0]);
++  unsigned i, j;
++  for (i = 0; i < N; ++i) {
++    for (j = 0; j < N; ++j) {
++      if (test__compiler_rt_fmax(cases[i], cases[j])) return 1;
++    }
++  }
++  return 0;
++}
+diff --git a/compiler-rt/test/builtins/Unit/compiler_rt_fmaxf_test.c b/compiler-rt/test/builtins/Unit/compiler_rt_fmaxf_test.c
+new file mode 100644
+index 000000000000..9953a0cc0736
+--- /dev/null
++++ b/compiler-rt/test/builtins/Unit/compiler_rt_fmaxf_test.c
+@@ -0,0 +1,39 @@
++// RUN: %clang_builtins %s %librt -o %t && %run %t
++
++#define SINGLE_PRECISION
++#include <fenv.h>
++#include <math.h>
++#include <stdio.h>
++#include "fp_lib.h"
++
++int test__compiler_rt_fmaxf(fp_t x, fp_t y) {
++  fp_t crt_value = __compiler_rt_fmaxf(x, y);
++  fp_t libm_value = fmaxf(x, y);
++  // Consider +0 and -0 equal, and also disregard the sign/payload of two NaNs.
++  if (crt_value != libm_value &&
++      !(crt_isnan(crt_value) && crt_isnan(libm_value))) {
++    printf("error: in __compiler_rt_fmaxf(%a [%X], %a [%X]) = %a [%X] "
++           "!= %a [%X]\n",
++           x, toRep(x), y, toRep(y), crt_value, toRep(crt_value), libm_value,
++           toRep(libm_value));
++    return 1;
++  }
++  return 0;
++}
++
++fp_t cases[] = {
++  -NAN, NAN, -INFINITY, INFINITY, -0.0, 0.0, -1, 1, -2, 2,
++  -0x1.0p-127, 0x1.0p-127, -0x1.0p-128, 0x1.0p-128, // subnormals
++  -1.001, 1.001, -1.002, 1.002,
++};
++
++int main() {
++  const unsigned N = sizeof(cases) / sizeof(cases[0]);
++  unsigned i, j;
++  for (i = 0; i < N; ++i) {
++    for (j = 0; j < N; ++j) {
++      if (test__compiler_rt_fmaxf(cases[i], cases[j])) return 1;
++    }
++  }
++  return 0;
++}
+diff --git a/compiler-rt/test/builtins/Unit/compiler_rt_fmaxl_test.c b/compiler-rt/test/builtins/Unit/compiler_rt_fmaxl_test.c
+new file mode 100644
+index 000000000000..b3c570bcc642
+--- /dev/null
++++ b/compiler-rt/test/builtins/Unit/compiler_rt_fmaxl_test.c
+@@ -0,0 +1,58 @@
++// RUN: %clang_builtins %s %librt -o %t && %run %t
++
++#define QUAD_PRECISION
++#include <fenv.h>
++#include <math.h>
++#include <stdio.h>
++#include "fp_lib.h"
++
++#if defined(CRT_HAS_128BIT) && defined(CRT_LDBL_128BIT)
++
++int test__compiler_rt_fmaxl(fp_t x, fp_t y) {
++  fp_t crt_value = __compiler_rt_fmaxl(x, y);
++  fp_t libm_value = fmaxl(x, y);
++  // Consider +0 and -0 equal, and also disregard the sign/payload of two NaNs.
++  if (crt_value != libm_value &&
++      !(crt_isnan(crt_value) && crt_isnan(libm_value))) {
++    // Split expected values into two for printf
++    twords x_t, y_t, crt_value_t, libm_value_t;
++    x_t.all = toRep(x);
++    y_t.all = toRep(y);
++    crt_value_t.all = toRep(crt_value);
++    libm_value_t.all = toRep(libm_value);
++    printf(
++        "error: in __compiler_rt_fmaxl([%llX %llX], [%llX %llX]) = "
++        "[%llX %llX] != [%llX %llX]\n",
++        (unsigned long long)x_t.s.high, (unsigned long long)x_t.s.low,
++        (unsigned long long)y_t.s.high, (unsigned long long)y_t.s.low,
++        (unsigned long long)crt_value_t.s.high,
++        (unsigned long long)crt_value_t.s.low,
++        (unsigned long long)libm_value_t.s.high,
++        (unsigned long long)libm_value_t.s.low);
++    return 1;
++  }
++  return 0;
++}
++
++fp_t cases[] = {
++  -NAN, NAN, -INFINITY, INFINITY, -0.0, 0.0, -1, 1, -2, 2,
++  -0x1.0p-16383L, 0x1.0p-16383L, -0x1.0p-16384L, 0x1.0p-16384L, // subnormals
++  -1.001, 1.001, -1.002, 1.002,
++};
++
++#endif
++
++int main() {
++#if defined(CRT_HAS_128BIT) && defined(CRT_LDBL_128BIT)
++  const unsigned N = sizeof(cases) / sizeof(cases[0]);
++  unsigned i, j;
++  for (i = 0; i < N; ++i) {
++    for (j = 0; j < N; ++j) {
++      if (test__compiler_rt_fmaxl(cases[i], cases[j])) return 1;
++    }
++  }
++#else
++  printf("skipped\n");
++#endif
++  return 0;
++}
+diff --git a/compiler-rt/test/builtins/Unit/compiler_rt_scalbn_test.c b/compiler-rt/test/builtins/Unit/compiler_rt_scalbn_test.c
+new file mode 100644
+index 000000000000..44cd48c5e114
+--- /dev/null
++++ b/compiler-rt/test/builtins/Unit/compiler_rt_scalbn_test.c
+@@ -0,0 +1,78 @@
++// RUN: %clang_builtins %s %librt -o %t && %run %t
++
++#define DOUBLE_PRECISION
++#include <fenv.h>
++#include <float.h>
++#include <limits.h>
++#include <math.h>
++#include <stdio.h>
++#include "fp_lib.h"
++
++int test__compiler_rt_scalbn(const char *mode, fp_t x, int y) {
++  fp_t crt_value = __compiler_rt_scalbn(x, y);
++  fp_t libm_value = scalbn(x, y);
++  // Consider +/-0 unequal, but disregard the sign/payload of NaN.
++  if (toRep(crt_value) != toRep(libm_value) &&
++      !(crt_isnan(crt_value) && crt_isnan(libm_value))) {
++    printf("error: [%s] in __compiler_rt_scalbn(%a [%llX], %d) = %a [%llX] "
++           "!= %a [%llX]\n",
++           mode, x, (unsigned long long)toRep(x), y,
++           crt_value, (unsigned long long)toRep(crt_value),
++           libm_value, (unsigned long long)toRep(libm_value));
++    return 1;
++  }
++  return 0;
++}
++
++fp_t cases[] = {
++  -NAN, NAN, -INFINITY, INFINITY, -0.0, 0.0, -1, 1, -2, 2,
++  DBL_TRUE_MIN, DBL_TRUE_MIN*7, DBL_MIN, DBL_MAX,
++  -1.001, 1.001, -1.002, 1.002, 1.e-6, -1.e-6,
++  0x1.0p-1021,
++  0x1.0p-1022,
++  0x1.0p-1023, // subnormal
++  0x1.0p-1024, // subnormal
++};
++
++int iterate_cases(const char *mode) {
++  const unsigned N = sizeof(cases) / sizeof(cases[0]);
++  unsigned i;
++  for (i = 0; i < N; ++i) {
++    int j;
++    for (j = -5; j <= 5; ++j) {
++      if (test__compiler_rt_scalbn(mode, cases[i], j)) return 1;
++    }
++    if (test__compiler_rt_scalbn(mode, cases[i], -10000)) return 1;
++    if (test__compiler_rt_scalbn(mode, cases[i], 10000)) return 1;
++    if (test__compiler_rt_scalbn(mode, cases[i], INT_MIN)) return 1;
++    if (test__compiler_rt_scalbn(mode, cases[i], INT_MAX)) return 1;
++  }
++  return 0;
++}
++
++int main() {
++  if (iterate_cases("default")) return 1;
++
++  // Rounding mode tests on supported architectures. __compiler_rt_scalbn
++  // should have the same rounding behavior as double-precision multiplication.
++#if (defined(__arm__) || defined(__aarch64__)) && defined(__ARM_FP) || \
++    defined(__i386__) || defined(__x86_64__)
++// Skip these tests for MSVC because its scalbn function always behaves as if
++// the default rounding mode is set (FE_TONEAREST).
++#ifndef _MSC_VER
++  fesetround(FE_UPWARD);
++  if (iterate_cases("FE_UPWARD")) return 1;
++
++  fesetround(FE_DOWNWARD);
++  if (iterate_cases("FE_DOWNWARD")) return 1;
++
++  fesetround(FE_TOWARDZERO);
++  if (iterate_cases("FE_TOWARDZERO")) return 1;
++#endif
++
++  fesetround(FE_TONEAREST);
++  if (iterate_cases("FE_TONEAREST")) return 1;
++#endif
++
++  return 0;
++}
+diff --git a/compiler-rt/test/builtins/Unit/compiler_rt_scalbnf_test.c b/compiler-rt/test/builtins/Unit/compiler_rt_scalbnf_test.c
+new file mode 100644
+index 000000000000..7c6554bb157f
+--- /dev/null
++++ b/compiler-rt/test/builtins/Unit/compiler_rt_scalbnf_test.c
+@@ -0,0 +1,77 @@
++// RUN: %clang_builtins %s %librt -o %t && %run %t
++
++#define SINGLE_PRECISION
++#include <fenv.h>
++#include <float.h>
++#include <limits.h>
++#include <math.h>
++#include <stdio.h>
++#include "fp_lib.h"
++
++int test__compiler_rt_scalbnf(const char *mode, fp_t x, int y) {
++  fp_t crt_value = __compiler_rt_scalbnf(x, y);
++  fp_t libm_value = scalbnf(x, y);
++  // Consider +/-0 unequal, but disregard the sign/payload of NaN.
++  if (toRep(crt_value) != toRep(libm_value) &&
++      !(crt_isnan(crt_value) && crt_isnan(libm_value))) {
++    printf("error: [%s] in __compiler_rt_scalbnf(%a [%X], %d) = %a [%X] "
++           "!= %a [%X]\n",
++           mode, x, toRep(x), y, crt_value, toRep(crt_value),
++           libm_value, toRep(libm_value));
++    return 1;
++  }
++  return 0;
++}
++
++fp_t cases[] = {
++  -NAN, NAN, -INFINITY, INFINITY, -0.0, 0.0, -1, 1, -2, 2,
++  FLT_TRUE_MIN, FLT_TRUE_MIN*7, FLT_MIN, FLT_MAX,
++  -1.001, 1.001, -1.002, 1.002, 1.e-6, -1.e-6,
++  0x1.0p-125,
++  0x1.0p-126,
++  0x1.0p-127, // subnormal
++  0x1.0p-128, // subnormal
++};
++
++int iterate_cases(const char *mode) {
++  const unsigned N = sizeof(cases) / sizeof(cases[0]);
++  unsigned i;
++  for (i = 0; i < N; ++i) {
++    int j;
++    for (j = -5; j <= 5; ++j) {
++      if (test__compiler_rt_scalbnf(mode, cases[i], j)) return 1;
++    }
++    if (test__compiler_rt_scalbnf(mode, cases[i], -1000)) return 1;
++    if (test__compiler_rt_scalbnf(mode, cases[i], 1000)) return 1;
++    if (test__compiler_rt_scalbnf(mode, cases[i], INT_MIN)) return 1;
++    if (test__compiler_rt_scalbnf(mode, cases[i], INT_MAX)) return 1;
++  }
++  return 0;
++}
++
++int main() {
++  if (iterate_cases("default")) return 1;
++
++  // Rounding mode tests on supported architectures. __compiler_rt_scalbnf
++  // should have the same rounding behavior as single-precision multiplication.
++#if (defined(__arm__) || defined(__aarch64__)) && defined(__ARM_FP) || \
++    defined(__i386__) || defined(__x86_64__)
++// Skip these tests for MSVC because its scalbnf function always behaves as if
++// the default rounding mode is set (FE_TONEAREST).
++#ifndef _MSC_VER
++  fesetround(FE_UPWARD);
++  if (iterate_cases("FE_UPWARD")) return 1;
++
++  fesetround(FE_DOWNWARD);
++  if (iterate_cases("FE_DOWNWARD")) return 1;
++
++  fesetround(FE_TOWARDZERO);
++  if (iterate_cases("FE_TOWARDZERO")) return 1;
++#endif
++
++  fesetround(FE_TONEAREST);
++  if (iterate_cases("FE_TONEAREST")) return 1;
++#endif
++
++  return 0;
++}
+diff --git a/compiler-rt/test/builtins/Unit/compiler_rt_scalbnl_test.c b/compiler-rt/test/builtins/Unit/compiler_rt_scalbnl_test.c
+new file mode 100644
+index 000000000000..e520e83b9b2b
+--- /dev/null
++++ b/compiler-rt/test/builtins/Unit/compiler_rt_scalbnl_test.c
+@@ -0,0 +1,77 @@
++// RUN: %clang_builtins %s %librt -o %t && %run %t
++
++#define QUAD_PRECISION
++#include <fenv.h>
++#include <float.h>
++#include <limits.h>
++#include <math.h>
++#include <stdio.h>
++#include "fp_lib.h"
++
++#if defined(CRT_HAS_128BIT) && defined(CRT_LDBL_128BIT)
++
++int test__compiler_rt_scalbnl(const char *mode, fp_t x, int y) {
++  fp_t crt_value = __compiler_rt_scalbnl(x, y);
++  fp_t libm_value = scalbnl(x, y);
++  // Consider +/-0 unequal, but disregard the sign/payload of NaN.
++  if (toRep(crt_value) != toRep(libm_value) &&
++      !(crt_isnan(crt_value) && crt_isnan(libm_value))) {
++    // Split expected values into two for printf
++    twords x_t, crt_value_t, libm_value_t;
++    x_t.all = toRep(x);
++    crt_value_t.all = toRep(crt_value);
++    libm_value_t.all = toRep(libm_value);
++    printf(
++        "error: [%s] in __compiler_rt_scalbnl([%llX %llX], %d) = "
++        "[%llX %llX] != [%llX %llX]\n",
++        mode, (unsigned long long)x_t.s.high, (unsigned long long)x_t.s.low, y,
++        (unsigned long long)crt_value_t.s.high,
++        (unsigned long long)crt_value_t.s.low,
++        (unsigned long long)libm_value_t.s.high,
++        (unsigned long long)libm_value_t.s.low);
++    return 1;
++  }
++  return 0;
++}
++
++fp_t cases[] = {
++  -NAN, NAN, -INFINITY, INFINITY, -0.0, 0.0, -1, 1, -2, 2,
++  LDBL_TRUE_MIN, LDBL_MIN, LDBL_MAX,
++  -1.001, 1.001, -1.002, 1.002, 1.e-6, -1.e-6,
++  0x1.0p-16381L,
++  0x1.0p-16382L,
++  0x1.0p-16383L, // subnormal
++  0x1.0p-16384L, // subnormal
++};
++
++int iterate_cases(const char *mode) {
++  const unsigned N = sizeof(cases) / sizeof(cases[0]);
++  unsigned i;
++  for (i = 0; i < N; ++i) {
++    int j;
++    for (j = -5; j <= 5; ++j) {
++      if (test__compiler_rt_scalbnl(mode, cases[i], j)) return 1;
++    }
++    if (test__compiler_rt_scalbnl(mode, cases[i], -100000)) return 1;
++    if (test__compiler_rt_scalbnl(mode, cases[i], 100000)) return 1;
++    if (test__compiler_rt_scalbnl(mode, cases[i], INT_MIN)) return 1;
++    if (test__compiler_rt_scalbnl(mode, cases[i], INT_MAX)) return 1;
++  }
++  return 0;
++}
++
++#endif
++
++int main() {
++#if defined(CRT_HAS_128BIT) && defined(CRT_LDBL_128BIT)
++  if (iterate_cases("default")) return 1;
++
++  // Skip rounding mode tests (fesetround) because compiler-rt's quad-precision
++  // multiply also ignores the current rounding mode.
++
++#else
++  printf("skipped\n");
++#endif
++
++  return 0;
++}
+-- 
+2.31.0.rc2.261.g7f71774620-goog
+
