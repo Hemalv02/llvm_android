@@ -42,3 +42,7 @@ sunfish:
     cluster: apct
     run_target: sunfish
     test_bench_gcl: apct/sunfish.gcl
+ndk_translation_all:
+    cluster: dockerized-tf-gke-presubmit
+    run_target: NullDevice
+    test_bench_gcl: cloud_tf/null-presubmit.gcl
