@@ -102,6 +102,12 @@
         "end_version": 418022
     },
     {
+        "comment": "[UPSTREAM] Revert \"Revert \"[clang][driver] Only warn once about invalid library values\"\"",
+        "rel_patch_path": "cherry/b86a763afb9a1f55f4b234ce97320917ead6ac7f.patch",
+        "start_version": 416183,
+        "end_version": 418524
+    },
+    {
         "comment": "[UPSTREAM] [Thumb2] support `movs pc, lr` alias for `subs pc, lr, #0`/`eret`",
         "rel_patch_path": "cherry/68945a8686708c6e4c74b9aeb231b8c4e1731181.patch",
         "start_version": 412851,
@@ -126,6 +132,12 @@
         "end_version": 419342
     },
     {
+        "comment": "[UPSTREAM] [libunwind] unw_* alias fixes for ELF and Mach-O",
+        "rel_patch_path": "cherry/729899f7b6bf6aff65988d895d7a639391a67608.patch",
+        "start_version": 416183,
+        "end_version": 419703
+    },
+    {
         "comment": "[UPSTREAM] [THUMB2] add .w suffixes for ldr/str (immediate) T4",
         "rel_patch_path": "cherry/1e204ac78952cf7e4fcf335423e80007388d3979.patch",
         "start_version": 412851,
@@ -142,6 +154,18 @@
         "rel_patch_path": "cherry/a921aaf789912d981cbb2036bdc91ad7289e1523.patch",
         "start_version": 412851,
         "end_version": 419946
+    },
+    {
+        "comment": "[UPSTREAM] [Android] Use -l:libunwind.a with --rtlib=compiler-rt",
+        "rel_patch_path": "cherry/91f8aacc040f5a458cfc2a10c4039e0028931455.patch",
+        "start_version": 416183,
+        "end_version": 420059
+    },
+    {
+        "comment": "[UPSTREAM] Reland \"[builtins] Define fmax and scalbn inline\"",
+        "rel_patch_path": "cherry/d202201410222766b5ffd2b032473fbb4a1b5bf8.patch",
+        "start_version": 416183,
+        "end_version": 420163
     },
     {
         "comment": "[UPSTREAM] Revert \"[c++20] Mark class type NTTPs as done and start defining the feature test macro.\"",
