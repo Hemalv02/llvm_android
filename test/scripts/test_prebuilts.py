@@ -284,6 +284,8 @@ def invokeForrestRuns(cls, args):
             cl_numbers.append(cls['kernelCL'].cl_number)
         else:
             cl_numbers.append(cls['soongCL'].cl_number)
+            if args.extra_cls_platform:
+                cl_numbers.extend(args.extra_cls_platform)
         return cl_numbers
 
     for config in TEST_CONFIGS:
@@ -291,6 +293,7 @@ def invokeForrestRuns(cls, args):
             logging.info(f'Skipping disabled config {config}')
             continue
         cl_numbers = _get_cl_numbers(config)
+
         branch = config.branch
         target = config.target
         tests = config.tests
@@ -352,6 +355,12 @@ def parse_args():
     parser.add_argument(
         '--kernel_repo_path',
         help='Kernel tree to use when uploading switcover CLs')
+    parser.add_argument(
+        '--extra_cls_platform',
+        metavar='CL_NUMBER',
+        nargs='+',
+        action='extend',
+        help='Additional CLs to include for platform tests')
     parser.add_argument(
         '--verbose', '-v', action='store_true', help='Print verbose output')
 
