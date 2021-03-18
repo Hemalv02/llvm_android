@@ -120,6 +120,12 @@
         "end_version": 418680
     },
     {
+        "comment": "[UPSTREAM] ObjectFileELF: Test whether reloc_header is non-null instead of asserting.",
+        "rel_patch_path": "cherry/c314f5ede8249ef20fff1de45c2c31156b1950d4.patch",
+        "start_version": 416183,
+        "end_version": 418715
+    },
+    {
         "comment": "[UPSTREAM] libunwind: Don't attempt to authenticate a null return address.",
         "rel_patch_path": "cherry/cddc53ef088b68586094c9841a76b41bee3994a4.patch",
         "start_version": 412851,
