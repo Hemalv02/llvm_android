@@ -796,13 +796,9 @@ class SysrootsBuilder(base_builders.Builder):
         dest_lib = sysroot / 'usr' / 'lib' / arch.ndk_triple
         shutil.copytree(src_lib, dest_lib, symlinks=True)
 
-        # Remove the NDK r20's old libcompiler_rt-extras and libunwind. (In the
-        # future, libunwind.a will be located in the toolchain resource
-        # directory along with libclang_rt.*.a, not in the sysroot directory.)
-        # For the platform, also remove the NDK libc++.
+        # Remove the NDK's libcompiler_rt-extras.  For the platform, also remove
+        # the NDK libc++.
         (dest_lib / 'libcompiler_rt-extras.a').unlink()
-        if arch == hosts.Arch.ARM:
-            (dest_lib / 'libunwind.a').unlink()
         if platform:
             (dest_lib / 'libc++abi.a').unlink()
             (dest_lib / 'libc++_static.a').unlink()
