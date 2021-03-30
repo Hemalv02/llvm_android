@@ -176,6 +176,11 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
     shutil.copy2(wrapper_path, clang_tidy_path)
     shutil.copy2(bisect_path, bin_path)
 
+    # point clang-cl to clang.real instead of clang (which is the wrapper)
+    clangcl_path = bin_path / 'clang-cl'
+    clangcl_path.unlink()
+    clangcl_path.symlink_to('clang.real')
+
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
