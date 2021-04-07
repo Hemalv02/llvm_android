@@ -627,17 +627,6 @@ class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
     config_list: List[configs.Config] = [configs.host_config()]
     static_lib: bool = True
 
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        defines = super().cmake_defines
-        # CMake actually generates a malformed archive command. llvm-ranlib does
-        # not accept it, but the Apple ranlib accepts this. Workaround to use
-        # the system ranlib until either CMake fixes this or llvm-ranlib also
-        # supports this common malformed input.
-        # See LIBTOOL(1).
-        if self._config.target_os.is_darwin:
-            defines.pop("CMAKE_RANLIB")
-        return defines
 
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
