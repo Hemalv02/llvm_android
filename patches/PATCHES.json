@@ -216,6 +216,12 @@
         "end_version": 421672
     },
     {
+        "comment": "[UPSTREAM] [compiler-rt][aarch64] Add PAC-RET/BTI support to HWASAN.",
+        "rel_patch_path": "cherry/a46effbd2aec88012c8f94b81da51dfd5b9e141b.patch",
+        "start_version": 416183,
+        "end_version": 424185
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
