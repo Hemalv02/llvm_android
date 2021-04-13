@@ -1,0 +1,32 @@
+From 5d214238a15ca28cca99f1a5db6ff8c4c5866711 Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Mon, 12 Apr 2021 17:13:27 -0700
+Subject: [PATCH] [compiler-rt][aarch64] Add PAC-RET/BTI property to
+ hwasan_interceptors_vfork.S
+
+D100143 added similar annotations but missed this file.
+
+Differential Revision: https://reviews.llvm.org/D100354
+---
+ compiler-rt/lib/hwasan/hwasan_interceptors_vfork.S | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_interceptors_vfork.S b/compiler-rt/lib/hwasan/hwasan_interceptors_vfork.S
+index 23d565936d87..fd20825e3dac 100644
+--- a/compiler-rt/lib/hwasan/hwasan_interceptors_vfork.S
++++ b/compiler-rt/lib/hwasan/hwasan_interceptors_vfork.S
+@@ -1,4 +1,5 @@
+ #include "sanitizer_common/sanitizer_asm.h"
++#include "builtins/assembly.h"
+ 
+ #if defined(__linux__) && HWASAN_WITH_INTERCEPTORS
+ #define COMMON_INTERCEPTOR_SPILL_AREA __hwasan_extra_spill_area
+@@ -9,3 +10,5 @@
+ #endif
+ 
+ NO_EXEC_STACK_DIRECTIVE
++
++GNU_PROPERTY_BTI_PAC
+-- 
+2.31.1.295.g9ea45b61b8-goog
+

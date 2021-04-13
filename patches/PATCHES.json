@@ -222,6 +222,12 @@
         "end_version": 424185
     },
     {
+        "comment": "[UPSTREAM] [compiler-rt][aarch64] Add PAC-RET/BTI property to hwasan_interceptors_vfork.S",
+        "rel_patch_path": "cherry/5d214238a15ca28cca99f1a5db6ff8c4c5866711.patch",
+        "start_version": 416183,
+        "end_version": 424247
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
