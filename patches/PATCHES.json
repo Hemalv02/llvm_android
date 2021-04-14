@@ -234,6 +234,12 @@
         "end_version": 424247
     },
     {
+        "comment": "[UPSTREAM] [AArch64][v8.5A] Add BTI to all function starts",
+        "rel_patch_path": "cherry/cca40aa8d8aa732a226c8978e53cd47e7b7c76ec.patch",
+        "start_version": 416183,
+        "end_version": 424446
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
