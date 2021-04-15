@@ -240,6 +240,12 @@
         "end_version": 424446
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Fix lock contention on thread creation.",
+        "rel_patch_path": "cherry/51aa61e74bdb394d89217350ddcb0fd04a21e32f.patch",
+        "start_version": 416183,
+        "end_version": 424523
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
