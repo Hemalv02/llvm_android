@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 #
 # Copyright (C) 2019 The Android Open Source Project
 #
@@ -106,7 +106,7 @@ class KernelToolchainUpdater():
         self.clang_version_arg = args.clang_version
 
     def get_clang_versions(self):
-        output = subprocess.check_output([self.clang_bin, "--version"])
+        output = subprocess.check_output([self.clang_bin, "--version"]).decode("utf-8")
         self.clang_revision = re.search("based on (r[0-9]+[a-z]?)",
                                         output).groups()[0]
         self.clang_version = re.search("clang version ([0-9\.]+)",
@@ -115,7 +115,7 @@ class KernelToolchainUpdater():
     def get_clang_sha(self):
         clang_dir = path.dirname(self.clang_bin)
         output = subprocess.check_output(
-            ["git", "--no-pager", "log", "-n", "1"], cwd=clang_dir)
+            ["git", "--no-pager", "log", "-n", "1"], cwd=clang_dir).decode("utf-8")
         self.clang_sha = re.search("commit ([0-9a-z]+)", output).groups()[0]
 
     def update_sha(self):
@@ -136,7 +136,7 @@ class KernelToolchainUpdater():
             except ET.ParseError:
                 pass
             finally:
-                print(line),
+                print(line, end="")
 
     def commit_sha(self):
         green_print("Committing SHA")
@@ -155,7 +155,7 @@ Bug: %s
     def push_manifest_change(self):
         green_print("Pushing manifest change")
         output = subprocess.check_output(["repo", "--no-pager", "info"],
-                                         cwd=self.repo_dir)
+                                         cwd=self.repo_dir).decode("utf-8")
         repo_branch = output.split("\n")[1].split(" ")[3].split("/")[2]
         command = "git push origin HEAD:refs/for/" + repo_branch
 
@@ -187,7 +187,7 @@ Bug: %s
         for line in fileinput.input(config_path, inplace=True):
             line = re.sub("clang-r[0-9a-z]+", "clang-" + self.clang_revision,
                           line)
-            print(line),
+            print(line, end="")
 
     def commit_kernel_toolchain(self):
         green_print("Committing kernel toolchain")
@@ -208,7 +208,7 @@ Bug: %s
         green_print("Pushing kernel change")
         xml_path = path.join(self.repo_dir, "default.xml")
         remote = subprocess.check_output(["git", "--no-pager", "remote"],
-                                         cwd=self.kernel_dir).strip()
+                                         cwd=self.kernel_dir).decode("utf-8").strip()
         for project in ET.parse(xml_path).iter("project"):
             if (project.get("path") == self.kernel_relpath):
                 command = "git push %s HEAD:refs/for/%s" % (
