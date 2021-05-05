@@ -246,6 +246,12 @@
         "end_version": 424523
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Fix missing synchronization in AllocThread.",
+        "rel_patch_path": "cherry/18959a6a094c6469fc2fd5cc167fda7cbe3f163b.patch",
+        "start_version": 416183,
+        "end_version": 426529
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
         "start_version": 412851,
