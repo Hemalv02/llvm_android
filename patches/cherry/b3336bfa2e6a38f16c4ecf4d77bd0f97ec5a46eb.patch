@@ -1,0 +1,119 @@
+From b3336bfa2e6a38f16c4ecf4d77bd0f97ec5a46eb Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Wed, 5 May 2021 10:26:57 -0700
+Subject: [PATCH] [llvm-objcopy][ELF] --only-keep-debug: set offset/size of
+ segments with no sections to zero
+
+PR50160: we currently ignore non-PT_PHDR segments with no sections, not
+accounting for its p_offset and p_filesz: this can cause an out-of-bounds write
+in `writeSegmentData` if the p_offset+p_filesz is larger than the total file
+size.
+
+This can be fixed by setting p_offset=p_filesz=0. The logic nicely unifies with
+the logic added in D90897.
+
+Reviewed By: jhenderson, rupprecht
+
+Differential Revision: https://reviews.llvm.org/D101560
+---
+ .../llvm-objcopy/ELF/only-keep-debug.test     | 42 ++++++++++++++++++-
+ llvm/tools/llvm-objcopy/ELF/Object.cpp        | 21 +++++-----
+ 2 files changed, 51 insertions(+), 12 deletions(-)
+
+diff --git a/llvm/test/tools/llvm-objcopy/ELF/only-keep-debug.test b/llvm/test/tools/llvm-objcopy/ELF/only-keep-debug.test
+index 64de90ce27e9..3c41afefb644 100644
+--- a/llvm/test/tools/llvm-objcopy/ELF/only-keep-debug.test
++++ b/llvm/test/tools/llvm-objcopy/ELF/only-keep-debug.test
+@@ -129,11 +129,11 @@ ProgramHeaders:
+ # CHECK2-NEXT: [ 4] .strtab     STRTAB   0000000000000000 000221 000001 00      0   0  1
+ # CHECK2-NEXT: [ 5] .shstrtab   STRTAB   0000000000000000 000222 00002b 00      0   0  1
+ 
+-## Check that p_offset or p_filesz of empty segments or PT_PHDR are not modified.
++## Check that p_offset or p_filesz of PT_PHDR are not modified.
+ # CHECK2:      Type Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
+ # CHECK2-NEXT: PHDR 0x000040 0x0000000000000040 0x0000000000000040 0x0000a8 0x0000a8 R   0x8
+ # CHECK2-NEXT: LOAD 0x000000 0x0000000000000000 0x0000000000000000 0x000202 0x000202 R E 0x1000
+-# CHECK2-NEXT: LOAD 0x000202 0x0000000000000202 0x0000000000000202 0x00000e 0x00000e RW  0x1
++# CHECK2-NEXT: LOAD 0x000000 0x0000000000000202 0x0000000000000202 0x000000 0x00000e RW  0x1
+ 
+ --- !ELF
+ FileHeader:
+@@ -280,3 +280,41 @@ ProgramHeaders:
+     VAddr:    0x1240
+     FirstSec: .tdata
+     LastSec:  .tdata
++
++## The offset and size fields of segments which contain no section and have no
++## parent segment are set to zeros, so that we can decrease the file size. Such
++## segments are not useful for debugging.
++# RUN: yaml2obj --docnum=5 %s -o %t5
++# RUN: llvm-objcopy --only-keep-debug %t5 %t5.dbg
++# RUN: llvm-readelf -S -l %t5.dbg | FileCheck --check-prefix=CHECK5 %s
++# RUN: llvm-objcopy --strip-sections %t5 %t5s
++# RUN: llvm-objcopy --only-keep-debug %t5s %t5s.dbg
++# RUN: llvm-readelf -S -l %t5s.dbg | FileCheck --check-prefix=CHECK5S %s
++
++# CHECK5:      [Nr] Name        Type     Address          Off    Size   ES Flg Lk Inf Al
++# CHECK5:      [ 1] .foo        NOBITS   0000000000000000 000078 001000 00   A  0   0  0
++# CHECK5-NEXT: [ 2] .strtab     STRTAB   0000000000000000 000078 000001 00      0   0  1
++# CHECK5-NEXT: [ 3] .shstrtab   STRTAB   0000000000000000 000079 000018 00      0   0  1
++
++# CHECK5:      Type Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
++# CHECK5-NEXT: NULL 0x000000 0x0000000000000000 0x0000000000000000 0x000078 0x001000     0x1
++# CHECK5-EMPTY:
++
++# CHECK5S:      Type Offset   VirtAddr           PhysAddr           FileSiz  MemSiz   Flg Align
++# CHECK5S-NEXT: NULL 0x000000 0x0000000000000000 0x0000000000000000 0x000078 0x001000     0x1
++# CHECK5S-EMPTY:
++--- !ELF
++FileHeader:
++  Class:   ELFCLASS64
++  Data:    ELFDATA2LSB
++  Type:    ET_DYN
++Sections:
++  - Name:    .foo
++    Type:    SHT_PROGBITS
++    Flags:   [ SHF_ALLOC ]
++    Size:    0x01000
++ProgramHeaders:
++  - Type:     PT_NULL
++    Flags:    []
++    FileSize: 0x01000
++    MemSize:  0x01000
+diff --git a/llvm/tools/llvm-objcopy/ELF/Object.cpp b/llvm/tools/llvm-objcopy/ELF/Object.cpp
+index a8bd135c3d46..0ac8b3a0c212 100644
+--- a/llvm/tools/llvm-objcopy/ELF/Object.cpp
++++ b/llvm/tools/llvm-objcopy/ELF/Object.cpp
+@@ -2315,18 +2315,19 @@ static uint64_t layoutSegmentsForOnlyKeepDebug(std::vector<Segment *> &Segments,
+                                                uint64_t HdrEnd) {
+   uint64_t MaxOffset = 0;
+   for (Segment *Seg : Segments) {
+-    // An empty segment contains no section (see sectionWithinSegment). If it
+-    // has a parent segment, copy the parent segment's offset field. This works
+-    // for empty PT_TLS. We don't handle empty segments without a parent for
+-    // now.
+-    if (Seg->ParentSegment != nullptr && Seg->MemSize == 0)
+-      Seg->Offset = Seg->ParentSegment->Offset;
+-
+-    const SectionBase *FirstSec = Seg->firstSection();
+-    if (Seg->Type == PT_PHDR || !FirstSec)
++    if (Seg->Type == PT_PHDR)
+       continue;
+ 
+-    uint64_t Offset = FirstSec->Offset;
++    // The segment offset is generally the offset of the first section.
++    //
++    // For a segment containing no section (see sectionWithinSegment), if it has
++    // a parent segment, copy the parent segment's offset field. This works for
++    // empty PT_TLS. If no parent segment, use 0: the segment is not useful for
++    // debugging anyway.
++    const SectionBase *FirstSec = Seg->firstSection();
++    uint64_t Offset =
++        FirstSec ? FirstSec->Offset
++                 : (Seg->ParentSegment ? Seg->ParentSegment->Offset : 0);
+     uint64_t FileSize = 0;
+     for (const SectionBase *Sec : Seg->Sections) {
+       uint64_t Size = Sec->Type == SHT_NOBITS ? 0 : Sec->Size;
+-- 
+2.31.1.527.g47e6f16901-goog
+

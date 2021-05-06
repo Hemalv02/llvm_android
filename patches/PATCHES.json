@@ -246,6 +246,12 @@
         "end_version": 424523
     },
     {
+        "comment": "[UPSTREAM] [llvm-objcopy][ELF] --only-keep-debug: set offset/size of segments with no sections to zero",
+        "rel_patch_path": "cherry/b3336bfa2e6a38f16c4ecf4d77bd0f97ec5a46eb.patch",
+        "start_version": 422132,
+        "end_version": 426523
+    },
+    {
         "comment": "[UPSTREAM] [hwasan] Fix missing synchronization in AllocThread.",
         "rel_patch_path": "cherry/18959a6a094c6469fc2fd5cc167fda7cbe3f163b.patch",
         "start_version": 416183,
