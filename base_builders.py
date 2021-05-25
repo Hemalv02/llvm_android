@@ -273,8 +273,18 @@ class AutoconfBuilder(Builder):
             argfile.write(' '.join(cxxflags + ldflags))
 
         env = self.env
+        # Append CFLAGS after CC since autoconf pre-checks does not use CFLAGS, and we can't pass
+        # it without providing -isystem flags.
         env['CC'] = f'{self._cc} @{cflags_file}'
         env['CXX'] = f'{self._cxx} @{cxxflags_file}'
+
+        # Build universal binaries.
+        # Cannot add them to cflags_file since autoconf prechecks invokes clang -E and that doesn't
+        # work when -arch flags also present.
+        if self._config.target_os.is_darwin:
+            universal_cflags = f'-arch arm64 -arch x86_64'
+            env['CFLAGS']  = universal_cflags
+            env['CXXFLAGS']  = universal_cflags
 
         config_cmd = [str(self.src_dir / 'configure'), f'--prefix={self.install_dir}']
         config_cmd.extend(self.config_flags)
@@ -367,6 +377,9 @@ class CMakeBuilder(Builder):
             defines['ANDROID'] = '1'
             # Inhibit all of CMake's own NDK handling code.
             defines['CMAKE_SYSTEM_VERSION'] = '1'
+        if self._config.target_os.is_darwin:
+            # Build universal binaries.
+            defines['CMAKE_OSX_ARCHITECTURES'] = 'arm64;x86_64'
         if self._is_cross_compiling():
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
