@@ -435,8 +435,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     # Remove unnecessary static libraries.
     remove_static_libraries(lib_dir, necessary_lib_files)
 
-    if not host.is_windows:
+    if host.is_linux:
         install_wrappers(install_dir, llvm_next)
+
+    if not host.is_windows:
         normalize_llvm_host_libs(install_dir, host, version)
 
     # Check necessary lib files exist.
