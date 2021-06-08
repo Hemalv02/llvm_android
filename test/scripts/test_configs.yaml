@@ -97,6 +97,8 @@ aosp-master:
             - avd/avd_boot_health_check
     aosp_arm64-userdebug:
         groups: arm64
+    aosp_x86_64-userdebug:
+        groups: x86_64
     sdk_x86_64-sdk:
     ndk:
     renderscript:
@@ -105,6 +107,8 @@ aosp-master:
 # device_boot_health_check_extra fails in stage-aosp-master because of
 # unchecked selinux denials.  Use device_boot_health_check instead.
 git_stage-aosp-master:
+    aosp-arm64-eng:
+        groups: arm64
     aosp_blueline-userdebug:
         groups: arm64
         tests:
