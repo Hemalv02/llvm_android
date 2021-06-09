@@ -33,9 +33,11 @@ import gerrit
 import test_paths
 import utils
 
+CODE_NAMES = [
+    'RELEASE_BRANCH_1', 'RELEASE_BRANCH_2', 'RELEASE_BRANCH_3',
+    'DEVICE_TARGET_1'
+]
 
-CODE_NAMES = ['RELEASE_BRANCH_1', 'RELEASE_BRANCH_2', 'RELEASE_BRANCH_3',
-              'DEVICE_TARGET_1']
 
 class TestConfig(NamedTuple):
     branch_private: str  # use branch property instead
@@ -253,6 +255,42 @@ def getKernelCL(revision: str, version: str, cl_number: Optional[str],
     return kernelCL
 
 
+def evaluateConfig(retry_policy: str, build: str, tag: str, branch: str,
+                   target: str, tests: List[str]) -> str:
+    pending_row = CNSData.PendingWorkNodes.find(build, tag, branch, target)
+    completed_row = CNSData.CompletedWorkNodes.find(build, tag, branch, target)
+
+    if not (pending_row or completed_row):
+        # No previously-scheduled run - We should schedule.
+        return 'run'
+    if retry_policy == 'none':
+        # Previously scheduled run and no retry policy.  We should skip.
+        return 'skip'
+
+    result_records = []
+    if retry_policy == 'failed':
+        node_id = pending_row.invocation_id if pending_row else completed_row.invocation_id
+        result_records = CNSData.TestResults.getResultsForWorkNode(node_id)
+
+        all_pass = True
+        for record in result_records:
+            if record.result == 'failed':
+                all_pass = False
+        if all_pass:
+            # All tests passed - no need to retry.
+            return 'skip'
+
+    # either retry_policy == 'all' or we have a failed run.  Delete data and
+    # retry.
+    if pending_row:
+        CNSData.PendingWorkNodes.remove(pending_row)
+    if completed_row:
+        CNSData.CompletedWorkNodes.remove(completed_row)
+    for record in result_records:
+        CNSData.TestResults.remove(record)
+    return 'retry'
+
+
 def invokeForrestRuns(cls, args):
     """Submit builds/tests to Forrest for provided CLs and args."""
     build, tag = args.build, args.tag
@@ -297,11 +335,17 @@ def invokeForrestRuns(cls, args):
         branch = config.branch
         target = config.target
         tests = config.tests
-        if CNSData.PendingWorkNodes.find(build, tag, branch, target) or \
-           CNSData.CompletedWorkNodes.find(build, tag, branch, target):
-            # Skip if this was previously scheduled.
-            logging.info(f'Skipping already-submitted config {config}.')
+
+        evaluation = evaluateConfig(args.retry_policy, build, tag, branch,
+                                    target, tests)
+        if evaluation == 'skip':
+            logging.info(f'Skipping previously-scheduled config {config}')
             continue
+        if evaluation == 'retry':
+            logging.info(
+                f'Retrying {config} based on retry policy \'{args.retry_policy}\''
+            )
+
         invocation_id = forrest.invokeForrestRun(branch, target, cl_numbers,
                                                  tests, args.tag)
         logging.info(f'Submitted {config} to forrest: {invocation_id}')
@@ -361,6 +405,10 @@ def parse_args():
         nargs='+',
         action='extend',
         help='Additional CLs to include for platform tests')
+    parser.add_argument(
+        '--retry-policy',
+        choices=('none', 'failed', 'all'),
+        help='Specify which tests with a given tag to retry')
     parser.add_argument(
         '--verbose', '-v', action='store_true', help='Print verbose output')
 
