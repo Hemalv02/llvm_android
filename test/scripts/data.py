@@ -280,6 +280,11 @@ class TestResultsTable(CSVTable[TestResultRecord]):
             raise RuntimeError(f'TestResultRecord exists for worknode {record}')
         self.add(record, writeBack)
 
+    def getResultsForWorkNode(self,
+                              worknode_prefix: str) -> List[TestResultRecord]:
+        return self.get(
+            lambda record: record.worknode_id.startswith(worknode_prefix))
+
 
 class CNSData():
     """Wrapper for CSV Data stored in CNS."""
