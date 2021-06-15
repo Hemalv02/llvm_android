@@ -749,7 +749,7 @@ class LibCxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
         defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.LLVM_PATH /'libcxx' / 'include')
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = self.toolchain.libcxx_headers
 
         # Build only the static library.
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
@@ -764,7 +764,7 @@ class LibCxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
         cflags: List[str] = super().cflags
         # Disable libcxx visibility annotations and enable WIN32 threads.  These
         # are needed because the libcxxabi build happens before libcxx and uses
-        # headers directly from the sources.
+        # headers from stage1/stage2.
         cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
         cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
         return cflags
@@ -876,7 +876,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = str(paths.LLVM_PATH / 'libcxx' / 'include')
+        defines['LIBCXXABI_LIBCXX_INCLUDES'] = self.toolchain.libcxx_headers
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         return defines
 
