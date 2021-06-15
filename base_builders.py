@@ -610,7 +610,10 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
 
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
-        defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
+        if self._config.target_os.is_darwin or self._config.target_os.is_linux:
+            defines['LLVM_BUILD_LLVM_DYLIB'] = 'ON'
+        elif isinstance(self._config, configs.MSVCConfig):
+            defines['LLVM_BUILD_LLVM_C_DYLIB'] = 'OFF'
 
         if self.build_tags:
             tags_str = ''.join(tag + ', ' for tag in self.build_tags)
