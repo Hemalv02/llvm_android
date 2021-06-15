@@ -136,6 +136,10 @@ class Toolchain:
     def resource_dir(self) -> Path:
         return self.clang_lib_dir / 'lib' / 'linux'
 
+    @property
+    def libcxx_headers(self) -> Path:
+        return self.path / 'include' / 'c++' / 'v1'
+
 
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
