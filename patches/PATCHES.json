@@ -225,6 +225,12 @@
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
+        "end_version": 428724
+    },
+    {
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
+        "start_version": 428724,
         "end_version": null
     },
     {
@@ -237,18 +243,36 @@
         "comment": "Add a new library, libclang-cxx",
         "rel_patch_path": "Add-a-new-library-libclang-cxx.patch",
         "start_version": 370808,
+        "end_version": 428724
+    },
+    {
+        "comment": "Add a new library, libclang-cxx",
+        "rel_patch_path": "Add-a-new-library-libclang-cxx.v2.patch",
+        "start_version": 428724,
         "end_version": null
     },
     {
         "comment": "ANDROID Do not record function addresses if value profiling is disabled",
         "rel_patch_path": "ANDROID-Do-not-record-function-addresses-if-value-profiling-is-disabled.patch",
         "start_version": 377782,
+        "end_version": 428724
+    },
+    {
+        "comment": "ANDROID Do not record function addresses if value profiling is disabled",
+        "rel_patch_path": "ANDROID-Do-not-record-function-addresses-if-value-profiling-is-disabled.v2.patch",
+        "start_version": 428724,
         "end_version": null
     },
     {
         "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
         "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v3.patch",
         "start_version": 404259,
+        "end_version": 428724
+    },
+    {
+        "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
+        "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v4.patch",
+        "start_version": 428724,
         "end_version": null
     },
     {
@@ -261,6 +285,12 @@
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v2.patch",
         "start_version": 416183,
+        "end_version": 428724
+    },
+    {
+        "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
+        "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v3.patch",
+        "start_version": 428724,
         "end_version": null
     },
     {
@@ -285,6 +315,6 @@
         "comment": "Revert babd3aefc91 and 6 changes after it",
         "rel_patch_path": "Revert-babd3aefc91-and-6-changes-after-it.patch",
         "start_version": 416183,
-        "end_version": null
+        "end_version": 416772
     }
 ]
