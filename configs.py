@@ -257,7 +257,6 @@ class AndroidConfig(_BaseConfig):
 
     target_arch: hosts.Arch
     _toolchain_path: Path
-    _toolchain_lib: Path    # dir containing libatomic.a
 
     static: bool = False
     platform: bool = False
@@ -274,7 +273,6 @@ class AndroidConfig(_BaseConfig):
         ldflags = super().ldflags
         ldflags.append('-rtlib=compiler-rt')
         ldflags.append('-Wl,-z,defs')
-        ldflags.append(f'-L{self._toolchain_lib}')
         ldflags.append('-Wl,--gc-sections')
         ldflags.append('-Wl,--build-id=sha1')
         ldflags.append('-pie')
@@ -342,8 +340,6 @@ class AndroidARMConfig(AndroidConfig):
     """Configs for android arm targets."""
     target_arch: hosts.Arch = hosts.Arch.ARM
     _toolchain_path: Path = Path('arm/arm-linux-androideabi-4.9/arm-linux-androideabi')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'arm-linux-androideabi-4.9' /
-                            'prebuilt' / 'linux-x86_64' / 'arm-linux-androideabi' / 'lib')
 
     @property
     def cflags(self) -> List[str]:
@@ -356,8 +352,6 @@ class AndroidAArch64Config(AndroidConfig):
     """Configs for android arm64 targets."""
     target_arch: hosts.Arch = hosts.Arch.AARCH64
     _toolchain_path: Path = Path('aarch64/aarch64-linux-android-4.9/aarch64-linux-android')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'aarch64-linux-android-4.9' /
-                            'prebuilt' / 'linux-x86_64' / 'aarch64-linux-android' / 'lib64')
 
     @property
     def cflags(self) -> List[str]:
@@ -370,16 +364,12 @@ class AndroidX64Config(AndroidConfig):
     """Configs for android x86_64 targets."""
     target_arch: hosts.Arch = hosts.Arch.X86_64
     _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'x86_64-4.9' / 'prebuilt' /
-                            'linux-x86_64' / 'x86_64-linux-android' / 'lib64')
 
 
 class AndroidI386Config(AndroidConfig):
     """Configs for android x86 targets."""
     target_arch: hosts.Arch = hosts.Arch.I386
     _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
-    _toolchain_lib: Path = (paths.NDK_BASE / 'toolchains' / 'x86-4.9' /
-                            'prebuilt' / 'linux-x86_64' / 'x86-linux-android' / 'lib')
 
     @property
     def cflags(self) -> List[str]:
