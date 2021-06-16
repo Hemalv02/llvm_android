@@ -542,9 +542,6 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         defines['OPENMP_ENABLE_LIBOMPTARGET'] = 'FALSE'
         defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
         defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if self.is_shared else 'FALSE'
-        # Some compiler-rt math builtins depend on libm, so link against it.
-        # TODO: Try to break the builtins->libm dependency (llvm.org/PR32279).
-        defines['LIBOMP_LIBFLAGS'] = '-lm'
         # Minimum version for OpenMP's CMake is too low for the CMP0056 policy
         # to be ON by default.
         defines['CMAKE_POLICY_DEFAULT_CMP0056'] = 'NEW'
