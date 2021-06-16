@@ -1,0 +1,71 @@
+From 6ca5009facb66a3737e74c4bcd647d90bd10818f Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Wed, 12 Feb 2020 10:40:09 -0800
+Subject: [PATCH] Do not record function addresses if value profiling is 
+ disabled
+
+Temporary change until a proper fix is merged to upstream.
+
+Don't recording function addresses in __llvm_prf_data when value
+profiling is turned off.  This is safe for Android, where we don't use
+value profiling.
+
+Functional change: needs -mllvm -enable-value-profiling to work with LTO
+
+The proper fix is to use associated metadata to link a __llvm_prf_data
+of a function with the function itself so the linker can discard the
+__llvm_prf_data if the function itself is discarded.  See
+http://lists.llvm.org/pipermail/llvm-dev/2019-December/137363.html for
+more details.
+
+Change-Id: Ifcb04349e71e20ae3ef4bb82ebf8ac064fc59169
+---
+ clang/lib/CodeGen/CodeGenPGO.cpp                       | 5 +----
+ llvm/lib/Transforms/Instrumentation/InstrProfiling.cpp | 8 ++++++++
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+diff --git a/clang/lib/CodeGen/CodeGenPGO.cpp b/clang/lib/CodeGen/CodeGenPGO.cpp
+index d828ac0eb5e9..d87eb619d852 100644
+--- a/clang/lib/CodeGen/CodeGenPGO.cpp
++++ b/clang/lib/CodeGen/CodeGenPGO.cpp
+@@ -22,10 +22,7 @@
+ #include "llvm/Support/FileSystem.h"
+ #include "llvm/Support/MD5.h"
+ 
+-static llvm::cl::opt<bool>
+-    EnableValueProfiling("enable-value-profiling", llvm::cl::ZeroOrMore,
+-                         llvm::cl::desc("Enable value profiling"),
+-                         llvm::cl::Hidden, llvm::cl::init(false));
++extern llvm::cl::opt<bool> EnableValueProfiling;
+ 
+ using namespace clang;
+ using namespace CodeGen;
+diff --git a/llvm/lib/Transforms/Instrumentation/InstrProfiling.cpp b/llvm/lib/Transforms/Instrumentation/InstrProfiling.cpp
+index 1b092f251804..9b75346357ed 100644
+--- a/llvm/lib/Transforms/Instrumentation/InstrProfiling.cpp
++++ b/llvm/lib/Transforms/Instrumentation/InstrProfiling.cpp
+@@ -57,6 +57,11 @@ using namespace llvm;
+ 
+ #define DEBUG_TYPE "instrprof"
+ 
++llvm::cl::opt<bool>
++    EnableValueProfiling("enable-value-profiling", llvm::cl::ZeroOrMore,
++                         llvm::cl::desc("Enable value profiling"),
++                         llvm::cl::Hidden, llvm::cl::init(false));
++
+ namespace {
+ 
+ cl::opt<bool> DoHashBasedCounterSplit(
+@@ -759,6 +764,9 @@ static uint64_t getIntModuleFlagOrZero(Module *M, StringRef Flag) {
+ }
+ 
+ static inline bool shouldRecordFunctionAddr(Function *F) {
++  if (!EnableValueProfiling)
++    return false;
++
+   // Only record function addresses if IR PGO is enabled or if clang value
+   // profiling is enabled. Recording function addresses greatly increases object
+   // file size, because it prevents the inliner from deleting functions that
+-- 
+2.32.0.272.g935e593368-goog
+
