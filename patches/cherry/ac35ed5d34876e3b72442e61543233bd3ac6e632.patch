@@ -1,0 +1,84 @@
+From ac35ed5d34876e3b72442e61543233bd3ac6e632 Mon Sep 17 00:00:00 2001
+From: Yabin Cui <yabinc@google.com>
+Date: Thu, 17 Jun 2021 09:25:58 -0700
+Subject: [PATCH] [compiler-rt][hwasan]: undefine new/delete operators with
+ alignment on Android.
+
+This is to fix build on Android. And we don't want to intercept more new/delete operators on Android.
+
+Differential Revision: https://reviews.llvm.org/D104313
+---
+ compiler-rt/lib/hwasan/hwasan_new_delete.cpp | 39 ++++++++++++++------
+ 1 file changed, 27 insertions(+), 12 deletions(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_new_delete.cpp b/compiler-rt/lib/hwasan/hwasan_new_delete.cpp
+index 69cddda736eb..4e057a651e1d 100644
+--- a/compiler-rt/lib/hwasan/hwasan_new_delete.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_new_delete.cpp
+@@ -56,7 +56,6 @@ using namespace __hwasan;
+ // Fake std::nothrow_t to avoid including <new>.
+ namespace std {
+   struct nothrow_t {};
+-  enum class align_val_t : size_t {};
+ }  // namespace std
+ 
+ 
+@@ -73,6 +72,32 @@ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+ void *operator new[](size_t size, std::nothrow_t const&) {
+   OPERATOR_NEW_BODY(true /*nothrow*/);
+ }
++
++INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void operator delete(void *ptr)
++    NOEXCEPT {
++  OPERATOR_DELETE_BODY;
++}
++INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void operator delete[](
++    void *ptr) NOEXCEPT {
++  OPERATOR_DELETE_BODY;
++}
++INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void operator delete(
++    void *ptr, std::nothrow_t const &) {
++  OPERATOR_DELETE_BODY;
++}
++INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void operator delete[](
++    void *ptr, std::nothrow_t const &) {
++  OPERATOR_DELETE_BODY;
++}
++
++#endif  // OPERATOR_NEW_BODY
++
++#ifdef OPERATOR_NEW_ALIGN_BODY
++
++namespace std {
++enum class align_val_t : size_t {};
++}  // namespace std
++
+ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void *operator new(
+     size_t size, std::align_val_t align) {
+   OPERATOR_NEW_ALIGN_BODY(false /*nothrow*/);
+@@ -90,16 +115,6 @@ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void *operator new[](
+   OPERATOR_NEW_ALIGN_BODY(true /*nothrow*/);
+ }
+ 
+-INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+-void operator delete(void *ptr) NOEXCEPT { OPERATOR_DELETE_BODY; }
+-INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+-void operator delete[](void *ptr) NOEXCEPT { OPERATOR_DELETE_BODY; }
+-INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+-void operator delete(void *ptr, std::nothrow_t const&) { OPERATOR_DELETE_BODY; }
+-INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE
+-void operator delete[](void *ptr, std::nothrow_t const&) {
+-  OPERATOR_DELETE_BODY;
+-}
+ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void operator delete(
+     void *ptr, std::align_val_t align) NOEXCEPT {
+   OPERATOR_DELETE_BODY;
+@@ -117,4 +132,4 @@ INTERCEPTOR_ATTRIBUTE SANITIZER_WEAK_ATTRIBUTE void operator delete[](
+   OPERATOR_DELETE_BODY;
+ }
+ 
+-#endif // OPERATOR_NEW_BODY
++#endif  // OPERATOR_NEW_ALIGN_BODY
+-- 
+2.32.0.288.g62a8d224e6-goog
+

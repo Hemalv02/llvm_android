@@ -228,6 +228,12 @@
         "end_version": 429795
     },
     {
+        "comment": "[UPSTREAM] [compiler-rt][hwasan]: undefine new/delete operators with alignment on Android.",
+        "rel_patch_path": "cherry/ac35ed5d34876e3b72442e61543233bd3ac6e632.patch",
+        "start_version": 428724,
+        "end_version": 430359
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
