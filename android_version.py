@@ -22,7 +22,8 @@ _version_read = False
 _patch_level = '7'
 _svn_revision = 'r416183d'
 # svn_revision_next will be newer than the official svn_revision in the future.
-_svn_revision_next = 'r416183'
+_svn_revision_next = 'r428724'
+
 
 def set_llvm_next(llvm_next: bool):
     if _version_read:
@@ -30,9 +31,11 @@ def set_llvm_next(llvm_next: bool):
     global _llvm_next
     _llvm_next = llvm_next
 
+
 def is_llvm_next() -> bool:
     _version_read = True
     return _llvm_next
+
 
 def get_svn_revision():
     _version_read = True
@@ -40,16 +43,19 @@ def get_svn_revision():
         return _svn_revision_next
     return _svn_revision
 
+
 def get_patch_level():
     _version_read = True
     if _llvm_next:
         return None
     return _patch_level
 
-# Get the numeric portion of the version number we are working with.
-# Strip the leading 'r' and possible letter (and number) suffix,
-# e.g., r383902b1 => 383902
+
 def get_svn_revision_number():
+    """Get the numeric portion of the version number we are working with.
+       Strip the leading 'r' and possible letter (and number) suffix,
+       e.g., r383902b1 => 383902
+    """
     svn_version = get_svn_revision()
     found = re.match(r'r(\d+)([a-z]\d*)?$', svn_version)
     if not found:
