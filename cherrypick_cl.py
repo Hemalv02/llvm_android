@@ -20,21 +20,16 @@ import argparse
 import collections
 import dataclasses
 from dataclasses import dataclass
-from functools import lru_cache
 import json
 from pathlib import Path
 import re
-import sys
 from typing import Any, Dict, List, Optional
 
 from android_version import get_svn_revision_number, set_llvm_next
-from merge_from_upstream import fetch_upstream
+from merge_from_upstream import fetch_upstream, sha_to_revision
 import paths
 import source_manager
 from utils import check_call, check_output
-
-sys.path.append(str(paths.TOOLCHAIN_UTILS_DIR / 'llvm_tools'))
-import git_llvm_rev
 
 
 def parse_args():
@@ -120,17 +115,10 @@ class PatchList(list):
             json.dump(array, fh, indent=4)
 
 
-@lru_cache
-def fetch_upstream_once():
-    # Fetching upstream may take a long time. So print something.
-    print('fetch upstream...')
-    fetch_upstream(paths.TOOLCHAIN_LLVM_PATH)
-
-
 def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
     """ generate upstream cherry-pick patch files """
     upstream_dir = paths.TOOLCHAIN_LLVM_PATH
-    fetch_upstream_once()
+    fetch_upstream()
     result = PatchList()
     for sha in sha_list:
         if len(sha) < 40:
@@ -152,14 +140,6 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
 
 def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
     return check_output(['git', 'rev-parse', short_sha], cwd=upstream_dir).strip()
-
-
-def sha_to_revision(sha: str) -> int:
-    git_llvm_rev.MAIN_BRANCH = 'upstream-main'
-    fetch_upstream_once()
-    llvm_config = git_llvm_rev.LLVMConfig(remote='aosp', dir=str(paths.TOOLCHAIN_LLVM_PATH))
-    rev = git_llvm_rev.translate_sha_to_rev(llvm_config, sha)
-    return rev.number
 
 
 def create_cl(new_patches: PatchList, bug: Optional[str], reason: Optional[str]):
