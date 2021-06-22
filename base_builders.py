@@ -629,12 +629,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
         if self._config.target_os.is_darwin:
-            if utils.is_available_mac_ver('10.11'):
-                raise RuntimeError('libcompression can be enabled for macOS 10.11 and above.')
-            defines['HAVE_LIBCOMPRESSION'] = '0'
-            if utils.is_available_mac_ver('10.13'):
-                raise RuntimeError('futimens can be enabled for macOS 10.13 and above.')
-            defines['HAVE_FUTIMENS'] = '0'
+            defines['HAVE_LIBCOMPRESSION'] = '1'
+            defines['HAVE_FUTIMENS'] = '1'
             # Codesign binaries with an ad-hoc certificate, mandatory for arm64 Darwin.
             defines['LLVM_CODESIGNING_IDENTITY'] = '-'
 
