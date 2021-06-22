@@ -222,10 +222,46 @@
         "end_version": 426529
     },
     {
+        "comment": "[UPSTREAM] [InstCombine] fix miscompile from vector select substitution",
+        "rel_patch_path": "cherry/7bb8bfa0622b8ee55c3f748004dcf4d83d48cf97.patch",
+        "start_version": 428724,
+        "end_version": 428786
+    },
+    {
+        "comment": "[UPSTREAM] [SLP]Better detection of perfect/shuffles matches for gather nodes.",
+        "rel_patch_path": "cherry/36911971a58d1ba8b15e97790ac816eaadb0603e.patch",
+        "start_version": 428724,
+        "end_version": 428883
+    },
+    {
+        "comment": "[UPSTREAM] [LTO] Fix -fwhole-program-vtables handling after HIP ThinLTO patch",
+        "rel_patch_path": "cherry/d0ee8b64ecf359737ce550d8f47f465ab6657be7.patch",
+        "start_version": 428724,
+        "end_version": 429138
+    },
+    {
+        "comment": "[UPSTREAM] [X86] Check destination element type before forming VTRUNCS/VTRUNCUS in combineTruncateWithSat.",
+        "rel_patch_path": "cherry/765ef4bb2af604ea2bbd6c1bffaa6e1600804c9e.patch",
+        "start_version": 428724,
+        "end_version": 429620
+    },
+    {
         "comment": "[UPSTREAM] [compiler-rt] [builtins] [AArch64] Add missing AArch64 data synchronization barrier (dsb) to __clear_cache",
         "rel_patch_path": "cherry/6455418d3d2a2de1a8251cc2ccf2e87b9ae3112d.patch",
         "start_version": 416183,
         "end_version": 429795
+    },
+    {
+        "comment": "[UPSTREAM] [ELF] Add OVERWRITE_SECTIONS command",
+        "rel_patch_path": "cherry/899fdf548eee427fe08e462955e6f817ca949730.patch",
+        "start_version": 428724,
+        "end_version": 429964
+    },
+    {
+        "comment": "[UPSTREAM] [libcxx][atomic] Fix failure mapping in compare_exchange_{strong,weak}.",
+        "rel_patch_path": "cherry/6d33362dafb66b3af4717990d9a06450ec13f367.patch",
+        "start_version": 428724,
+        "end_version": 430140
     },
     {
         "comment": "[UPSTREAM] [compiler-rt][hwasan]: undefine new/delete operators with alignment on Android.",
