@@ -1,0 +1,55 @@
+From 18959a6a094c6469fc2fd5cc167fda7cbe3f163b Mon Sep 17 00:00:00 2001
+From: Evgenii Stepanov <eugenis@google.com>
+Date: Tue, 4 May 2021 19:16:30 -0700
+Subject: [PATCH] [hwasan] Fix missing synchronization in AllocThread.
+
+The problem was introduced in D100348.
+
+It's really hard to trigger the bug in a stress test - the race is just too
+narrow - but the new checks in Thread::Init should at least provide usable
+diagnostic if the problem ever returns.
+
+Differential Revision: https://reviews.llvm.org/D101881
+---
+ compiler-rt/lib/hwasan/hwasan_thread.cpp    | 4 ++++
+ compiler-rt/lib/hwasan/hwasan_thread_list.h | 2 ++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_thread.cpp b/compiler-rt/lib/hwasan/hwasan_thread.cpp
+index c1f0e013b49f..bb4d56abed0a 100644
+--- a/compiler-rt/lib/hwasan/hwasan_thread.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_thread.cpp
+@@ -35,6 +35,10 @@ void Thread::InitRandomState() {
+ }
+ 
+ void Thread::Init(uptr stack_buffer_start, uptr stack_buffer_size) {
++  CHECK_EQ(0, unique_id_);  // try to catch bad stack reuse
++  CHECK_EQ(0, stack_top_);
++  CHECK_EQ(0, stack_bottom_);
++
+   static u64 unique_id;
+   unique_id_ = unique_id++;
+   if (auto sz = flags()->heap_history_size)
+diff --git a/compiler-rt/lib/hwasan/hwasan_thread_list.h b/compiler-rt/lib/hwasan/hwasan_thread_list.h
+index 3b89bad59cc3..11c586314ce7 100644
+--- a/compiler-rt/lib/hwasan/hwasan_thread_list.h
++++ b/compiler-rt/lib/hwasan/hwasan_thread_list.h
+@@ -173,6 +173,7 @@ class HwasanThreadList {
+ 
+  private:
+   Thread *AllocThread() {
++    SpinMutexLock l(&free_space_mutex_);
+     uptr align = ring_buffer_size_ * 2;
+     CHECK(IsAligned(free_space_, align));
+     Thread *t = (Thread *)(free_space_ + ring_buffer_size_);
+@@ -181,6 +182,7 @@ class HwasanThreadList {
+     return t;
+   }
+ 
++  SpinMutex free_space_mutex_;
+   uptr free_space_;
+   uptr free_space_end_;
+   uptr ring_buffer_size_;
+-- 
+2.31.1.527.g47e6f16901-goog
+
