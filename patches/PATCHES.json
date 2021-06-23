@@ -234,6 +234,12 @@
         "end_version": 430359
     },
     {
+        "comment": "[UPSTREAM] [ELF] Optimize ScriptLexer::getLineNumber by caching the previous line number and offset",
+        "rel_patch_path": "cherry/e387778722f93705db903aa755529568a05dd9db.patch",
+        "start_version": 428724,
+        "end_version": 430762
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
