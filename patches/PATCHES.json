@@ -222,10 +222,124 @@
         "end_version": 426529
     },
     {
+        "comment": "[UPSTREAM] Revert \"[NFCI][LoopDeletion] Do not call complex analysis for known non-zero BTC\"",
+        "rel_patch_path": "cherry/dd226803c220f02a5987f0ee9f9ac3ffe2b35c09.patch",
+        "start_version": 428724,
+        "end_version": 428728
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[NFC] Reuse existing variables instead of re-requesting successors\"",
+        "rel_patch_path": "cherry/807fc7cdc97fc172b4967707a7718e7333351bff.patch",
+        "start_version": 428724,
+        "end_version": 428729
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[NFC] Formatting fix\"",
+        "rel_patch_path": "cherry/fd553312031c7d8085fa6ee0755a957796eadf05.patch",
+        "start_version": 428724,
+        "end_version": 428730
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[NFCI][LoopDeletion] Only query SCEV about loop successor if another successor is also in loop\"",
+        "rel_patch_path": "cherry/24bd657202379595b514ee17241f019294e86bc9.patch",
+        "start_version": 428724,
+        "end_version": 428731
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"Return \"[LoopDeletion] Break backedge if we can prove that the loop is exited on 1st iteration\" (try 2)\"",
+        "rel_patch_path": "cherry/0159652058ca555b05db6a209fe9cf660c3bf8e6.patch",
+        "start_version": 428724,
+        "end_version": 428732
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[clang][Parse] Add parsing support for C++ attributes on using-declarations\"",
+        "rel_patch_path": "cherry/f63adf5b67f7a25b15f81d3a1a207aba4f226dc4.patch",
+        "start_version": 428724,
+        "end_version": 428737
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[libc++] NFC: Move unwrap_iter to its own header\"",
+        "rel_patch_path": "cherry/b13edf6e907b32d0b8da09dfe08fa271638eca3c.patch",
+        "start_version": 428724,
+        "end_version": 428763
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[NFC] Use ArgListEntry indirect types more in ISel lowering\"",
+        "rel_patch_path": "cherry/3a6f12f9156bcebf38965d96007bd942024c75be.patch",
+        "start_version": 428724,
+        "end_version": 428781
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[TargetLowering] Only inspect attributes in the arguments for ArgListEntry\"",
+        "rel_patch_path": "cherry/71cca4f728d7421e40ec9aec0816313391fe9b59.patch",
+        "start_version": 428724,
+        "end_version": 428782
+    },
+    {
+        "comment": "[UPSTREAM] [InstCombine] fix miscompile from vector select substitution",
+        "rel_patch_path": "cherry/7bb8bfa0622b8ee55c3f748004dcf4d83d48cf97.patch",
+        "start_version": 428724,
+        "end_version": 428786
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[clang-tidy] Simplify static assert check\"",
+        "rel_patch_path": "cherry/be6b9e8ae71768d2e09ec14619ca4ecfdef553fa.patch",
+        "start_version": 428724,
+        "end_version": 428788
+    },
+    {
+        "comment": "[UPSTREAM] [SLP]Better detection of perfect/shuffles matches for gather nodes.",
+        "rel_patch_path": "cherry/36911971a58d1ba8b15e97790ac816eaadb0603e.patch",
+        "start_version": 428724,
+        "end_version": 428883
+    },
+    {
+        "comment": "[UPSTREAM] [LTO] Fix -fwhole-program-vtables handling after HIP ThinLTO patch",
+        "rel_patch_path": "cherry/d0ee8b64ecf359737ce550d8f47f465ab6657be7.patch",
+        "start_version": 428724,
+        "end_version": 429138
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[LoopUnrollAndJam] Change LoopUnrollAndJamPass to LoopNest pass\"",
+        "rel_patch_path": "cherry/0a9d0799316c7a601a0b20a123bd99922ac6455b.patch",
+        "start_version": 428724,
+        "end_version": 429323
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"3rd Reapply \"[DebugInfo] Use variadic debug values to salvage BinOps and GEP instrs with non-const operands\"\"",
+        "rel_patch_path": "cherry/386b66b2fc297cda121a3cc8a36887a6ecbcfc68.patch",
+        "start_version": 428724,
+        "end_version": 429480
+    },
+    {
+        "comment": "[UPSTREAM] [X86] Check destination element type before forming VTRUNCS/VTRUNCUS in combineTruncateWithSat.",
+        "rel_patch_path": "cherry/765ef4bb2af604ea2bbd6c1bffaa6e1600804c9e.patch",
+        "start_version": 428724,
+        "end_version": 429620
+    },
+    {
         "comment": "[UPSTREAM] [compiler-rt] [builtins] [AArch64] Add missing AArch64 data synchronization barrier (dsb) to __clear_cache",
         "rel_patch_path": "cherry/6455418d3d2a2de1a8251cc2ccf2e87b9ae3112d.patch",
         "start_version": 416183,
         "end_version": 429795
+    },
+    {
+        "comment": "[UPSTREAM] Revert \"[lldb] Add support for evaluating expressions in static member functions\"",
+        "rel_patch_path": "cherry/4125b46232caf6a558470670f87b56ccb46d61aa.patch",
+        "start_version": 428724,
+        "end_version": 429832
+    },
+    {
+        "comment": "[UPSTREAM] [ELF] Add OVERWRITE_SECTIONS command",
+        "rel_patch_path": "cherry/899fdf548eee427fe08e462955e6f817ca949730.patch",
+        "start_version": 428724,
+        "end_version": 429964
+    },
+    {
+        "comment": "[UPSTREAM] [libcxx][atomic] Fix failure mapping in compare_exchange_{strong,weak}.",
+        "rel_patch_path": "cherry/6d33362dafb66b3af4717990d9a06450ec13f367.patch",
+        "start_version": 428724,
+        "end_version": 430140
     },
     {
         "comment": "[UPSTREAM] [compiler-rt][hwasan]: undefine new/delete operators with alignment on Android.",
