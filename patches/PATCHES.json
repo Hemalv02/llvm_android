@@ -354,6 +354,12 @@
         "end_version": 430762
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Respect llvm.asan.globals.",
+        "rel_patch_path": "cherry/78f7e6d8d7956cb96d0fa0fd606192ca0218eee1.patch",
+        "start_version": 428724,
+        "end_version": 430896
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,

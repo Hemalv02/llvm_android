@@ -1,0 +1,80 @@
+From 78f7e6d8d7956cb96d0fa0fd606192ca0218eee1 Mon Sep 17 00:00:00 2001
+From: Evgenii Stepanov <eugenis@google.com>
+Date: Tue, 22 Jun 2021 16:27:11 -0700
+Subject: [PATCH] [hwasan] Respect llvm.asan.globals.
+
+This enable no_sanitize C++ attribute to exclude globals from hwasan
+testing, and automatically excludes other sanitizers' globals (such as
+ubsan location descriptors).
+
+Differential Revision: https://reviews.llvm.org/D104825
+---
+ .../Instrumentation/HWAddressSanitizer.cpp    | 27 +++++++++++++++++++
+ .../HWAddressSanitizer/globals.ll             |  6 +++++
+ 2 files changed, 33 insertions(+)
+
+diff --git a/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp b/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
+index a1f7486b010b..ada6d5ff18cb 100644
+--- a/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
++++ b/llvm/lib/Transforms/Instrumentation/HWAddressSanitizer.cpp
+@@ -1467,9 +1467,36 @@ void HWAddressSanitizer::instrumentGlobal(GlobalVariable *GV, uint8_t Tag) {
+   GV->eraseFromParent();
+ }
+ 
++static DenseSet<GlobalVariable *> getExcludedGlobals(Module &M) {
++  NamedMDNode *Globals = M.getNamedMetadata("llvm.asan.globals");
++  if (!Globals)
++    return DenseSet<GlobalVariable *>();
++  DenseSet<GlobalVariable *> Excluded(Globals->getNumOperands());
++  for (auto MDN : Globals->operands()) {
++    // Metadata node contains the global and the fields of "Entry".
++    assert(MDN->getNumOperands() == 5);
++    auto *V = mdconst::extract_or_null<Constant>(MDN->getOperand(0));
++    // The optimizer may optimize away a global entirely.
++    if (!V)
++      continue;
++    auto *StrippedV = V->stripPointerCasts();
++    auto *GV = dyn_cast<GlobalVariable>(StrippedV);
++    if (!GV)
++      continue;
++    ConstantInt *IsExcluded = mdconst::extract<ConstantInt>(MDN->getOperand(4));
++    if (IsExcluded->isOne())
++      Excluded.insert(GV);
++  }
++  return Excluded;
++}
++
+ void HWAddressSanitizer::instrumentGlobals() {
+   std::vector<GlobalVariable *> Globals;
++  auto ExcludedGlobals = getExcludedGlobals(M);
+   for (GlobalVariable &GV : M.globals()) {
++    if (ExcludedGlobals.count(&GV))
++      continue;
++
+     if (GV.isDeclarationForLinker() || GV.getName().startswith("llvm.") ||
+         GV.isThreadLocal())
+       continue;
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll b/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll
+index 548c41e4ab33..a3fc6808843e 100644
+--- a/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/globals.ll
+@@ -3,6 +3,8 @@
+ 
+ ; CHECK29: @four = global
+ 
++; CHECK: @specialcaselisted = global i16 2
++
+ ; CHECK: @__start_hwasan_globals = external hidden constant [0 x i8]
+ ; CHECK: @__stop_hwasan_globals = external hidden constant [0 x i8]
+ 
+@@ -34,3 +36,7 @@ source_filename = "foo"
+ @four = global i32 1
+ @sixteen = global [16 x i8] zeroinitializer
+ @huge = global [16777232 x i8] zeroinitializer
++@specialcaselisted = global i16 2
++
++!llvm.asan.globals = !{!0}
++!0 = !{i16* @specialcaselisted, null, null, i1 false, i1 true}
+-- 
+2.32.0.93.g670b81a890-goog
+
