@@ -58,6 +58,58 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
     return utils.check_output(patch_manager_cmd)
 
 
+def get_base_llvm_revision(source_dir: str) -> str:
+    message = utils.check_output([
+        'git', f'--git-dir={source_dir}/.git', 'show', '--pretty=format:%s',
+        'HEAD'
+    ])
+    return message.split()[1]
+
+
+def get_scripts_sha() -> str:
+    return utils.check_output(
+        ['git', f'--git-dir={paths.SCRIPTS_DIR}/.git', 'rev-parse',
+         'HEAD']).strip()
+
+
+def write_source_info(source_dir: str, patch_output: str) -> None:
+    lowercase_hexdigits = '0123456789abcdef'
+    url_prefix = 'https://android.googlesource.com/toolchain/llvm_android/+/' +\
+        get_scripts_sha()
+
+    def _format_patch_line(patch):
+        if all(c in lowercase_hexdigits for c in patch[:-len('.patch')]):
+            suffix = '/patches/cherry/' + patch
+        else:
+            suffix = '/patches/' + patch
+        return f'- [{patch}]({url_prefix}{suffix})'
+
+    output = []
+    base_revision = get_base_llvm_revision(source_dir)
+    github_url = 'https://github.com/llvm/llvm-project/commit/' + base_revision
+    output.append(f'Base revision: [{base_revision}]({github_url})')
+    output.append('')
+
+    patches = patch_output.strip().splitlines()
+    patches_iter = iter(patches)
+    assert next(patches_iter) == 'The following patches applied successfully:'
+    while True:
+        patch = next(patches_iter, None)
+        # We may optionally have an empty line followed by patches that were not
+        # applicable.
+        if patch == '':
+            assert next(
+                patches_iter) == 'The following patches were not applicable:'
+            break
+        elif patch is None:
+            break
+        assert patch.endswith('.patch')
+        output.append(_format_patch_line(patch))
+
+    with open(paths.OUT_DIR / 'clang_source_info.md', 'w') as outfile:
+        outfile.write('\n'.join(output))
+
+
 def setup_sources(source_dir):
     """Setup toolchain sources into source_dir.
 
@@ -101,6 +153,7 @@ def setup_sources(source_dir):
     patch_output = apply_patches(tmp_source_dir, svn_version, patch_json,
                                  patch_dir)
     logger().info(patch_output)
+    write_source_info(tmp_source_dir, patch_output)
 
     # Copy tmp_source_dir to source_dir if they are different.  This avoids
     # invalidating prior build outputs.

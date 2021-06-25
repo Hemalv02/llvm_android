@@ -466,6 +466,9 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         version_file.write(f'{version.long_version()}\n')
         svn_revision = android_version.get_svn_revision()
         version_file.write(f'based on {svn_revision}\n')
+        version_file.write('for additional information on LLVM revision and '
+                           'cherry-picks, see clang_source_info.md')
+    shutil.copy2(paths.OUT_DIR / 'clang_source_info.md', install_dir)
 
     if host.is_linux:
 
