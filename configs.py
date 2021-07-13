@@ -302,6 +302,7 @@ class AndroidConfig(_BaseConfig):
             # The platform sysroot also has Bionic headers from an NDK release,
             # but override them with the current headers.
             paths.BIONIC_HEADERS,
+            paths.BIONIC_KERNEL_HEADERS,
         ]
 
     @property
