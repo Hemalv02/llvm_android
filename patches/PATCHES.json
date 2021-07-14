@@ -360,6 +360,12 @@
         "end_version": 430896
     },
     {
+        "comment": "[UPSTREAM] [ELF] --fortran-common: prefer STB_WEAK to COMMON",
+        "rel_patch_path": "cherry/7de2173c2a4c45711831cfee3ccf53690c76ff07.patch",
+        "start_version": 428724,
+        "end_version": 432575
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
