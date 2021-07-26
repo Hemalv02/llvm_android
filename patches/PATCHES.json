@@ -366,6 +366,12 @@
         "end_version": 432575
     },
     {
+        "comment": "[UPSTREAM] [NewPM] Add CrossDSOCFI pass irrespective of LTO optimization level",
+        "rel_patch_path": "cherry/c45e17f11f508d1aea97eded3f1bda2a448f2032.patch",
+        "start_version": 428724,
+        "end_version": 433637
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
