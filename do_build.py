@@ -134,6 +134,10 @@ def build_runtimes(build_lldb_server: bool):
     builders.AsanMapFileBuilder().build()
 
 
+def test_toolchain(builder: LLVMBuilder) -> None:
+    builder.test()
+
+
 def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
     wrapper_path = paths.OUT_DIR / 'llvm_android_wrapper'
     wrapper_build_script = paths.TOOLCHAIN_UTILS_DIR / 'compiler_wrapper' / 'build.py'
@@ -601,6 +605,17 @@ def parse_args():
         default=False,
         help='Don\'t strip binaries/libraries')
 
+    test_group = parser.add_mutually_exclusive_group()
+    test_group.add_argument(
+        '--run-tests',
+        action='store_true',
+        help='Run tests after building.')
+    test_group.add_argument(
+        '--no-run-tests',
+        dest='run_tests',
+        action='store_false',
+        help='Do not run tests after building.')
+
     build_group = parser.add_mutually_exclusive_group()
     build_group.add_argument(
         '--build',
@@ -749,6 +764,9 @@ def main():
             build_name=args.build_name,
             build_lldb=build_lldb,
             swig_builder=swig_builder)
+
+    if args.run_tests and need_host:
+        test_toolchain(stage2)
 
     if do_package and need_host:
         package_toolchain(

@@ -401,6 +401,10 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 shutil.rmtree(os.path.join(dirpath, 'CMakeFiles'))
 
+    def _ninja(self, args: list[str]) -> None:
+        ninja_cmd = [str(paths.NINJA_BIN_PATH)] + args
+        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
+
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
             self._rm_cmake_cache(self.output_dir)
@@ -419,10 +423,7 @@ class CMakeBuilder(Builder):
         utils.create_script(self.output_dir / 'cmake_invocation.sh', cmake_cmd, env)
         utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
-        ninja_cmd: List[str] = [str(paths.NINJA_BIN_PATH)]
-        ninja_cmd.extend(self.ninja_targets)
-        utils.check_call(ninja_cmd, cwd=self.output_dir, env=env)
-
+        self._ninja(self.ninja_targets)
         self.install_config()
 
     def install_config(self) -> None:
@@ -652,3 +653,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     def installed_toolchain(self) -> toolchains.Toolchain:
         """Gets the built Toolchain."""
         return toolchains.Toolchain(self.install_dir, self.output_dir)
+
+    def test(self) -> None:
+        self._ninja(["check-clang"])
