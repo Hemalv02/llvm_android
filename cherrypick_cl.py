@@ -153,7 +153,10 @@ def create_cl(new_patches: PatchList, bug: Optional[str], reason: Optional[str])
         subject = '[patches] Cherry pick CLs from upstream'
     commit_lines = [subject, '']
     if bug:
-        commit_lines += [f'Bug: http://b/{bug}', '']
+        if bug.isnumeric():
+            commit_lines += [f'Bug: http://b/{bug}', '']
+        else:
+            commit_lines += [f'Bug: {bug}', '']
     for patch in new_patches:
         sha = patch.sha[:11]
         subject = patch.comment
