@@ -252,16 +252,22 @@
         "end_version": 426529
     },
     {
-        "comment": "Revert two changes that break Android builds.",
-        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
-        "start_version": 412851,
-        "end_version": 416183
+        "comment": "[UPSTREAM] [ARM] Fix postinc of vst1xN",
+        "rel_patch_path": "cherry/76786037c68163c48d7d829bb654de6c8298bbb0.patch",
+        "start_version": 416183,
+        "end_version": 426836
     },
     {
         "comment": "[UPSTREAM] [compiler-rt] [builtins] [AArch64] Add missing AArch64 data synchronization barrier (dsb) to __clear_cache",
         "rel_patch_path": "cherry/6455418d3d2a2de1a8251cc2ccf2e87b9ae3112d.patch",
         "start_version": 416183,
         "end_version": 429795
+    },
+    {
+        "comment": "Revert two changes that break Android builds.",
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
+        "start_version": 412851,
+        "end_version": 416183
     },
     {
         "comment": "Revert two changes that break Android builds.",
