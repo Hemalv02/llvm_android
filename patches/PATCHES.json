@@ -402,18 +402,6 @@
         "end_version": null
     },
     {
-        "comment": "ANDROID Do not record function addresses if value profiling is disabled",
-        "rel_patch_path": "ANDROID-Do-not-record-function-addresses-if-value-profiling-is-disabled.patch",
-        "start_version": 377782,
-        "end_version": 428724
-    },
-    {
-        "comment": "ANDROID Do not record function addresses if value profiling is disabled",
-        "rel_patch_path": "ANDROID-Do-not-record-function-addresses-if-value-profiling-is-disabled.v2.patch",
-        "start_version": 428724,
-        "end_version": null
-    },
-    {
         "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
         "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v3.patch",
         "start_version": 404259,
