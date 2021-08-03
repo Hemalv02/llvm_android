@@ -655,4 +655,4 @@ class LLVMBuilder(LLVMBaseBuilder):
         return toolchains.Toolchain(self.install_dir, self.output_dir)
 
     def test(self) -> None:
-        self._ninja(["check-clang"])
+        self._ninja(["check-clang", "check-llvm"])
