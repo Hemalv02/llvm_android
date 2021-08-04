@@ -1,0 +1,36 @@
+From 0ebb75608759cc1ee1016699e15d03e8e3f30d14 Mon Sep 17 00:00:00 2001
+From: Mitch Phillips <31459023+hctim@users.noreply.github.com>
+Date: Wed, 4 Aug 2021 11:03:24 -0700
+Subject: [PATCH] [hwasan] Add __hwasan_init constructor to runtime lib.
+
+Found by an Android toolchain upgrade, inherited module constructors
+(like init_have_lse_atomics from the builtins) can sneak into the hwasan
+runtime. If these inherited constructors call hwasanified libc
+functions, then the HWASan runtime isn't setup enough, and the code
+crashes.
+
+Mark the initialized as a high-priority initializer to fix this.
+
+Reviewed By: pcc, yabinc
+
+Differential Revision: https://reviews.llvm.org/D107391
+---
+ compiler-rt/lib/hwasan/hwasan.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan.cpp b/compiler-rt/lib/hwasan/hwasan.cpp
+index cbe0dee66dcd..e687f56b63f5 100644
+--- a/compiler-rt/lib/hwasan/hwasan.cpp
++++ b/compiler-rt/lib/hwasan/hwasan.cpp
+@@ -319,7 +319,7 @@ void __hwasan_init_static() {
+     InitializeSingleGlobal(global);
+ }
+ 
+-void __hwasan_init() {
++__attribute__((constructor(0))) void __hwasan_init() {
+   CHECK(!hwasan_init_is_running);
+   if (hwasan_inited) return;
+   hwasan_init_is_running = 1;
+-- 
+2.32.0.554.ge1b32706d8-goog
+
