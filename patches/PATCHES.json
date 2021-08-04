@@ -372,6 +372,12 @@
         "end_version": 433637
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Add __hwasan_init constructor to runtime lib.",
+        "rel_patch_path": "cherry/0ebb75608759cc1ee1016699e15d03e8e3f30d14.patch",
+        "start_version": 428724,
+        "end_version": 434763
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
