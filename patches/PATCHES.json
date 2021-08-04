@@ -372,6 +372,12 @@
         "end_version": 433637
     },
     {
+        "comment": "[UPSTREAM] [MBP] findBestLoopTopHelper should exit if OldTop is not a chain header",
+        "rel_patch_path": "cherry/50b62731452cb83979bbf3c06e828d26a4698dca.patch",
+        "start_version": 428724,
+        "end_version": 434174
+    },
+    {
         "comment": "[UPSTREAM] [hwasan] Add __hwasan_init constructor to runtime lib.",
         "rel_patch_path": "cherry/0ebb75608759cc1ee1016699e15d03e8e3f30d14.patch",
         "start_version": 428724,
