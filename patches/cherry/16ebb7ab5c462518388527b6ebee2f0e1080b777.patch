@@ -1,0 +1,124 @@
+From 16ebb7ab5c462518388527b6ebee2f0e1080b777 Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Mon, 2 Aug 2021 22:17:53 -0700
+Subject: [PATCH] [llvm-objcopy] [COFF] Do not patch debug entries if
+ PointerToRawData is zero
+
+Fix an edge case missed by https://reviews.llvm.org/D78921.  For e.g.,
+the Repro debug entry (generated with the /Brepro linker flag) does not
+have a debug-directory payload.  Do not attempt to patch Debug entries
+without a payload.
+
+Differential Revision: https://reviews.llvm.org/D107324
+---
+ .../llvm-objcopy/COFF/debug-dir-unmapped.test |  2 +-
+ .../COFF/debug-entry-no-payload.test          | 56 +++++++++++++++++++
+ llvm/tools/llvm-objcopy/COFF/Writer.cpp       | 16 +++---
+ 3 files changed, 64 insertions(+), 10 deletions(-)
+ create mode 100644 llvm/test/tools/llvm-objcopy/COFF/debug-entry-no-payload.test
+
+diff --git a/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test b/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test
+index b7966c14d7d9..29a08956a6c8 100644
+--- a/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test
++++ b/llvm/test/tools/llvm-objcopy/COFF/debug-dir-unmapped.test
+@@ -6,7 +6,7 @@
+ 
+ # RUN: not llvm-objcopy --remove-section .rdata %t.in.exe %t.out.exe 2>&1 | FileCheck %s
+ 
+-# CHECK: error: '{{.*}}{{/|\\}}debug-dir-unmapped.test.tmp.out.exe': debug directory payload outside of mapped sections not supported
++# CHECK: error: '{{.*}}{{/|\\}}debug-dir-unmapped.test.tmp.out.exe': debug directory payload not found
+ 
+ --- !COFF
+ OptionalHeader:
+diff --git a/llvm/test/tools/llvm-objcopy/COFF/debug-entry-no-payload.test b/llvm/test/tools/llvm-objcopy/COFF/debug-entry-no-payload.test
+new file mode 100644
+index 000000000000..f8bfa109e857
+--- /dev/null
++++ b/llvm/test/tools/llvm-objcopy/COFF/debug-entry-no-payload.test
+@@ -0,0 +1,56 @@
++## Check that llvm-objcopy does not produce an error for debug directory
++## entries without a payload (e.g. IMAGE_DEBUG_TYPE_REPRO,
++## IMAGE_DEBUG_TYPE_UNKNOWN) when patching entries that may have moved during
++## a requested operation. Also check that the such debug entries are present
++## in the output.
++
++## The code to patch debug entries is executed even when no operation is
++## requested. Hence the RUN line below invokes llvm-objcopy without any
++## arguments.
++
++# RUN: yaml2obj %s -o %t.in.exe
++# RUN: llvm-objcopy %t.in.exe %t.out.exe
++# RUN: llvm-readobj --coff-debug-directory %t.out.exe | FileCheck %s
++
++# CHECK: Type: Repro (0x10)
++# CHECK: Type: Unknown (0x0)
++
++--- !COFF
++OptionalHeader:
++  AddressOfEntryPoint: 4096
++  ImageBase:       1073741824
++  SectionAlignment: 4096
++  FileAlignment:   512
++  MajorOperatingSystemVersion: 6
++  MinorOperatingSystemVersion: 0
++  MajorImageVersion: 0
++  MinorImageVersion: 0
++  MajorSubsystemVersion: 6
++  MinorSubsystemVersion: 0
++  Subsystem:       IMAGE_SUBSYSTEM_WINDOWS_CUI
++  DLLCharacteristics: [  ]
++  SizeOfStackReserve: 1048576
++  SizeOfStackCommit: 4096
++  SizeOfHeapReserve: 1048576
++  SizeOfHeapCommit: 4096
++  Debug:
++    RelativeVirtualAddress: 8192
++    Size:            56
++header:
++  Machine:         IMAGE_FILE_MACHINE_AMD64
++  Characteristics: [  ]
++sections:
++  - Name:            .text
++    Characteristics: [  ]
++    VirtualAddress:  4096
++    VirtualSize:     3
++    SectionData:     31C0C3
++  - Name:            .rdata
++    Characteristics: [  ]
++    VirtualAddress:  8192
++    VirtualSize:     56
++    ## '10' in SectionData below indicates the Repro type for the first debug
++    ## entry.  The second entry has a type of Unknown ('00').
++    SectionData:     0000000047F96B2000000000100000000000000000000000000000000000000047F96B200000000000000000000000000000000000000000
++symbols:         []
++...
+diff --git a/llvm/tools/llvm-objcopy/COFF/Writer.cpp b/llvm/tools/llvm-objcopy/COFF/Writer.cpp
+index e7be64faab65..8cc2312d137c 100644
+--- a/llvm/tools/llvm-objcopy/COFF/Writer.cpp
++++ b/llvm/tools/llvm-objcopy/COFF/Writer.cpp
+@@ -426,15 +426,13 @@ Error COFFWriter::patchDebugDirectory() {
+       uint8_t *End = Ptr + Dir->Size;
+       while (Ptr < End) {
+         debug_directory *Debug = reinterpret_cast<debug_directory *>(Ptr);
+-        if (!Debug->AddressOfRawData)
+-          return createStringError(object_error::parse_failed,
+-                                   "debug directory payload outside of "
+-                                   "mapped sections not supported");
+-        if (Expected<uint32_t> FilePosOrErr =
+-                virtualAddressToFileAddress(Debug->AddressOfRawData))
+-          Debug->PointerToRawData = *FilePosOrErr;
+-        else
+-          return FilePosOrErr.takeError();
++        if (Debug->PointerToRawData) {
++          if (Expected<uint32_t> FilePosOrErr =
++                  virtualAddressToFileAddress(Debug->AddressOfRawData))
++            Debug->PointerToRawData = *FilePosOrErr;
++          else
++            return FilePosOrErr.takeError();
++        }
+         Ptr += sizeof(debug_directory);
+         Offset += sizeof(debug_directory);
+       }
+-- 
+2.32.0.605.g8dce9f2422-goog
+

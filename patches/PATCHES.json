@@ -384,6 +384,12 @@
         "end_version": 434763
     },
     {
+        "comment": "[UPSTREAM] [llvm-objcopy] [COFF] Do not patch debug entries if PointerToRawData is zero",
+        "rel_patch_path": "cherry/16ebb7ab5c462518388527b6ebee2f0e1080b777.patch",
+        "start_version": 428724,
+        "end_version": 434976
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
@@ -423,12 +429,6 @@
         "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
         "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v4.patch",
         "start_version": 428724,
-        "end_version": null
-    },
-    {
-        "comment": "Revert \"[llvm-objcopy] [COFF] Fix a misconception about debug directory payloads\"",
-        "rel_patch_path": "Revert-windows-debug-directory.patch",
-        "start_version": 399163,
         "end_version": null
     },
     {
