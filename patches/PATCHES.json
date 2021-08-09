@@ -390,6 +390,12 @@
         "end_version": 434976
     },
     {
+        "comment": "[UPSTREAM] [openmp] Do not use shared memory on Android",
+        "rel_patch_path": "cherry/49fabd9d76b470e3d3fdd47011826207a4e4a8eb.patch",
+        "start_version": 428724,
+        "end_version": 435105
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
@@ -447,12 +453,6 @@
         "comment": "Ensure that we use our toolchain's lipo, and not the system version",
         "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
         "start_version": 407598,
-        "end_version": null
-    },
-    {
-        "comment": "No shm_name on Android",
-        "rel_patch_path": "No-shm_name-on-Android.patch",
-        "start_version": 412851,
         "end_version": null
     },
     {

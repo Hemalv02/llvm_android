@@ -1,0 +1,91 @@
+From 49fabd9d76b470e3d3fdd47011826207a4e4a8eb Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Fri, 30 Jul 2021 10:06:05 -0700
+Subject: [PATCH] [openmp] Do not use shared memory on Android
+
+Android provides ashmem/ASharedMemory support on newer releases, which
+we can use if requested by openmp users on Android.
+
+Also refactor the preprocessor check for using shared memory to
+kmp_config.h.cmake.
+
+Differential Revision: https://reviews.llvm.org/D107181
+---
+ openmp/runtime/src/kmp_config.h.cmake |  5 +++++
+ openmp/runtime/src/kmp_runtime.cpp    | 12 ++++++------
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/openmp/runtime/src/kmp_config.h.cmake b/openmp/runtime/src/kmp_config.h.cmake
+index 93a3e2f99071..40d20115c9ec 100644
+--- a/openmp/runtime/src/kmp_config.h.cmake
++++ b/openmp/runtime/src/kmp_config.h.cmake
+@@ -134,4 +134,9 @@
+ # define KMP_GOMP_COMPAT
+ #endif
+ 
++// use shared memory with dynamic library (except Android, where shm_*
++// functions don't exist).
++#if KMP_OS_UNIX && KMP_DYNAMIC_LIB && !__ANDROID__
++#define KMP_USE_SHM
++#endif
+ #endif // KMP_CONFIG_H
+diff --git a/openmp/runtime/src/kmp_runtime.cpp b/openmp/runtime/src/kmp_runtime.cpp
+index 65a590037e87..3bbf6e985b93 100644
+--- a/openmp/runtime/src/kmp_runtime.cpp
++++ b/openmp/runtime/src/kmp_runtime.cpp
+@@ -6595,7 +6595,7 @@ void __kmp_register_library_startup(void) {
+ 
+     char *value = NULL; // Actual value of the environment variable.
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if defined(KMP_USE_SHM)
+     char *shm_name = __kmp_str_format("/%s", name);
+     int shm_preexist = 0;
+     char *data1;
+@@ -6700,7 +6700,7 @@ void __kmp_register_library_startup(void) {
+       } break;
+       case 2: { // Neighbor is dead.
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if defined(KMP_USE_SHM)
+         // close shared memory.
+         shm_unlink(shm_name); // this removes file in /dev/shm
+ #else
+@@ -6714,7 +6714,7 @@ void __kmp_register_library_startup(void) {
+       }
+     }
+     KMP_INTERNAL_FREE((void *)value);
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if defined(KMP_USE_SHM)
+     KMP_INTERNAL_FREE((void *)shm_name);
+ #endif
+   } // while
+@@ -6727,7 +6727,7 @@ void __kmp_unregister_library(void) {
+   char *name = __kmp_reg_status_name();
+   char *value = NULL;
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if defined(KMP_USE_SHM)
+   char *shm_name = __kmp_str_format("/%s", name);
+   int fd1 = shm_open(shm_name, O_RDONLY, 0666);
+   if (fd1 == -1) {
+@@ -6748,14 +6748,14 @@ void __kmp_unregister_library(void) {
+   KMP_DEBUG_ASSERT(__kmp_registration_str != NULL);
+   if (value != NULL && strcmp(value, __kmp_registration_str) == 0) {
+ //  Ok, this is our variable. Delete it.
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if defined(KMP_USE_SHM)
+     shm_unlink(shm_name); // this removes file in /dev/shm
+ #else
+     __kmp_env_unset(name);
+ #endif
+   }
+ 
+-#if KMP_OS_UNIX && KMP_DYNAMIC_LIB // shared memory is with dynamic library
++#if defined(KMP_USE_SHM)
+   KMP_INTERNAL_FREE(shm_name);
+ #endif
+ 
+-- 
+2.32.0.605.g8dce9f2422-goog
+
