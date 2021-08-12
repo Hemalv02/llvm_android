@@ -546,10 +546,17 @@ def parse_args():
         default=False,
         help='Enable assertions (only affects stage2)')
 
-    parser.add_argument(
-        '--no-lto',
+    lto_group = parser.add_mutually_exclusive_group()
+    lto_group.add_argument(
+        '--lto',
         action='store_true',
         default=False,
+        help='Enable LTO (only affects stage2).  This option increases build time.')
+    lto_group.add_argument(
+        '--no-lto',
+        action='store_false',
+        default=False,
+        dest='lto',
         help='Disable LTO to speed up build (only affects stage2)')
 
     parser.add_argument(
@@ -676,9 +683,9 @@ def main():
 
     logging.basicConfig(level=logging.DEBUG)
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r' %
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
-                  do_runtimes, do_package, need_windows))
+                  do_runtimes, do_package, need_windows, args.lto))
 
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:
@@ -714,7 +721,7 @@ def main():
         stage2.svn_revision = android_version.get_svn_revision()
         stage2.debug_build = args.debug
         stage2.enable_assertions = args.enable_assertions
-        stage2.lto = not args.no_lto
+        stage2.lto = args.lto
         stage2.build_instrumented = instrumented
         stage2.profdata_file = profdata if profdata else None
 
