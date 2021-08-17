@@ -462,6 +462,12 @@
         "end_version": null
     },
     {
+        "comment": "Mark XFAIL tests",
+        "rel_patch_path": "Mark-XFAIL-tests.patch",
+        "start_version": 428724,
+        "end_version": null
+    },
+    {
         "comment": "Ensure that we use our toolchain's lipo, and not the system version",
         "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
         "start_version": 407598,

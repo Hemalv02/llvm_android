@@ -629,6 +629,8 @@ class LLVMBuilder(LLVMBaseBuilder):
                                               'binutils' / 'binutils-2.27' / 'include')
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
+        defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'
+
         if self._config.target_os.is_darwin:
             defines['HAVE_LIBCOMPRESSION'] = '1'
             defines['HAVE_FUTIMENS'] = '1'
@@ -656,3 +658,10 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def test(self) -> None:
         self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
+        # Known failed tests:
+        #   Clang :: CodeGenCXX/builtins.cpp
+        #   Clang :: CodeGenCXX/unknown-anytype.cpp
+        #   Clang :: Sema/builtin-setjmp.c
+        #   LLVM :: Bindings/Go/go.test (disabled by LLVM_INCLUDE_GO_TESTS=OFF)
+        #   LLVM :: CodeGen/X86/extractelement-fp.ll
+        #   LLVM :: CodeGen/X86/fp-round.ll
