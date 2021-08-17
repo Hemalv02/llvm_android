@@ -396,6 +396,12 @@
         "end_version": 435105
     },
     {
+        "comment": "[UPSTREAM] Remove unused imports.",
+        "rel_patch_path": "cherry/d42be2d63ccf0cb38d218ee67746d6e108685a71.patch",
+        "start_version": 428724,
+        "end_version": 435733
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,

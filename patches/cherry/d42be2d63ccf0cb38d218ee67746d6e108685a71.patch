@@ -1,0 +1,26 @@
+From d42be2d63ccf0cb38d218ee67746d6e108685a71 Mon Sep 17 00:00:00 2001
+From: Dan Albert <danalbert@google.com>
+Date: Tue, 17 Aug 2021 13:03:27 -0700
+Subject: [PATCH] Remove unused imports.
+
+---
+ libcxx/utils/merge_archives.py | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/libcxx/utils/merge_archives.py b/libcxx/utils/merge_archives.py
+index 2fcb474d3d5d..fa0b2ee68171 100755
+--- a/libcxx/utils/merge_archives.py
++++ b/libcxx/utils/merge_archives.py
+@@ -8,9 +8,7 @@
+ #===----------------------------------------------------------------------===##
+ 
+ from argparse import ArgumentParser
+-from ctypes.util import find_library
+ import distutils.spawn
+-import glob
+ import tempfile
+ import os
+ import shutil
+-- 
+2.33.0.rc1.237.g0d66db33f3-goog
+
