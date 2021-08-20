@@ -1,0 +1,87 @@
+From 6f85225ef3791357f9b1aa097b575b0a2b0dff48 Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Wed, 18 Aug 2021 15:03:03 -0700
+Subject: [PATCH] StackLifetime: Remove asserts for multiple lifetime
+ intrinsics.
+
+According to the langref, it is valid to have multiple consecutive
+lifetime start or end intrinsics on the same object.
+
+For llvm.lifetime.start:
+"If ptr [...] is a stack object that is already alive, it simply
+fills all bytes of the object with poison."
+
+For llvm.lifetime.end:
+"Calling llvm.lifetime.end on an already dead alloca is no-op."
+
+However, we currently fail an assertion in such cases. I've observed
+the assertion failure when the loop vectorization pass duplicates
+the intrinsic.
+
+We can conservatively handle these intrinsics by ignoring all but
+the first one, which can be implemented by removing the assertions.
+
+Differential Revision: https://reviews.llvm.org/D108337
+---
+ llvm/lib/Analysis/StackLifetime.cpp           |  2 --
+ .../Analysis/StackSafetyAnalysis/lifetime.ll  | 25 +++++++++++++++++++
+ 2 files changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/llvm/lib/Analysis/StackLifetime.cpp b/llvm/lib/Analysis/StackLifetime.cpp
+index ab5f2db7d1cd..a3d5c81e261d 100644
+--- a/llvm/lib/Analysis/StackLifetime.cpp
++++ b/llvm/lib/Analysis/StackLifetime.cpp
+@@ -257,14 +257,12 @@ void StackLifetime::calculateLiveIntervals() {
+       unsigned AllocaNo = It.second.AllocaNo;
+ 
+       if (IsStart) {
+-        assert(!Started.test(AllocaNo) || Start[AllocaNo] == BBStart);
+         if (!Started.test(AllocaNo)) {
+           Started.set(AllocaNo);
+           Ended.reset(AllocaNo);
+           Start[AllocaNo] = InstNo;
+         }
+       } else {
+-        assert(!Ended.test(AllocaNo));
+         if (Started.test(AllocaNo)) {
+           LiveRanges[AllocaNo].addRange(Start[AllocaNo], InstNo);
+           Started.reset(AllocaNo);
+diff --git a/llvm/test/Analysis/StackSafetyAnalysis/lifetime.ll b/llvm/test/Analysis/StackSafetyAnalysis/lifetime.ll
+index 45c68b5e3d02..f88e38ce52cc 100644
+--- a/llvm/test/Analysis/StackSafetyAnalysis/lifetime.ll
++++ b/llvm/test/Analysis/StackSafetyAnalysis/lifetime.ll
+@@ -924,6 +924,31 @@ entry:
+   ret void
+ }
+ 
++define void @multiple_start_end() {
++; CHECK-LABEL: define void @multiple_start_end
++entry:
++; CHECK: entry:
++; CHECK-NEXT: Alive: <>
++  %x = alloca i8
++  call void @llvm.lifetime.start.p0i8(i64 1, i8* %x)
++; CHECK: call void @llvm.lifetime.start.p0i8(i64 1, i8* %x)
++; CHECK-NEXT: Alive: <x>
++
++  call void @llvm.lifetime.start.p0i8(i64 1, i8* %x)
++; CHECK: call void @llvm.lifetime.start.p0i8(i64 1, i8* %x)
++; CHECK-NEXT: Alive: <x>
++
++  call void @llvm.lifetime.end.p0i8(i64 1, i8* %x)
++; CHECK: call void @llvm.lifetime.end.p0i8(i64 1, i8* %x)
++; CHECK-NEXT: Alive: <>
++
++  call void @llvm.lifetime.end.p0i8(i64 1, i8* %x)
++; CHECK: call void @llvm.lifetime.end.p0i8(i64 1, i8* %x)
++; CHECK-NEXT: Alive: <>
++
++  ret void
++}
++
+ declare void @llvm.lifetime.start.p0i8(i64, i8* nocapture)
+ declare void @llvm.lifetime.end.p0i8(i64, i8* nocapture)
+ declare void @llvm.lifetime.start.p0i32(i64, i32* nocapture)
+-- 
+2.33.0.rc2.250.ged5fa647cd-goog
+
