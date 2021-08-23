@@ -432,24 +432,6 @@
         "end_version": null
     },
     {
-        "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
-        "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v3.patch",
-        "start_version": 404259,
-        "end_version": 428724
-    },
-    {
-        "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
-        "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v4.patch",
-        "start_version": 428724,
-        "end_version": 429854
-    },
-    {
-        "comment": "Revert \"[X86] Custom lower ISD::FROUND with SSE4.1 to avoid a libcall.\"",
-        "rel_patch_path": "Revert-X86-Custom-lower-ISD-FROUND-with-SSE4.1-to-av-v5.patch",
-        "start_version": 429854,
-        "end_version": null
-    },
-    {
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v2.patch",
         "start_version": 416183,
