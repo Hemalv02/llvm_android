@@ -396,10 +396,28 @@
         "end_version": 435105
     },
     {
+        "comment": "[UPSTREAM] [hwasan] Prevent reordering of tag checks.",
+        "rel_patch_path": "cherry/0deedaa23f71587d121a5ffab40571fd4a64599a.patch",
+        "start_version": 433403,
+        "end_version": 435678
+    },
+    {
+        "comment": "[UPSTREAM] hwasan: Move stack ring buffer initialization before InitStackAndTls.",
+        "rel_patch_path": "cherry/affb132ab89f0acffcbaf20b9357bf9e966985fe.patch",
+        "start_version": 433403,
+        "end_version": 435715
+    },
+    {
         "comment": "[UPSTREAM] Remove unused imports.",
         "rel_patch_path": "cherry/d42be2d63ccf0cb38d218ee67746d6e108685a71.patch",
         "start_version": 428724,
         "end_version": 435733
+    },
+    {
+        "comment": "[UPSTREAM] StackLifetime: Remove asserts for multiple lifetime intrinsics.",
+        "rel_patch_path": "cherry/6f85225ef3791357f9b1aa097b575b0a2b0dff48.patch",
+        "start_version": 433403,
+        "end_version": 435885
     },
     {
         "comment": "Revert two changes that break Android builds.",

@@ -1,0 +1,41 @@
+From affb132ab89f0acffcbaf20b9357bf9e966985fe Mon Sep 17 00:00:00 2001
+From: Peter Collingbourne <peter@pcc.me.uk>
+Date: Mon, 16 Aug 2021 20:13:42 -0700
+Subject: [PATCH] hwasan: Move stack ring buffer initialization before
+ InitStackAndTls.
+
+D104248 moved the call to GetThreadStackAndTls to before the
+initialization of the ring buffer TLS slot. As a result, if libc
+is instrumented we crash in pthread_getattr_np which is called from
+__sanitizer::GetThreadStackTopAndBottom.
+
+Fix the problem by moving the stack ring buffer initialization before
+the call to InitStackAndTls.
+
+Differential Revision: https://reviews.llvm.org/D108184
+---
+ compiler-rt/lib/hwasan/hwasan_thread.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/compiler-rt/lib/hwasan/hwasan_thread.cpp b/compiler-rt/lib/hwasan/hwasan_thread.cpp
+index ee747a3beea5..5b65718c4d3b 100644
+--- a/compiler-rt/lib/hwasan/hwasan_thread.cpp
++++ b/compiler-rt/lib/hwasan/hwasan_thread.cpp
+@@ -45,13 +45,13 @@ void Thread::Init(uptr stack_buffer_start, uptr stack_buffer_size,
+   if (auto sz = flags()->heap_history_size)
+     heap_allocations_ = HeapAllocationsRingBuffer::New(sz);
+ 
+-  InitStackAndTls(state);
+ #if !SANITIZER_FUCHSIA
+   // Do not initialize the stack ring buffer just yet on Fuchsia. Threads will
+   // be initialized before we enter the thread itself, so we will instead call
+   // this later.
+   InitStackRingBuffer(stack_buffer_start, stack_buffer_size);
+ #endif
++  InitStackAndTls(state);
+ }
+ 
+ void Thread::InitStackRingBuffer(uptr stack_buffer_start,
+-- 
+2.33.0.rc2.250.ged5fa647cd-goog
+

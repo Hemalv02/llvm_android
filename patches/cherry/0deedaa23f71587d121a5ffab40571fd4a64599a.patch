@@ -1,0 +1,63 @@
+From 0deedaa23f71587d121a5ffab40571fd4a64599a Mon Sep 17 00:00:00 2001
+From: Florian Mayer <fmayer@google.com>
+Date: Wed, 11 Aug 2021 14:25:50 +0100
+Subject: [PATCH] [hwasan] Prevent reordering of tag checks.
+
+They were previously unconstrained, which allowed them to be reordered
+before the shadow memory write.
+
+Reviewed By: eugenis
+
+Differential Revision: https://reviews.llvm.org/D107901
+---
+ llvm/include/llvm/IR/Intrinsics.td            |  4 ++--
+ .../HWAddressSanitizer/memaccess-clobber.ll   | 20 +++++++++++++++++++
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+ create mode 100644 llvm/test/Instrumentation/HWAddressSanitizer/memaccess-clobber.ll
+
+diff --git a/llvm/include/llvm/IR/Intrinsics.td b/llvm/include/llvm/IR/Intrinsics.td
+index 61165ab9e136..b4ae7b1dd586 100644
+--- a/llvm/include/llvm/IR/Intrinsics.td
++++ b/llvm/include/llvm/IR/Intrinsics.td
+@@ -1570,10 +1570,10 @@ def int_load_relative: DefaultAttrsIntrinsic<[llvm_ptr_ty], [llvm_ptr_ty, llvm_a
+ 
+ def int_hwasan_check_memaccess :
+   Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty, llvm_i32_ty],
+-            [IntrInaccessibleMemOnly, ImmArg<ArgIndex<2>>]>;
++            [ImmArg<ArgIndex<2>>]>;
+ def int_hwasan_check_memaccess_shortgranules :
+   Intrinsic<[], [llvm_ptr_ty, llvm_ptr_ty, llvm_i32_ty],
+-            [IntrInaccessibleMemOnly, ImmArg<ArgIndex<2>>]>;
++            [ImmArg<ArgIndex<2>>]>;
+ 
+ // Xray intrinsics
+ //===----------------------------------------------------------------------===//
+diff --git a/llvm/test/Instrumentation/HWAddressSanitizer/memaccess-clobber.ll b/llvm/test/Instrumentation/HWAddressSanitizer/memaccess-clobber.ll
+new file mode 100644
+index 000000000000..2a23079e532c
+--- /dev/null
++++ b/llvm/test/Instrumentation/HWAddressSanitizer/memaccess-clobber.ll
+@@ -0,0 +1,20 @@
++; Make sure memaccess checks preceed the following reads.
++;
++; RUN: opt < %s -S -enable-new-pm=0 -hwasan -basic-aa -memdep -print-memdeps -analyze -mtriple aarch64-linux-android30 | FileCheck %s
++
++target datalayout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128"
++target triple = "aarch64--linux-android10000"
++
++declare void @use32(i32*)
++
++define i32 @test_alloca() sanitize_hwaddress {
++entry:
++  %x = alloca i32, align 4
++  call void @use32(i32* nonnull %x)
++  ; CHECK: Clobber from:   call void @llvm.hwasan.check.memaccess.shortgranule
++  ; CHECK-NEXT: load i32, i32* %x.hwasan, align 4
++  %y = load i32, i32* %x
++  ; CHECK:  Clobber from:   %y = load i32, i32* %x.hwasan, align 4
++  ; CHECK-NEXT: call void @llvm.memset.p0i8.i64(i8* align 1 {{.*}}, i8 0, i64 1, i1 false)
++  ret i32 %y
++}
+-- 
+2.33.0.rc2.250.ged5fa647cd-goog
+
