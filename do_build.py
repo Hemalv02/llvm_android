@@ -774,9 +774,15 @@ def main():
             build_lldb=build_lldb,
             swig_builder=swig_builder)
 
-    # stage2 test is on by default, unless --skip-tests or skip stage2.
-    if not args.skip_tests and need_host and BuilderRegistry.should_build('stage2'):
-        stage2.test()
+    # stage2 test is on when stage2 is enabled unless --skip-tests or
+    # on instrumented builds.
+    need_tests = not args.skip_tests and need_host and \
+            BuilderRegistry.should_build('stage2') and \
+            (not args.build_instrumented)
+    if need_tests:
+        # http://b/197645198 Temporarily skip tests on [Darwin|Debug] builds
+        if not (hosts.build_host().is_darwin or args.debug):
+            stage2.test()
 
     if do_package and need_host:
         package_toolchain(
