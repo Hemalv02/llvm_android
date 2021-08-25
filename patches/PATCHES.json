@@ -420,6 +420,18 @@
         "end_version": 435885
     },
     {
+        "comment": "[UPSTREAM] [clang] Do not warn unused -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang",
+        "rel_patch_path": "cherry/ca6d5813d17598cd180995fb3bdfca00f364475f.patch",
+        "start_version": 433403,
+        "end_version": 435946
+    },
+    {
+        "comment": "[UPSTREAM] [clang] Don't generate warn-stack-size when the warning is ignored",
+        "rel_patch_path": "cherry/5fc4828aa6c6df03bd98b1f066e85655383d0cce.patch",
+        "start_version": 433403,
+        "end_version": 436353
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
