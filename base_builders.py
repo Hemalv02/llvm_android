@@ -625,8 +625,6 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['CLANG_VENDOR'] = 'Android ({}, {}based on {})'.format(
             self.build_name, tags_str, self.svn_revision)
 
-        defines['LLVM_BINUTILS_INCDIR'] = str(paths.ANDROID_DIR / 'toolchain' /
-                                              'binutils' / 'binutils-2.27' / 'include')
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
         defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'

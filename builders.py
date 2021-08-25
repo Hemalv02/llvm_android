@@ -990,7 +990,6 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         if self.build_lldb:
             defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
             defines['LLDB_PYTHON_RELATIVE_PATH'] = f'lib/python{paths._PYTHON_VER}/site-packages'
-        # Build LLVMgold.dll.
         defines['LLVM_ENABLE_PLUGINS'] = 'ON'
 
         defines['CMAKE_CXX_STANDARD'] = '17'

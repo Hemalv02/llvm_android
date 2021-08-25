@@ -424,9 +424,6 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
             'libc++abi.a',
         }
 
-    if host.is_windows:
-        necessary_lib_files.add('LLVMgold' + shlib_ext)
-
     if host.is_windows and not win_sdk.is_enabled():
         necessary_lib_files.add('libwinpthread-1' + shlib_ext)
         # For Windows, add other relevant libraries.
