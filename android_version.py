@@ -19,8 +19,8 @@ import re
 _llvm_next = False
 _version_read = False
 
-_patch_level = '1'
-_svn_revision = 'r428724'
+_patch_level = '2'
+_svn_revision = 'r433403'
 # svn_revision_next will be newer than the official svn_revision in the future.
 _svn_revision_next = 'r433403'
 
