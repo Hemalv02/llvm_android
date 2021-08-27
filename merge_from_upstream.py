@@ -41,6 +41,10 @@ def parse_args():
     parser.add_argument('--sha', help='aosp/upstream-main SHA to be merged')
     parser.add_argument('--rev', help='the svn revision number for update')
     parser.add_argument(
+        '--bug',
+        default=0,
+        help='bug number to include in the commit message')
+    parser.add_argument(
         '--create-new-branch',
         action='store_true',
         default=False,
@@ -83,7 +87,7 @@ def revision_to_sha(rev: int) -> str:
     return git_llvm_rev.translate_rev_to_sha(llvm_config, git_llvm_rev.Rev.parse(f'r{rev}'))
 
 
-def merge_projects(sha, revision, create_new_branch, dry_run):
+def merge_projects(sha, revision, bug_id, create_new_branch, dry_run):
     path = paths.TOOLCHAIN_LLVM_PATH
     if not dry_run:
         sync_branch(path)
@@ -97,11 +101,12 @@ def merge_projects(sha, revision, create_new_branch, dry_run):
                          dry_run=dry_run)
 
     # Merge upstream revision
+    commit_msg = 'Merge %s for LLVM update to %d\n\n' % (sha, revision)
+    if bug_id != 0:
+      commit_msg += 'Bug: %d\n' % bug_id
+    commit_msg += 'Test: presubmit'
     utils.check_call(['git', 'config', 'merge.renameLimit', '0'], cwd=path, dry_run=dry_run)
-    utils.check_call([
-        'git', 'merge', '--quiet', sha, '-m',
-        'Merge %s for LLVM update to %d' % (sha, revision)
-    ],
+    utils.check_call(['git', 'merge', '--quiet', sha, '-m', commit_msg],
         cwd=path,
         dry_run=dry_run)
 
@@ -117,7 +122,7 @@ def main():
         sha = args.sha
         revision = sha_to_revision(sha)
 
-    merge_projects(sha, revision, args.create_new_branch, args.dry_run)
+    merge_projects(sha, revision, int(args.bug), args.create_new_branch, args.dry_run)
 
 
 if __name__ == '__main__':
