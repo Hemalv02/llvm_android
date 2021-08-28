@@ -268,7 +268,7 @@ def build_target(android_base: Path, clang_version: version.Version, target : st
     modules = ['dist']
     if profiler is not None:
         # Build only a subset of targets and collect profiles
-        modules = ['libc', 'libLLVM_android-host64']
+        modules = ['libart', 'libc', 'libLLVM_android-host64']
 
         # Set the environment variable specifying where the profile file gets
         # written.
