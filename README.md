@@ -18,6 +18,8 @@ $ repo sync -c
 $ python toolchain/llvm_android/build.py
 ```
 
+The built toolchain will be installed to `out/install/$HOST/clang-dev`.
+
 If building on Linux, pass `--no-build windows` to `build.py` to skip
 building Clang for Windows.
 
