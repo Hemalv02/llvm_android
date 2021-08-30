@@ -99,6 +99,13 @@ def build_kythe_corpus(builder: builders.Stage2Builder) -> None:
 
 
 def package(build_name: str) -> None:
+    # Use SHA of toolchain/llvm-project in output file.  Fail build if we cannot
+    # find the SHA.
+    out_prefix = utils.check_output([
+        'git', f'--git-dir={paths.ANDROID_DIR}/toolchain/llvm-project/.git',
+        'rev-parse', 'HEAD'
+    ]).strip()
+
     # Build merge_kzips using soong
     utils.check_call(['build/soong/soong_ui.bash',
                       '--build-mode', '--all-modules',
@@ -109,7 +116,7 @@ def package(build_name: str) -> None:
 
     # Call: merge_zips $DIST_DIR/<build_name>.kzip <kzip files>
     output = os.path.join(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR),
-                          build_name + '.kzip')
+                          out_prefix + '.kzip')
 
     kythe_out_dir = paths.KYTHE_OUTPUT_DIR
     kzip_files = [os.path.join(kythe_out_dir, kzip)
