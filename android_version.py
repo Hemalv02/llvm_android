@@ -19,8 +19,8 @@ import re
 _llvm_next = False
 _version_read = False
 
-_patch_level = '7' # skip patch level 6. r416183c from llvm-toolchain branch uses it.
-_svn_revision = 'r416183b1'
+_patch_level = '6'
+_svn_revision = 'r416183c'
 # svn_revision_next will be newer than the official svn_revision in the future.
 _svn_revision_next = 'r416183'
 

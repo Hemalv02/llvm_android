@@ -1,41 +1,5 @@
 [
     {
-        "comment": "[UPSTREAM] Revert \"[MachineDebugify] Insert synthetic DBG_VALUE instructions\"",
-        "rel_patch_path": "cherry/841f9c937f6e593c926a26aedf054436eb807fe6.patch",
-        "start_version": 412851,
-        "end_version": 413808
-    },
-    {
-        "comment": "[UPSTREAM] Revert \"[LLDB] Remove AArch64/Linux xfail decorator from TestGuiBasicDebug\"",
-        "rel_patch_path": "cherry/9f80ab1213e9f28b1b86f133fa7edf9a61c6f8fd.patch",
-        "start_version": 412851,
-        "end_version": 413976
-    },
-    {
-        "comment": "[UPSTREAM] Revert \"[PowerPC] Extend folding RLWINM + RLWINM to post-RA.\"",
-        "rel_patch_path": "cherry/2ea7210e3946b25ea52af061e8ae45d26877507a.patch",
-        "start_version": 412851,
-        "end_version": 414005
-    },
-    {
-        "comment": "[UPSTREAM] [AsmParser] make .ascii support spaces as separators",
-        "rel_patch_path": "cherry/e0963ae274be5b071d1e1b00f5e4e019483c09e9.patch",
-        "start_version": 412851,
-        "end_version": 414368
-    },
-    {
-        "comment": "[UPSTREAM] [InitLLVM] Ensure SIGPIPE handler installed before sigaction()",
-        "rel_patch_path": "cherry/e05baf40de8a3bbfcf4a765761b1147e94b7309c.patch",
-        "start_version": 407598,
-        "end_version": 415546
-    },
-    {
-        "comment": "[UPSTREAM] [libunwind] Unwind through aarch64/Linux sigreturn frame",
-        "rel_patch_path": "cherry/c82deed6764cbc63966374baf9721331901ca958.patch",
-        "start_version": 407598,
-        "end_version": 415963
-    },
-    {
         "comment": "[UPSTREAM] Revert \"[SLP]Merge reorder and reuse shuffles.\"",
         "rel_patch_path": "cherry/e463bd53c03ff9183bd30030477dfe6f3b2fdd0c.patch",
         "start_version": 416183,
@@ -246,6 +210,12 @@
         "end_version": 424523
     },
     {
+        "comment": "[UPSTREAM] [llvm-objcopy][ELF] --only-keep-debug: set offset/size of segments with no sections to zero",
+        "rel_patch_path": "cherry/b3336bfa2e6a38f16c4ecf4d77bd0f97ec5a46eb.patch",
+        "start_version": 422132,
+        "end_version": 426523
+    },
+    {
         "comment": "[UPSTREAM] [hwasan] Fix missing synchronization in AllocThread.",
         "rel_patch_path": "cherry/18959a6a094c6469fc2fd5cc167fda7cbe3f163b.patch",
         "start_version": 416183,
@@ -262,12 +232,6 @@
         "rel_patch_path": "cherry/6455418d3d2a2de1a8251cc2ccf2e87b9ae3112d.patch",
         "start_version": 416183,
         "end_version": 429795
-    },
-    {
-        "comment": "Revert two changes that break Android builds.",
-        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v4.patch",
-        "start_version": 412851,
-        "end_version": 416183
     },
     {
         "comment": "Revert two changes that break Android builds.",
@@ -307,12 +271,6 @@
     },
     {
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
-        "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.patch",
-        "start_version": 407598,
-        "end_version": 416183
-    },
-    {
-        "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v2.patch",
         "start_version": 416183,
         "end_version": null
@@ -334,12 +292,6 @@
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
         "start_version": 412851,
         "end_version": null
-    },
-    {
-        "comment": "Revert babd3aefc91 and 5 changes after it",
-        "rel_patch_path": "Revert-babd3aefc91-and-5-changes-after-it.patch",
-        "start_version": 412851,
-        "end_version": 416183
     },
     {
         "comment": "Revert babd3aefc91 and 6 changes after it",

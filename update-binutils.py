@@ -52,9 +52,13 @@ def update_binutils_symlink(prebuilt_dir, version):
     for b in binutils:
         symlink_path = os.path.join(binutils_dir, b)
         util_rela_path = os.path.join('..', 'clang-' + version, 'bin', b)
-        if os.path.exists(symlink_path):
+        if  os.path.islink(symlink_path):
             os.remove(symlink_path)
         os.symlink(util_rela_path, symlink_path)
+
+        if not os.path.exists(symlink_path):
+            # check that the created link is valid
+            raise RuntimeError(f'Created symlink, {symlink_path}, is broken')
 
 
 def do_commit(prebuilt_dir, use_cbr, version, bug_id):

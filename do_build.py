@@ -435,8 +435,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     # Remove unnecessary static libraries.
     remove_static_libraries(lib_dir, necessary_lib_files)
 
-    if not host.is_windows:
+    if host.is_linux:
         install_wrappers(install_dir, llvm_next)
+
+    if not host.is_windows:
         normalize_llvm_host_libs(install_dir, host, version)
 
     # Check necessary lib files exist.
@@ -465,8 +467,23 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         svn_revision = android_version.get_svn_revision()
         version_file.write(f'based on {svn_revision}\n')
 
-    # Create RBE input files.
     if host.is_linux:
+
+        # Add BUILD.bazel file.
+        with (install_dir / 'BUILD.bazel').open('w') as bazel_file:
+            bazel_file.write(
+                textwrap.dedent("""\
+                    package(default_visibility = ["//visibility:public"])
+
+                    filegroup(
+                        name = "binaries",
+                        srcs = glob([
+                            "bin/*",
+                            "lib64/*",
+                        ]),
+                    )"""))
+
+        # Create RBE input files.
         with (install_dir / 'bin' / 'remote_toolchain_inputs').open('w') as inputs_file:
             dependencies = ('clang\n'
                             'clang++\n'
