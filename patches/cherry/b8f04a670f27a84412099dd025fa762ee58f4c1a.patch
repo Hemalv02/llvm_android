@@ -1,0 +1,53 @@
+From b8f04a670f27a84412099dd025fa762ee58f4c1a Mon Sep 17 00:00:00 2001
+From: Shoaib Meenai <smeenai@fb.com>
+Date: Thu, 29 Jul 2021 18:39:04 -0700
+Subject: [PATCH] [builtins] Try to ensure single copy of emulated TLS state
+
+Multiple copies of emulated TLS state means inconsistent results when
+accessing the same thread-local variable from different shared objects
+(https://github.com/android/ndk/issues/1551). Making `__emutls_get_address`
+be a weak default visibility symbol should make the dynamic linker
+ensure only a single copy gets used at runtime. This is best-effort, but
+the more robust approach of putting emulated TLS into its own shared
+object would (a) be a much bigger change, and (b) shared objects are
+pretty heavyweight, and adding a new one to a space-constrained
+environment isn't an easy sell. Given the expected rarity of direct
+accesses to emulated TLS variables across different shared objects, the
+best-effort approach should suffice.
+
+Reviewed By: danalbert, rprichard
+
+Differential Revision: https://reviews.llvm.org/D107127
+---
+ compiler-rt/lib/builtins/emutls.c | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/compiler-rt/lib/builtins/emutls.c b/compiler-rt/lib/builtins/emutls.c
+index 98cabd917d6c..88af348c9e22 100644
+--- a/compiler-rt/lib/builtins/emutls.c
++++ b/compiler-rt/lib/builtins/emutls.c
+@@ -374,6 +374,21 @@ emutls_get_address_array(uintptr_t index) {
+   return array;
+ }
+ 
++#ifndef _WIN32
++// Our emulated TLS implementation relies on local state (e.g. for the pthread
++// key), and if we duplicate this state across different shared libraries,
++// accesses to the same TLS variable from different shared libraries will yield
++// different results (see https://github.com/android/ndk/issues/1551 for an
++// example). __emutls_get_address is the only external entry point for emulated
++// TLS, and by making it default visibility and weak, we can rely on the dynamic
++// linker to coalesce multiple copies at runtime and ensure a single unique copy
++// of TLS state. This is a best effort; it won't work if the user is linking
++// with -Bsymbolic or -Bsymbolic-functions, and it also won't work on Windows,
++// where the dynamic linker has no notion of coalescing weak symbols at runtime.
++// A more robust solution would be to create a separate shared library for
++// emulated TLS, to ensure a single copy of its state.
++__attribute__((visibility("default"), weak))
++#endif
+ void *__emutls_get_address(__emutls_control *control) {
+   uintptr_t index = emutls_get_index(control);
+   emutls_address_array *array = emutls_get_address_array(index--);
+-- 
+2.33.0.259.gc128427fd7-goog
+

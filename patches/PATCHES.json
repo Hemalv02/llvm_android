@@ -234,6 +234,12 @@
         "end_version": 429795
     },
     {
+        "comment": "[UPSTREAM] [builtins] Try to ensure single copy of emulated TLS state",
+        "rel_patch_path": "cherry/b8f04a670f27a84412099dd025fa762ee58f4c1a.patch",
+        "start_version": 416183,
+        "end_version": 434407
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
