@@ -1,0 +1,241 @@
+From c1bc7981babcae20247650a4b8adab9c0c97890a Mon Sep 17 00:00:00 2001
+From: Chuanqi Xu <yedeng.yd@linux.alibaba.com>
+Date: Wed, 20 Jan 2021 18:54:46 +0800
+Subject: [PATCH] [Coroutine] Remain alignment information when merging frame
+ variables
+
+Summary: This is to address bug48712.
+The solution in this patch is that when we want to merge two variable a
+into the storage frame of variable b only if the alignment of a is
+multiple of b.
+There may be other strategies. But now I think they are hard to handle
+and benefit little. Or we can implement them in the future.
+
+Test-plan: check-llvm
+
+Reviewers: jmorse, lxfind, junparser
+
+Differential Revision: https://reviews.llvm.org/D94891
+---
+ llvm/lib/Transforms/Coroutines/CoroFrame.cpp  | 20 ++++-
+ .../Coroutines/coro-frame-reuse-alloca-04.ll  | 80 +++++++++++++++++++
+ .../Coroutines/coro-frame-reuse-alloca-05.ll  | 80 +++++++++++++++++++
+ 3 files changed, 178 insertions(+), 2 deletions(-)
+ create mode 100644 llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-04.ll
+ create mode 100644 llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-05.ll
+
+diff --git a/llvm/lib/Transforms/Coroutines/CoroFrame.cpp b/llvm/lib/Transforms/Coroutines/CoroFrame.cpp
+index 26d4ea482ffb..e2642234ac9b 100644
+--- a/llvm/lib/Transforms/Coroutines/CoroFrame.cpp
++++ b/llvm/lib/Transforms/Coroutines/CoroFrame.cpp
+@@ -596,9 +596,21 @@ void FrameTypeBuilder::addFieldForAllocas(const Function &F,
+     // NonOverlappedAllocaSet.
+     for (auto &AllocaSet : NonOverlapedAllocas) {
+       assert(!AllocaSet.empty() && "Processing Alloca Set is not empty.\n");
+-      bool CouldMerge = none_of(AllocaSet, [&](auto Iter) {
++      bool NoInference = none_of(AllocaSet, [&](auto Iter) {
+         return IsAllocaInferenre(Alloca, Iter);
+       });
++      // If the alignment of A is multiple of the alignment of B, the address
++      // of A should satisfy the requirement for aligning for B.
++      //
++      // There may be other more fine-grained strategies to handle the alignment
++      // infomation during the merging process. But it seems hard to handle
++      // these strategies and benefit little.
++      bool Alignable = [&]() -> bool {
++        auto *LargestAlloca = *AllocaSet.begin();
++        return LargestAlloca->getAlign().value() % Alloca->getAlign().value() ==
++               0;
++      }();
++      bool CouldMerge = NoInference && Alignable;
+       if (!CouldMerge)
+         continue;
+       AllocaIndex[Alloca] = AllocaIndex[*AllocaSet.begin()];
+@@ -1120,7 +1132,11 @@ static Instruction *insertSpills(const FrameDataInfo &FrameData,
+     if (isa<AllocaInst>(Orig)) {
+       // If the type of GEP is not equal to the type of AllocaInst, it implies
+       // that the AllocaInst may be reused in the Frame slot of other
+-      // AllocaInst. So we cast the GEP to the type of AllocaInst.
++      // AllocaInst. So We cast GEP to the AllocaInst here to re-use
++      // the Frame storage.
++      //
++      // Note: If we change the strategy dealing with alignment, we need to refine
++      // this casting.
+       if (GEP->getResultElementType() != Orig->getType())
+         return Builder.CreateBitCast(GEP, Orig->getType(),
+                                      Orig->getName() + Twine(".cast"));
+diff --git a/llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-04.ll b/llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-04.ll
+new file mode 100644
+index 000000000000..88293dc33303
+--- /dev/null
++++ b/llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-04.ll
+@@ -0,0 +1,80 @@
++; Tests that variables of different type with incompatible alignment in a Corotuine whose lifetime 
++; range is not overlapping each other should not re-use the same slot in Coroutine frame. 
++; RUN: opt < %s -coro-split -reuse-storage-in-coroutine-frame -S | FileCheck %s
++; RUN: opt < %s -passes=coro-split -reuse-storage-in-coroutine-frame -S | FileCheck %s
++%"struct.task::promise_type" = type { i8 }
++%struct.awaitable = type { i8 }
++%struct.big_structure = type { [500 x i8] }
++%struct.big_structure.2 = type { [300 x i8] }
++declare i8* @malloc(i64)
++declare void @consume(%struct.big_structure*)
++declare void @consume.2(%struct.big_structure.2*)
++define void @a(i1 zeroext %cond) "coroutine.presplit"="1" {
++entry:
++  %__promise = alloca %"struct.task::promise_type", align 1
++  %a = alloca %struct.big_structure, align 1
++  %ref.tmp7 = alloca %struct.awaitable, align 1
++  %b = alloca %struct.big_structure.2, align 32
++  %ref.tmp18 = alloca %struct.awaitable, align 1
++  %0 = getelementptr inbounds %"struct.task::promise_type", %"struct.task::promise_type"* %__promise, i64 0, i32 0
++  %1 = call token @llvm.coro.id(i32 16, i8* nonnull %0, i8* bitcast (void (i1)* @a to i8*), i8* null)
++  br label %init.ready
++init.ready:
++  %2 = call noalias nonnull i8* @llvm.coro.begin(token %1, i8* null)
++  call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull %0)
++  br i1 %cond, label %if.then, label %if.else
++if.then:
++  %3 = getelementptr inbounds %struct.big_structure, %struct.big_structure* %a, i64 0, i32 0, i64 0
++  call void @llvm.lifetime.start.p0i8(i64 500, i8* nonnull %3)
++  call void @consume(%struct.big_structure* nonnull %a)
++  %save = call token @llvm.coro.save(i8* null)
++  %suspend = call i8 @llvm.coro.suspend(token %save, i1 false)
++  switch i8 %suspend, label %coro.ret [
++    i8 0, label %await.ready
++    i8 1, label %cleanup1
++  ]
++await.ready:
++  call void @llvm.lifetime.end.p0i8(i64 500, i8* nonnull %3)
++  br label %cleanup1
++if.else:
++  %4 = getelementptr inbounds %struct.big_structure.2, %struct.big_structure.2* %b, i64 0, i32 0, i64 0
++  call void @llvm.lifetime.start.p0i8(i64 300, i8* nonnull %4)
++  call void @consume.2(%struct.big_structure.2* nonnull %b)
++  %save2 = call token @llvm.coro.save(i8* null)
++  %suspend2 = call i8 @llvm.coro.suspend(token %save2, i1 false)
++  switch i8 %suspend2, label %coro.ret [
++    i8 0, label %await2.ready
++    i8 1, label %cleanup2
++  ]
++await2.ready:
++  call void @llvm.lifetime.end.p0i8(i64 300, i8* nonnull %4)
++  br label %cleanup2
++cleanup1:
++  call void @llvm.lifetime.end.p0i8(i64 500, i8* nonnull %3)
++  br label %cleanup
++cleanup2:
++  call void @llvm.lifetime.end.p0i8(i64 300, i8* nonnull %4)
++  br label %cleanup
++cleanup:
++  call i8* @llvm.coro.free(token %1, i8* %2)
++  br label %coro.ret
++coro.ret:
++  call i1 @llvm.coro.end(i8* null, i1 false)
++  ret void
++}
++; CHECK:       %a.Frame = type { void (%a.Frame*)*, void (%a.Frame*)*, %"struct.task::promise_type", %struct.big_structure, i1, [26 x i8], %struct.big_structure.2 }
++; CHECK-LABEL: @a.resume(
++; CHECK:         %[[A:.*]] = getelementptr inbounds %a.Frame, %a.Frame* %FramePtr, i32 0, i32 3
++; CHECK:         %[[A:.*]] = getelementptr inbounds %a.Frame, %a.Frame* %FramePtr, i32 0, i32 6
++
++declare token @llvm.coro.id(i32, i8* readnone, i8* nocapture readonly, i8*)
++declare i1 @llvm.coro.alloc(token) #3
++declare i64 @llvm.coro.size.i64() #5
++declare i8* @llvm.coro.begin(token, i8* writeonly) #3
++declare token @llvm.coro.save(i8*) #3
++declare i8* @llvm.coro.frame() #5
++declare i8 @llvm.coro.suspend(token, i1) #3
++declare i8* @llvm.coro.free(token, i8* nocapture readonly) #2
++declare i1 @llvm.coro.end(i8*, i1) #3
++declare void @llvm.lifetime.start.p0i8(i64, i8* nocapture) #4
++declare void @llvm.lifetime.end.p0i8(i64, i8* nocapture) #4
+diff --git a/llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-05.ll b/llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-05.ll
+new file mode 100644
+index 000000000000..c47eb55ad827
+--- /dev/null
++++ b/llvm/test/Transforms/Coroutines/coro-frame-reuse-alloca-05.ll
+@@ -0,0 +1,80 @@
++; Tests that variables of different type with incompatible alignment in a Corotuine whose 
++; lifetime range is not overlapping each other re-use the same slot in CorotuineFrame.
++; RUN: opt < %s -coro-split -reuse-storage-in-coroutine-frame -S | FileCheck %s
++; RUN: opt < %s -passes=coro-split -reuse-storage-in-coroutine-frame -S | FileCheck %s
++%"struct.task::promise_type" = type { i8 }
++%struct.awaitable = type { i8 }
++%struct.big_structure = type { [500 x i8] }
++%struct.big_structure.2 = type { [400 x i8] }
++declare i8* @malloc(i64)
++declare void @consume(%struct.big_structure*)
++declare void @consume.2(%struct.big_structure.2*)
++define void @a(i1 zeroext %cond) "coroutine.presplit"="1" {
++entry:
++  %__promise = alloca %"struct.task::promise_type", align 1
++  %a = alloca %struct.big_structure, align 32
++  %ref.tmp7 = alloca %struct.awaitable, align 1
++  %b = alloca %struct.big_structure.2, align 16
++  %ref.tmp18 = alloca %struct.awaitable, align 1
++  %0 = getelementptr inbounds %"struct.task::promise_type", %"struct.task::promise_type"* %__promise, i64 0, i32 0
++  %1 = call token @llvm.coro.id(i32 16, i8* nonnull %0, i8* bitcast (void (i1)* @a to i8*), i8* null)
++  br label %init.ready
++init.ready:
++  %2 = call noalias nonnull i8* @llvm.coro.begin(token %1, i8* null)
++  call void @llvm.lifetime.start.p0i8(i64 1, i8* nonnull %0)
++  br i1 %cond, label %if.then, label %if.else
++if.then:
++  %3 = getelementptr inbounds %struct.big_structure, %struct.big_structure* %a, i64 0, i32 0, i64 0
++  call void @llvm.lifetime.start.p0i8(i64 500, i8* nonnull %3)
++  call void @consume(%struct.big_structure* nonnull %a)
++  %save = call token @llvm.coro.save(i8* null)
++  %suspend = call i8 @llvm.coro.suspend(token %save, i1 false)
++  switch i8 %suspend, label %coro.ret [
++    i8 0, label %await.ready
++    i8 1, label %cleanup1
++  ]
++await.ready:
++  call void @llvm.lifetime.end.p0i8(i64 500, i8* nonnull %3)
++  br label %cleanup1
++if.else:
++  %4 = getelementptr inbounds %struct.big_structure.2, %struct.big_structure.2* %b, i64 0, i32 0, i64 0
++  call void @llvm.lifetime.start.p0i8(i64 400, i8* nonnull %4)
++  call void @consume.2(%struct.big_structure.2* nonnull %b)
++  %save2 = call token @llvm.coro.save(i8* null)
++  %suspend2 = call i8 @llvm.coro.suspend(token %save2, i1 false)
++  switch i8 %suspend2, label %coro.ret [
++    i8 0, label %await2.ready
++    i8 1, label %cleanup2
++  ]
++await2.ready:
++  call void @llvm.lifetime.end.p0i8(i64 400, i8* nonnull %4)
++  br label %cleanup2
++cleanup1:
++  call void @llvm.lifetime.end.p0i8(i64 500, i8* nonnull %3)
++  br label %cleanup
++cleanup2:
++  call void @llvm.lifetime.end.p0i8(i64 400, i8* nonnull %4)
++  br label %cleanup
++cleanup:
++  call i8* @llvm.coro.free(token %1, i8* %2)
++  br label %coro.ret
++coro.ret:
++  call i1 @llvm.coro.end(i8* null, i1 false)
++  ret void
++}
++; CHECK:       %a.Frame = type { void (%a.Frame*)*, void (%a.Frame*)*, %"struct.task::promise_type", i1, [14 x i8], %struct.big_structure }
++; CHECK-LABEL: @a.resume(
++; CHECK:         %[[A:.*]] = getelementptr inbounds %a.Frame, %a.Frame* %FramePtr, i32 0, i32 3
++; CHECK:         %[[A:.*]] = getelementptr inbounds %a.Frame, %a.Frame* %FramePtr, i32 0, i32 5
++
++declare token @llvm.coro.id(i32, i8* readnone, i8* nocapture readonly, i8*)
++declare i1 @llvm.coro.alloc(token) #3
++declare i64 @llvm.coro.size.i64() #5
++declare i8* @llvm.coro.begin(token, i8* writeonly) #3
++declare token @llvm.coro.save(i8*) #3
++declare i8* @llvm.coro.frame() #5
++declare i8 @llvm.coro.suspend(token, i1) #3
++declare i8* @llvm.coro.free(token, i8* nocapture readonly) #2
++declare i1 @llvm.coro.end(i8*, i1) #3
++declare void @llvm.lifetime.start.p0i8(i64, i8* nocapture) #4
++declare void @llvm.lifetime.end.p0i8(i64, i8* nocapture) #4
+-- 
+2.33.0.259.gc128427fd7-goog
+

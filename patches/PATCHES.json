@@ -6,6 +6,12 @@
         "end_version": 416430
     },
     {
+        "comment": "[UPSTREAM] [Coroutine] Remain alignment information when merging frame variables",
+        "rel_patch_path": "cherry/c1bc7981babcae20247650a4b8adab9c0c97890a.patch",
+        "start_version": 416183,
+        "end_version": 416482
+    },
+    {
         "comment": "[UPSTREAM] Revert \"[clang] Change builtin object size when subobject is invalid\"",
         "rel_patch_path": "cherry/b270fd59f0a86fe737853abc43e76b9d29a67eea.patch",
         "start_version": 416183,
