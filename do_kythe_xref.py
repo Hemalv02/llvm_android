@@ -66,8 +66,7 @@ def build_kythe_corpus(builder: builders.Stage2Builder) -> None:
     env = {
         'KYTHE_OUTPUT_DIRECTORY': kythe_out_dir,
         'KYTHE_ROOT_DIRECTORY': paths.ANDROID_DIR,
-        'KYTHE_CORPUS':
-            'https://android.googlesource.com/toolchain/llvm-project/',
+        'KYTHE_CORPUS': 'android.googlesource.com/toolchain/llvm-project',
     }
 
     # Capture the output of runextractor and validate that it fails in an
