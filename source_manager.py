@@ -60,8 +60,8 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
 
 def get_base_llvm_revision(source_dir: str) -> str:
     message = utils.check_output([
-        'git', f'--git-dir={source_dir}/.git', 'show', '--pretty=format:%s',
-        'HEAD'
+        'git', f'--git-dir={source_dir}/.git', 'log', '--pretty=format:%s',
+        '--merges', '-n', '1'
     ])
     return message.split()[1]
 
