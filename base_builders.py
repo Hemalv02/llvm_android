@@ -655,7 +655,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         return toolchains.Toolchain(self.install_dir, self.output_dir)
 
     def test(self) -> None:
-        self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
+        self._ninja(["check-clang", "check-llvm", "check-clang-tools", "check-cxx"])
         # Known failed tests:
         #   Clang :: CodeGenCXX/builtins.cpp
         #   Clang :: CodeGenCXX/unknown-anytype.cpp

@@ -216,6 +216,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
         if self._config.target_os.is_linux:
             defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
             defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+            defines['LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
+            defines['LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
 
         # Do not build compiler-rt for Darwin.  We don't ship host (or any
         # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
@@ -923,6 +925,8 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS'] = 'ON'
         defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
         defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
+        defines['LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
+        defines['LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
 
         # Use cxxabi header from the source directory since it gets installed
         # into install_dir only during libcxx's install step.  But use the
