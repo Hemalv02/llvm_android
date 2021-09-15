@@ -70,6 +70,7 @@ KYTHE_RUN_EXTRACTOR = (PREBUILTS_DIR / 'build-tools' / hosts.build_host().os_tag
 KYTHE_CXX_EXTRACTOR = (PREBUILTS_DIR / 'clang-tools' / hosts.build_host().os_tag / 'bin' /
                        'cxx_extractor')
 KYTHE_OUTPUT_DIR = OUT_DIR / 'kythe-files'
+KYTHE_VNAMES_JSON = SCRIPTS_DIR / 'kythe_vnames.json'
 
 _PYTHON_VER = '3.9'
 _PYTHON_VER_SHORT = _PYTHON_VER.replace('.', '')
