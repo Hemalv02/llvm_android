@@ -36,6 +36,7 @@ import constants
 import hosts
 import paths
 import source_manager
+import timer
 import toolchains
 import utils
 from version import Version
@@ -656,6 +657,9 @@ def parse_args():
 
 
 def main():
+    dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
+    timer.Timer.register_atexit(dist_dir / 'build_times.txt')
+
     args = parse_args()
     if args.skip_build:
         # Skips all builds

@@ -123,7 +123,8 @@ class Stage1Builder(base_builders.LLVMBuilder):
         return defines
 
     def test(self) -> None:
-        self._ninja(["check-clang", "check-llvm", "check-clang-tools"])
+        with timer.Timer(f'stage1_test'):
+            self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
         # stage1 cannot run check-cxx yet
 
 

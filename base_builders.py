@@ -30,6 +30,7 @@ import configs
 import constants
 import hosts
 import paths
+import timer
 import toolchains
 import utils
 import win_sdk
@@ -136,7 +137,8 @@ class Builder:  # pylint: disable=too-few-public-methods
             self._config = config
 
             logger().info('Building %s for %s', self.name, self._config)
-            self._build_config()
+            with timer.Timer(f'{self.name}_{self._config}'):
+                self._build_config()
         self.install()
 
     def _build_config(self) -> None:
@@ -655,7 +657,9 @@ class LLVMBuilder(LLVMBaseBuilder):
         return toolchains.Toolchain(self.install_dir, self.output_dir)
 
     def test(self) -> None:
-        self._ninja(["check-clang", "check-llvm", "check-clang-tools", "check-cxx"])
+        with timer.Timer(f'stage2_test'):
+            self._ninja(
+                ['check-clang', 'check-llvm', 'check-clang-tools', 'check-cxx'])
         # Known failed tests:
         #   Clang :: CodeGenCXX/builtins.cpp
         #   Clang :: CodeGenCXX/unknown-anytype.cpp
