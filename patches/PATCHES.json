@@ -72,6 +72,12 @@
         "end_version": 436438
     },
     {
+        "comment": "[UPSTREAM] Don't fold (select C, (gep Ptr, Idx), Ptr) if C is vector but Idx is scalar",
+        "rel_patch_path": "cherry/d0746f2e9bbf08f52196ae12f25d0ef7edcbbe4c.patch",
+        "start_version": 433403,
+        "end_version": 438570
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "start_version": 428724,

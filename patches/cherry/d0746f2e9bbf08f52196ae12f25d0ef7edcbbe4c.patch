@@ -1,0 +1,60 @@
+From d0746f2e9bbf08f52196ae12f25d0ef7edcbbe4c Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Wed, 22 Sep 2021 15:50:12 +0800
+Subject: [PATCH] Don't fold (select C, (gep Ptr, Idx), Ptr) if C is vector but
+ Idx is scalar
+
+The folding rule (select C, (gep Ptr, Idx), Ptr) -> (gep Ptr, (select C,
+Idx, 0)) creates a malformed SELECT IR if C is a vector while Idx is scalar.
+
+  SELECT VecC, ScalarIdx, 0
+
+We could splat Idx to a vector but it defeats the purpose of
+optimisation. Don't apply the folding rule in this case.
+
+This fixes a regression from commit d561b6fbdbe6d1da05fd92003a4ac1e37bf4b8bc.
+---
+ .../Transforms/InstCombine/InstCombineSelect.cpp    |  4 +++-
+ llvm/test/Transforms/InstCombine/select-gep.ll      | 13 +++++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp b/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
+index 23348d161d78..ea0df128a0ba 100644
+--- a/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
++++ b/llvm/lib/Transforms/InstCombine/InstCombineSelect.cpp
+@@ -3004,8 +3004,10 @@ Instruction *InstCombinerImpl::visitSelectInst(SelectInst &SI) {
+     if (Gep->getNumOperands() != 2 || Gep->getPointerOperand() != Base ||
+         !Gep->hasOneUse())
+       return nullptr;
+-    Type *ElementType = Gep->getResultElementType();
+     Value *Idx = Gep->getOperand(1);
++    if (isa<VectorType>(CondVal->getType()) && !isa<VectorType>(Idx->getType()))
++      return nullptr;
++    Type *ElementType = Gep->getResultElementType();
+     Value *NewT = Idx;
+     Value *NewF = Constant::getNullValue(Idx->getType());
+     if (Swap)
+diff --git a/llvm/test/Transforms/InstCombine/select-gep.ll b/llvm/test/Transforms/InstCombine/select-gep.ll
+index 519f0a94a136..fd2beff5bfab 100644
+--- a/llvm/test/Transforms/InstCombine/select-gep.ll
++++ b/llvm/test/Transforms/InstCombine/select-gep.ll
+@@ -244,3 +244,16 @@ define i32* @test6(i32* %p, i64 %x, i64 %y) {
+   ret i32* %sel
+ }
+ declare void @use_i32p(i32*)
++
++; We cannot create a select-with-idx with a vector condition but scalar idx.
++
++define <2 x i64*> @test7(<2 x i64*> %p1, i64 %idx, <2 x i1> %cc) {
++; CHECK-LABEL: @test7(
++; CHECK-NEXT:    [[GEP:%.*]] = getelementptr i64, <2 x i64*> [[P1:%.*]], i64 [[IDX]]
++; CHECK-NEXT:    [[SELECT:%.*]] = select <2 x i1> [[CC:%.*]], <2 x i64*> [[P1:%.*]], <2 x i64*> [[GEP]]
++; CHECK-NEXT:    ret <2 x i64*> [[SELECT]]
++;
++  %gep = getelementptr i64, <2 x i64*> %p1, i64 %idx
++  %select = select <2 x i1> %cc, <2 x i64*> %p1, <2 x i64*> %gep
++  ret <2 x i64*> %select
++}
+-- 
+2.33.0.464.g1972c5931b-goog
+
