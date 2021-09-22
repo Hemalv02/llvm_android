@@ -31,9 +31,6 @@ import utils
 import version
 
 TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
-DEFAULT_TIDY_CHECKS = ('*', '-readability-*', '-google-readability-*',
-                       '-google-runtime-references', '-cppcoreguidelines-*',
-                       '-modernize-*', '-clang-analyzer-alpha*')
 STDERR_REDIRECT_KEY = 'ANDROID_LLVM_STDERR_REDIRECT'
 PREBUILT_COMPILER_PATH_KEY = 'ANDROID_LLVM_PREBUILT_COMPILER_PATH'
 DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
@@ -262,8 +259,6 @@ def build_target(android_base: Path, clang_version: version.Version, target : st
 
     if with_tidy:
         env['WITH_TIDY'] = '1'
-        if 'DEFAULT_GLOBAL_TIDY_CHECKS' not in env:
-            env['DEFAULT_GLOBAL_TIDY_CHECKS'] = ','.join(DEFAULT_TIDY_CHECKS)
 
     modules = ['dist']
     if profiler is not None:
