@@ -1,0 +1,370 @@
+From 150eb14db058aaa12743098b69c6f1bcbebf69d1 Mon Sep 17 00:00:00 2001
+From: Ye Luo <yeluo@anl.gov>
+Date: Sat, 4 Sep 2021 14:07:41 -0500
+Subject: [PATCH] [OpenMP][libomptarget] Change device vector elements to
+ unique_ptr type
+
+Using std::vector<DeviceTy> requires implementing copy constructor and copied assign operator for DeviceTy.
+Indeed DeviceTy should never be copied. After changing to std::vector<std::unique_ptr<DeviceTy>>,
+All the unsafe copy constructor and copy assign operator implementations can be removed.
+Compilers mark them deleted due to mutex or underlying objects and this is the desired behavior.
+
+Differential Revision: https://reviews.llvm.org/D109276
+---
+ openmp/libomptarget/src/api.cpp       | 16 ++++++++--------
+ openmp/libomptarget/src/device.cpp    | 24 +-----------------------
+ openmp/libomptarget/src/device.h      | 24 ++++--------------------
+ openmp/libomptarget/src/interface.cpp | 18 +++++++++---------
+ openmp/libomptarget/src/omptarget.cpp | 14 +++++++-------
+ openmp/libomptarget/src/rtl.cpp       | 14 +++++++-------
+ 6 files changed, 36 insertions(+), 74 deletions(-)
+
+diff --git a/openmp/libomptarget/src/api.cpp b/openmp/libomptarget/src/api.cpp
+index 849ce3211ef7..94ca4c6331bc 100644
+--- a/openmp/libomptarget/src/api.cpp
++++ b/openmp/libomptarget/src/api.cpp
+@@ -74,7 +74,7 @@ EXTERN void omp_target_free(void *device_ptr, int device_num) {
+     return;
+   }
+ 
+-  PM->Devices[device_num].deleteData(device_ptr);
++  PM->Devices[device_num]->deleteData(device_ptr);
+   DP("omp_target_free deallocated device ptr\n");
+ }
+ 
+@@ -102,7 +102,7 @@ EXTERN int omp_target_is_present(const void *ptr, int device_num) {
+     return false;
+   }
+ 
+-  DeviceTy &Device = PM->Devices[device_num];
++  DeviceTy &Device = *PM->Devices[device_num];
+   bool IsLast; // not used
+   bool IsHostPtr;
+   void *TgtPtr = Device.getTgtPtrBegin(const_cast<void *>(ptr), 0, IsLast,
+@@ -161,18 +161,18 @@ EXTERN int omp_target_memcpy(void *dst, const void *src, size_t length,
+       rc = OFFLOAD_FAIL;
+   } else if (src_device == omp_get_initial_device()) {
+     DP("copy from host to device\n");
+-    DeviceTy &DstDev = PM->Devices[dst_device];
++    DeviceTy &DstDev = *PM->Devices[dst_device];
+     AsyncInfoTy AsyncInfo(DstDev);
+     rc = DstDev.submitData(dstAddr, srcAddr, length, AsyncInfo);
+   } else if (dst_device == omp_get_initial_device()) {
+     DP("copy from device to host\n");
+-    DeviceTy &SrcDev = PM->Devices[src_device];
++    DeviceTy &SrcDev = *PM->Devices[src_device];
+     AsyncInfoTy AsyncInfo(SrcDev);
+     rc = SrcDev.retrieveData(dstAddr, srcAddr, length, AsyncInfo);
+   } else {
+     DP("copy from device to device\n");
+-    DeviceTy &SrcDev = PM->Devices[src_device];
+-    DeviceTy &DstDev = PM->Devices[dst_device];
++    DeviceTy &SrcDev = *PM->Devices[src_device];
++    DeviceTy &DstDev = *PM->Devices[dst_device];
+     // First try to use D2D memcpy which is more efficient. If fails, fall back
+     // to unefficient way.
+     if (SrcDev.isDataExchangable(DstDev)) {
+@@ -281,7 +281,7 @@ EXTERN int omp_target_associate_ptr(const void *host_ptr,
+     return OFFLOAD_FAIL;
+   }
+ 
+-  DeviceTy &Device = PM->Devices[device_num];
++  DeviceTy &Device = *PM->Devices[device_num];
+   void *device_addr = (void *)((uint64_t)device_ptr + (uint64_t)device_offset);
+   int rc = Device.associatePtr(const_cast<void *>(host_ptr),
+                                const_cast<void *>(device_addr), size);
+@@ -311,7 +311,7 @@ EXTERN int omp_target_disassociate_ptr(const void *host_ptr, int device_num) {
+     return OFFLOAD_FAIL;
+   }
+ 
+-  DeviceTy &Device = PM->Devices[device_num];
++  DeviceTy &Device = *PM->Devices[device_num];
+   int rc = Device.disassociatePtr(const_cast<void *>(host_ptr));
+   DP("omp_target_disassociate_ptr returns %d\n", rc);
+   return rc;
+diff --git a/openmp/libomptarget/src/device.cpp b/openmp/libomptarget/src/device.cpp
+index 62d694ec8529..90d994706820 100644
+--- a/openmp/libomptarget/src/device.cpp
++++ b/openmp/libomptarget/src/device.cpp
+@@ -19,28 +19,6 @@
+ #include <cstdio>
+ #include <string>
+ 
+-DeviceTy::DeviceTy(const DeviceTy &D)
+-    : DeviceID(D.DeviceID), RTL(D.RTL), RTLDeviceID(D.RTLDeviceID),
+-      IsInit(D.IsInit), InitFlag(), HasPendingGlobals(D.HasPendingGlobals),
+-      HostDataToTargetMap(D.HostDataToTargetMap),
+-      PendingCtorsDtors(D.PendingCtorsDtors), ShadowPtrMap(D.ShadowPtrMap),
+-      DataMapMtx(), PendingGlobalsMtx(), ShadowMtx(),
+-      LoopTripCnt(D.LoopTripCnt) {}
+-
+-DeviceTy &DeviceTy::operator=(const DeviceTy &D) {
+-  DeviceID = D.DeviceID;
+-  RTL = D.RTL;
+-  RTLDeviceID = D.RTLDeviceID;
+-  IsInit = D.IsInit;
+-  HasPendingGlobals = D.HasPendingGlobals;
+-  HostDataToTargetMap = D.HostDataToTargetMap;
+-  PendingCtorsDtors = D.PendingCtorsDtors;
+-  ShadowPtrMap = D.ShadowPtrMap;
+-  LoopTripCnt = D.LoopTripCnt;
+-
+-  return *this;
+-}
+-
+ DeviceTy::DeviceTy(RTLInfoTy *RTL)
+     : DeviceID(-1), RTL(RTL), RTLDeviceID(-1), IsInit(false), InitFlag(),
+       HasPendingGlobals(false), HostDataToTargetMap(), PendingCtorsDtors(),
+@@ -619,7 +597,7 @@ bool device_is_ready(int device_num) {
+   }
+ 
+   // Get device info
+-  DeviceTy &Device = PM->Devices[device_num];
++  DeviceTy &Device = *PM->Devices[device_num];
+ 
+   DP("Is the device %d (local ID %d) initialized? %d\n", device_num,
+      Device.RTLDeviceID, Device.IsInit);
+diff --git a/openmp/libomptarget/src/device.h b/openmp/libomptarget/src/device.h
+index 1ebfd1759c38..75dde85a8806 100644
+--- a/openmp/libomptarget/src/device.h
++++ b/openmp/libomptarget/src/device.h
+@@ -58,10 +58,6 @@ private:
+   struct StatesTy {
+     StatesTy(uint64_t DRC, uint64_t HRC)
+         : DynRefCount(DRC), HoldRefCount(HRC) {}
+-    /// this copy constructor is added to make HostDataToTargetTy copiable
+-    /// when it is used by std::set copy constructor
+-    StatesTy(const StatesTy &S)
+-        : DynRefCount(S.DynRefCount), HoldRefCount(S.HoldRefCount) {}
+     /// The dynamic reference count is the standard reference count as of OpenMP
+     /// 4.5.  The hold reference count is an OpenMP extension for the sake of
+     /// OpenACC support.
+@@ -103,12 +99,6 @@ public:
+                                                            : IsINF ? INFRefCount
+                                                                    : 1)) {}
+ 
+-  HostDataToTargetTy(const HostDataToTargetTy &Entry)
+-      : HstPtrBase(Entry.HstPtrBase), HstPtrBegin(Entry.HstPtrBegin),
+-        HstPtrEnd(Entry.HstPtrEnd), HstPtrName(Entry.HstPtrName),
+-        TgtPtrBegin(Entry.TgtPtrBegin),
+-        States(std::make_unique<StatesTy>(*Entry.States)) {}
+-
+   /// Get the total reference count.  This is smarter than just getDynRefCount()
+   /// + getHoldRefCount() because it handles the case where at least one is
+   /// infinity and the other is non-zero.
+@@ -273,12 +263,9 @@ struct DeviceTy {
+   std::map<int32_t, uint64_t> LoopTripCnt;
+ 
+   DeviceTy(RTLInfoTy *RTL);
+-
+-  // The existence of mutexes makes DeviceTy non-copyable. We need to
+-  // provide a copy constructor and an assignment operator explicitly.
+-  DeviceTy(const DeviceTy &D);
+-
+-  DeviceTy &operator=(const DeviceTy &D);
++  // DeviceTy is not copyable
++  DeviceTy(const DeviceTy &D) = delete;
++  DeviceTy &operator=(const DeviceTy &D) = delete;
+ 
+   ~DeviceTy();
+ 
+@@ -391,9 +378,6 @@ private:
+   void init(); // To be called only via DeviceTy::initOnce()
+ };
+ 
+-/// Map between Device ID (i.e. openmp device id) and its DeviceTy.
+-typedef std::vector<DeviceTy> DevicesTy;
+-
+ extern bool device_is_ready(int device_num);
+ 
+ /// Struct for the data required to handle plugins
+@@ -402,7 +386,7 @@ struct PluginManager {
+   RTLsTy RTLs;
+ 
+   /// Devices associated with RTLs
+-  DevicesTy Devices;
++  std::vector<std::unique_ptr<DeviceTy>> Devices;
+   std::mutex RTLsMtx; ///< For RTLs and Devices
+ 
+   /// Translation table retreived from the binary
+diff --git a/openmp/libomptarget/src/interface.cpp b/openmp/libomptarget/src/interface.cpp
+index 6f75cce42150..bbbb31286184 100644
+--- a/openmp/libomptarget/src/interface.cpp
++++ b/openmp/libomptarget/src/interface.cpp
+@@ -98,7 +98,7 @@ EXTERN void __tgt_target_data_begin_mapper(ident_t *loc, int64_t device_id,
+     return;
+   }
+ 
+-  DeviceTy &Device = PM->Devices[device_id];
++  DeviceTy &Device = *PM->Devices[device_id];
+ 
+   if (getInfoLevel() & OMP_INFOTYPE_KERNEL_ARGS)
+     printKernelArguments(loc, device_id, arg_num, arg_sizes, arg_types,
+@@ -167,7 +167,7 @@ EXTERN void __tgt_target_data_end_mapper(ident_t *loc, int64_t device_id,
+     return;
+   }
+ 
+-  DeviceTy &Device = PM->Devices[device_id];
++  DeviceTy &Device = *PM->Devices[device_id];
+ 
+   if (getInfoLevel() & OMP_INFOTYPE_KERNEL_ARGS)
+     printKernelArguments(loc, device_id, arg_num, arg_sizes, arg_types,
+@@ -235,7 +235,7 @@ EXTERN void __tgt_target_data_update_mapper(ident_t *loc, int64_t device_id,
+     printKernelArguments(loc, device_id, arg_num, arg_sizes, arg_types,
+                          arg_names, "Updating OpenMP data");
+ 
+-  DeviceTy &Device = PM->Devices[device_id];
++  DeviceTy &Device = *PM->Devices[device_id];
+   AsyncInfoTy AsyncInfo(Device);
+   int rc = targetDataUpdate(loc, Device, arg_num, args_base, args, arg_sizes,
+                             arg_types, arg_names, arg_mappers, AsyncInfo);
+@@ -299,7 +299,7 @@ EXTERN int __tgt_target_mapper(ident_t *loc, int64_t device_id, void *host_ptr,
+   }
+ #endif
+ 
+-  DeviceTy &Device = PM->Devices[device_id];
++  DeviceTy &Device = *PM->Devices[device_id];
+   AsyncInfoTy AsyncInfo(Device);
+   int rc = target(loc, Device, host_ptr, arg_num, args_base, args, arg_sizes,
+                   arg_types, arg_names, arg_mappers, 0, 0, false /*team*/,
+@@ -372,7 +372,7 @@ EXTERN int __tgt_target_teams_mapper(ident_t *loc, int64_t device_id,
+   }
+ #endif
+ 
+-  DeviceTy &Device = PM->Devices[device_id];
++  DeviceTy &Device = *PM->Devices[device_id];
+   AsyncInfoTy AsyncInfo(Device);
+   int rc = target(loc, Device, host_ptr, arg_num, args_base, args, arg_sizes,
+                   arg_types, arg_names, arg_mappers, team_num, thread_limit,
+@@ -437,8 +437,8 @@ EXTERN void __kmpc_push_target_tripcount_mapper(ident_t *loc, int64_t device_id,
+   DP("__kmpc_push_target_tripcount(%" PRId64 ", %" PRIu64 ")\n", device_id,
+      loop_tripcount);
+   PM->TblMapMtx.lock();
+-  PM->Devices[device_id].LoopTripCnt.emplace(__kmpc_global_thread_num(NULL),
+-                                             loop_tripcount);
++  PM->Devices[device_id]->LoopTripCnt.emplace(__kmpc_global_thread_num(NULL),
++                                              loop_tripcount);
+   PM->TblMapMtx.unlock();
+ }
+ 
+@@ -452,6 +452,6 @@ EXTERN void __tgt_set_info_flag(uint32_t NewInfoLevel) {
+ }
+ 
+ EXTERN int __tgt_print_device_info(int64_t device_id) {
+-  return PM->Devices[device_id].printDeviceInfo(
+-      PM->Devices[device_id].RTLDeviceID);
++  return PM->Devices[device_id]->printDeviceInfo(
++      PM->Devices[device_id]->RTLDeviceID);
+ }
+diff --git a/openmp/libomptarget/src/omptarget.cpp b/openmp/libomptarget/src/omptarget.cpp
+index 846c4d5d5e3c..45d7a953b3a7 100644
+--- a/openmp/libomptarget/src/omptarget.cpp
++++ b/openmp/libomptarget/src/omptarget.cpp
+@@ -221,7 +221,7 @@ void handleTargetOutcome(bool Success, ident_t *Loc) {
+     if (!Success) {
+       if (getInfoLevel() & OMP_INFOTYPE_DUMP_TABLE)
+         for (auto &Device : PM->Devices)
+-          dumpTargetPointerMappings(Loc, Device);
++          dumpTargetPointerMappings(Loc, *Device);
+       else
+         FAILURE_MESSAGE("Run with LIBOMPTARGET_INFO=%d to dump host-target "
+                         "pointer mappings.\n",
+@@ -239,7 +239,7 @@ void handleTargetOutcome(bool Success, ident_t *Loc) {
+     } else {
+       if (getInfoLevel() & OMP_INFOTYPE_DUMP_TABLE)
+         for (auto &Device : PM->Devices)
+-          dumpTargetPointerMappings(Loc, Device);
++          dumpTargetPointerMappings(Loc, *Device);
+     }
+     break;
+   }
+@@ -310,7 +310,7 @@ int checkDeviceAndCtors(int64_t &DeviceID, ident_t *Loc) {
+   }
+ 
+   // Get device info.
+-  DeviceTy &Device = PM->Devices[DeviceID];
++  DeviceTy &Device = *PM->Devices[DeviceID];
+ 
+   // Check whether global data has been mapped for this device
+   Device.PendingGlobalsMtx.lock();
+@@ -352,7 +352,7 @@ void *targetAllocExplicit(size_t size, int device_num, int kind,
+     return NULL;
+   }
+ 
+-  DeviceTy &Device = PM->Devices[device_num];
++  DeviceTy &Device = *PM->Devices[device_num];
+   rc = Device.allocData(size, nullptr, kind);
+   DP("%s returns device ptr " DPxMOD "\n", name, DPxPTR(rc));
+   return rc;
+@@ -1048,7 +1048,7 @@ TableMap *getTableMap(void *HostPtr) {
+ /// __kmpc_push_target_tripcount_mapper in one thread but doing offloading in
+ /// another thread, which might occur when we call task yield.
+ uint64_t getLoopTripCount(int64_t DeviceId) {
+-  DeviceTy &Device = PM->Devices[DeviceId];
++  DeviceTy &Device = *PM->Devices[DeviceId];
+   uint64_t LoopTripCount = 0;
+ 
+   {
+@@ -1246,7 +1246,7 @@ static int processDataBefore(ident_t *loc, int64_t DeviceId, void *HostPtr,
+                              PrivateArgumentManagerTy &PrivateArgumentManager,
+                              AsyncInfoTy &AsyncInfo) {
+   TIMESCOPE_WITH_NAME_AND_IDENT("mappingBeforeTargetRegion", loc);
+-  DeviceTy &Device = PM->Devices[DeviceId];
++  DeviceTy &Device = *PM->Devices[DeviceId];
+   int Ret = targetDataBegin(loc, Device, ArgNum, ArgBases, Args, ArgSizes,
+                             ArgTypes, ArgNames, ArgMappers, AsyncInfo);
+   if (Ret != OFFLOAD_SUCCESS) {
+@@ -1372,7 +1372,7 @@ static int processDataAfter(ident_t *loc, int64_t DeviceId, void *HostPtr,
+                             PrivateArgumentManagerTy &PrivateArgumentManager,
+                             AsyncInfoTy &AsyncInfo) {
+   TIMESCOPE_WITH_NAME_AND_IDENT("mappingAfterTargetRegion", loc);
+-  DeviceTy &Device = PM->Devices[DeviceId];
++  DeviceTy &Device = *PM->Devices[DeviceId];
+ 
+   // Move data from device.
+   int Ret = targetDataEnd(loc, Device, ArgNum, ArgBases, Args, ArgSizes,
+diff --git a/openmp/libomptarget/src/rtl.cpp b/openmp/libomptarget/src/rtl.cpp
+index 264b1d4f7d33..0ad512458e4e 100644
+--- a/openmp/libomptarget/src/rtl.cpp
++++ b/openmp/libomptarget/src/rtl.cpp
+@@ -249,7 +249,7 @@ static void RegisterGlobalCtorsDtorsForImage(__tgt_bin_desc *desc,
+                                              RTLInfoTy *RTL) {
+ 
+   for (int32_t i = 0; i < RTL->NumberOfDevices; ++i) {
+-    DeviceTy &Device = PM->Devices[RTL->Idx + i];
++    DeviceTy &Device = *PM->Devices[RTL->Idx + i];
+     Device.PendingGlobalsMtx.lock();
+     Device.HasPendingGlobals = true;
+     for (__tgt_offload_entry *entry = img->EntriesBegin;
+@@ -319,14 +319,14 @@ void RTLsTy::initRTLonce(RTLInfoTy &R) {
+   // If this RTL is not already in use, initialize it.
+   if (!R.isUsed && R.NumberOfDevices != 0) {
+     // Initialize the device information for the RTL we are about to use.
+-    DeviceTy device(&R);
+-    size_t Start = PM->Devices.size();
+-    PM->Devices.resize(Start + R.NumberOfDevices, device);
++    const size_t Start = PM->Devices.size();
++    PM->Devices.reserve(Start + R.NumberOfDevices);
+     for (int32_t device_id = 0; device_id < R.NumberOfDevices; device_id++) {
++      PM->Devices.push_back(std::make_unique<DeviceTy>(&R));
+       // global device ID
+-      PM->Devices[Start + device_id].DeviceID = Start + device_id;
++      PM->Devices[Start + device_id]->DeviceID = Start + device_id;
+       // RTL local device ID
+-      PM->Devices[Start + device_id].RTLDeviceID = device_id;
++      PM->Devices[Start + device_id]->RTLDeviceID = device_id;
+     }
+ 
+     // Initialize the index of this RTL and save it in the used RTLs.
+@@ -437,7 +437,7 @@ void RTLsTy::UnregisterLib(__tgt_bin_desc *desc) {
+       // Execute dtors for static objects if the device has been used, i.e.
+       // if its PendingCtors list has been emptied.
+       for (int32_t i = 0; i < FoundRTL->NumberOfDevices; ++i) {
+-        DeviceTy &Device = PM->Devices[FoundRTL->Idx + i];
++        DeviceTy &Device = *PM->Devices[FoundRTL->Idx + i];
+         Device.PendingGlobalsMtx.lock();
+         if (Device.PendingCtorsDtors[desc].PendingCtors.empty()) {
+           AsyncInfoTy AsyncInfo(Device);
+-- 
+2.33.0.800.g4c38ced690-goog
+

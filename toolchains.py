@@ -134,7 +134,7 @@ class Toolchain:
 
     @property
     def clang_builtin_header_dir(self) -> Path:
-        return self.lib_dir / 'include'
+        return self.clang_lib_dir / 'include'
 
     @property
     def resource_dir(self) -> Path:

@@ -96,6 +96,32 @@
         "end_version": 440947
     },
     {
+        "comment": "[UPSTREAM] [OpenMP][libomptarget] Change device vector elements to unique_ptr type",
+        "rel_patch_path": "cherry/c3aecf87d5b97c3d3580457164e7fe4a19c4221a.patch",
+        "start_version": 437112,
+        "end_version": 437297
+    },
+    {
+        "comment": "[UPSTREAM] Revert [Coroutines] [Clang] Look up coroutine component in std namespace first",
+        "rel_patch_path": "cherry/79f8b5f0d00fd10fee8aee3c3c58e17a8fea8946.patch",
+        "start_version": 437112,
+        "end_version": 437168
+    },
+    {
+        "comment": "[UPSTREAM] Add missing `REQUIRES: asserts` to combine-icmp-to-lhs-known-bits.mir",
+        "rel_patch_path": "cherry/bd22a99c57b472774a8addcaeef503540abe7b57.patch",
+        "bugs_tests": ["check-llvm, combine-icmp-to-lhs-known-bits.mir"],
+        "start_version": 437112,
+        "end_version": 437145
+    },
+    {
+        "comment": "[UPSTREAM] [MergeICmps] Don't reorder unmerged comparisons",
+        "rel_patch_path": "cherry/f2fa6ad0476b318fdba46f09a2d59187228431ee.patch",
+        "bugs_tests": ["idmap2_tests, SIGSEGV in idmap2/libidmap2/XmlParser.cpp"],
+        "start_version": 437112,
+        "end_version": 438499
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "start_version": 428724,
@@ -117,13 +143,20 @@
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v3.patch",
         "start_version": 428724,
+        "end_version": 437112
+    },
+    {
+        "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
+        "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v4.patch",
+        "bugs_tests": ["b/197147102, bionic/tests/clang_fortify_tests.cpp"],
+        "start_version": 437112,
         "end_version": null
     },
     {
         "comment": "Mark XFAIL tests",
         "rel_patch_path": "Mark-XFAIL-tests.patch",
         "start_version": 428724,
-        "end_version": null
+        "end_version": 437112
     },
     {
         "comment": "Ensure that we use our toolchain's lipo, and not the system version",

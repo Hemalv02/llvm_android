@@ -17,22 +17,19 @@
 # pylint: disable=not-callable, line-too-long, no-else-return
 
 import argparse
-import glob
 import logging
 from pathlib import Path
 import os
 import shutil
-import string
 import sys
 import textwrap
-from typing import cast, List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple
 
 import android_version
 from base_builders import Builder, LLVMBuilder
 import builders
 from builder_registry import BuilderRegistry
 import configs
-import constants
 import hosts
 import paths
 import source_manager
@@ -199,8 +196,10 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
                }
 
     def getVersions(libname: str) -> Tuple[str, str]:
+        if libname == 'libclang_cxx':
+            return version.major, version.major
         if not libname.startswith('libc++'):
-            return version.short_version(), version.major
+            return version.long_version(), version.major
         else:
             return '1.0', '1'
 
@@ -208,13 +207,14 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
     for libname, libformat in libs.items():
         short_version, major = getVersions(libname)
 
-        soname_lib = os.path.join(libdir, libformat.format(version=major))
+        soname_version = '13' if libname == 'libclang' else major
+        soname_lib = os.path.join(libdir, libformat.format(version=soname_version))
         if libname.startswith('libclang'):
-            real_lib = soname_lib[:-3]
-        else:
-            real_lib = os.path.join(libdir, libformat.format(version=short_version))
+            soname_lib = soname_lib[:-3]
+        real_lib = os.path.join(libdir, libformat.format(version=short_version))
 
-        if libname not in ('libLLVM',):
+        preserved_libnames = ('libLLVM', 'libclang_cxx')
+        if libname not in preserved_libnames:
             # Rename the library to match its SONAME
             if not os.path.isfile(real_lib):
                 raise RuntimeError(real_lib + ' must be a regular file')

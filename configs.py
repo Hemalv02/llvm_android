@@ -36,6 +36,10 @@ class Config:
     """Additional config data that a builder can specify."""
     extra_config = None
 
+    @property
+    def llvm_triple(self) -> str:
+        return f'{self.target_arch.llvm_triple}'
+
     def get_c_compiler(self, toolchain: toolchains.Toolchain) -> Path:
         """Returns path to c compiler."""
         return toolchain.cc
@@ -281,10 +285,14 @@ class AndroidConfig(_BaseConfig):
         return ldflags
 
     @property
+    def llvm_triple(self) -> str:
+        return f'{self.target_arch.llvm_triple}{self.api_level}'
+
+    @property
     def cflags(self) -> List[str]:
         cflags = super().cflags
         toolchain_bin = paths.GCC_ROOT / self._toolchain_path / 'bin'
-        cflags.append(f'--target={self.target_arch.llvm_triple}{self.api_level}')
+        cflags.append(f'--target={self.llvm_triple}')
         cflags.append(f'-B{toolchain_bin}')
         cflags.append('-ffunction-sections')
         cflags.append('-fdata-sections')
