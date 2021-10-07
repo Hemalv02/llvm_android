@@ -356,6 +356,7 @@ def main():
         cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb']
         if args.profile:
             cmd.append('--build-instrumented')
+            cmd.append('--skip-tests')
         utils.check_call(cmd)
         clang_path = paths.get_package_install_path(hosts.build_host(), 'clang-dev')
     clang_version = extract_clang_version(clang_path)
