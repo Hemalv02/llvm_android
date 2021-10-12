@@ -1,0 +1,129 @@
+From 85f612efeb352e759f120ee183bf31b1fd7e801a Mon Sep 17 00:00:00 2001
+From: David Blaikie <dblaikie@gmail.com>
+Date: Mon, 27 Sep 2021 19:33:37 -0700
+Subject: [PATCH] DebugInfo: Use sugared function type when emitting function
+ declarations for call sites
+
+Otherwise we're losing type information for these functions.
+---
+ clang/lib/CodeGen/CGDebugInfo.cpp           | 14 ++++++++++++++
+ clang/lib/CodeGen/CGDebugInfo.h             |  3 +++
+ clang/lib/CodeGen/CGExpr.cpp                |  8 ++++++--
+ clang/lib/CodeGen/CodeGenFunction.cpp       | 13 +++----------
+ clang/test/CodeGen/debug-info-extern-call.c |  9 ++++++++-
+ 5 files changed, 34 insertions(+), 13 deletions(-)
+
+diff --git a/clang/lib/CodeGen/CGDebugInfo.cpp b/clang/lib/CodeGen/CGDebugInfo.cpp
+index 100ce695f86b..5b5fbd065eae 100644
+--- a/clang/lib/CodeGen/CGDebugInfo.cpp
++++ b/clang/lib/CodeGen/CGDebugInfo.cpp
+@@ -3970,6 +3970,20 @@ llvm::DISubroutineType *CGDebugInfo::getOrCreateFunctionType(const Decl *D,
+   return cast<llvm::DISubroutineType>(getOrCreateType(FnType, F));
+ }
+ 
++QualType
++CGDebugInfo::getFunctionType(const FunctionDecl *FD, QualType RetTy,
++                             const SmallVectorImpl<const VarDecl *> &Args) {
++  CallingConv CC = CallingConv::CC_C;
++  if (FD)
++    if (const auto *SrcFnTy = FD->getType()->getAs<FunctionType>())
++      CC = SrcFnTy->getCallConv();
++  SmallVector<QualType, 16> ArgTypes;
++  for (const VarDecl *VD : Args)
++    ArgTypes.push_back(VD->getType());
++  return CGM.getContext().getFunctionType(RetTy, ArgTypes,
++                                          FunctionProtoType::ExtProtoInfo(CC));
++}
++
+ void CGDebugInfo::emitFunctionStart(GlobalDecl GD, SourceLocation Loc,
+                                     SourceLocation ScopeLoc, QualType FnType,
+                                     llvm::Function *Fn, bool CurFuncIsThunk) {
+diff --git a/clang/lib/CodeGen/CGDebugInfo.h b/clang/lib/CodeGen/CGDebugInfo.h
+index 6c1e65f60862..42bf6cd104c2 100644
+--- a/clang/lib/CodeGen/CGDebugInfo.h
++++ b/clang/lib/CodeGen/CGDebugInfo.h
+@@ -429,6 +429,9 @@ public:
+   /// location will be reused.
+   void EmitLocation(CGBuilderTy &Builder, SourceLocation Loc);
+ 
++  QualType getFunctionType(const FunctionDecl *FD, QualType RetTy,
++                           const SmallVectorImpl<const VarDecl *> &Args);
++
+   /// Emit a call to llvm.dbg.function.start to indicate
+   /// start of a new function.
+   /// \param Loc       The location of the function header.
+diff --git a/clang/lib/CodeGen/CGExpr.cpp b/clang/lib/CodeGen/CGExpr.cpp
+index fafaaf447234..5c92e1e7e073 100644
+--- a/clang/lib/CodeGen/CGExpr.cpp
++++ b/clang/lib/CodeGen/CGExpr.cpp
+@@ -5318,9 +5318,13 @@ RValue CodeGenFunction::EmitCall(QualType CalleeType, const CGCallee &OrigCallee
+   // Generate function declaration DISuprogram in order to be used
+   // in debug info about call sites.
+   if (CGDebugInfo *DI = getDebugInfo()) {
+-    if (auto *CalleeDecl = dyn_cast_or_null<FunctionDecl>(TargetDecl))
+-      DI->EmitFuncDeclForCallSite(CallOrInvoke, QualType(FnType, 0),
++    if (auto *CalleeDecl = dyn_cast_or_null<FunctionDecl>(TargetDecl)) {
++      FunctionArgList Args;
++      QualType ResTy = BuildFunctionArgList(CalleeDecl, Args);
++      DI->EmitFuncDeclForCallSite(CallOrInvoke,
++                                  DI->getFunctionType(CalleeDecl, ResTy, Args),
+                                   CalleeDecl);
++    }
+   }
+ 
+   return Call;
+diff --git a/clang/lib/CodeGen/CodeGenFunction.cpp b/clang/lib/CodeGen/CodeGenFunction.cpp
+index fbb06885ba35..da9a5303daad 100644
+--- a/clang/lib/CodeGen/CodeGenFunction.cpp
++++ b/clang/lib/CodeGen/CodeGenFunction.cpp
+@@ -988,16 +988,9 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
+     // Reconstruct the type from the argument list so that implicit parameters,
+     // such as 'this' and 'vtt', show up in the debug info. Preserve the calling
+     // convention.
+-    CallingConv CC = CallingConv::CC_C;
+-    if (FD)
+-      if (const auto *SrcFnTy = FD->getType()->getAs<FunctionType>())
+-        CC = SrcFnTy->getCallConv();
+-    SmallVector<QualType, 16> ArgTypes;
+-    for (const VarDecl *VD : Args)
+-      ArgTypes.push_back(VD->getType());
+-    QualType FnType = getContext().getFunctionType(
+-        RetTy, ArgTypes, FunctionProtoType::ExtProtoInfo(CC));
+-    DI->emitFunctionStart(GD, Loc, StartLoc, FnType, CurFn, CurFuncIsThunk);
++    DI->emitFunctionStart(GD, Loc, StartLoc,
++                          DI->getFunctionType(FD, RetTy, Args), CurFn,
++                          CurFuncIsThunk);
+   }
+ 
+   if (ShouldInstrumentFunction()) {
+diff --git a/clang/test/CodeGen/debug-info-extern-call.c b/clang/test/CodeGen/debug-info-extern-call.c
+index f9abb93efe86..7cf90550ac00 100644
+--- a/clang/test/CodeGen/debug-info-extern-call.c
++++ b/clang/test/CodeGen/debug-info-extern-call.c
+@@ -22,7 +22,13 @@
+ // RUN:   | FileCheck %s -check-prefix=NO-DECLS-FOR-EXTERN
+ 
+ // DECLS-FOR-EXTERN-NOT: !DICompileUnit({{.*}}retainedTypes: !{{[0-9]+}}
++// DECLS-FOR-EXTERN: [[INT_TYPE:![0-9]+]] = !DIBasicType(name: "int",
+ // DECLS-FOR-EXTERN: !DISubprogram(name: "fn1"
++// DECLS-FOR-EXTERN-SAME: type: [[FN1_TYPE:![0-9]+]],
++// DECLS-FOR-EXTERN: [[FN1_TYPE]] = !DISubroutineType(types: [[FN1_TYPES:![0-9]+]])
++// DECLS-FOR-EXTERN: [[FN1_TYPES]] = !{[[X_TYPE:![0-9]+]],
++// DECLS-FOR-EXTERN: [[X_TYPE]] = !DIDerivedType(tag: DW_TAG_typedef, name: "x",
++// DECLS-FOR-EXTERN-SAME: baseType: [[INT_TYPE]])
+ // DECLS-FOR-EXTERN-NOT: !DISubprogram(name: "memcmp"
+ // DECLS-FOR-EXTERN-NOT: !DISubprogram(name: "__some_reserved_name"
+ 
+@@ -30,7 +36,8 @@
+ // NO-DECLS-FOR-EXTERN-NOT: !DISubprogram(name: "memcmp"
+ // NO-DECLS-FOR-EXTERN-NOT: !DISubprogram(name: "__some_reserved_name"
+ 
+-extern int fn1(int a, int b);
++typedef int x;
++extern x fn1(int a, int b);
+ extern int memcmp(const void *s1, const void *s2, unsigned long n);
+ extern void __some_reserved_name(void);
+ 
+-- 
+2.33.0.882.g93a45727a2-goog
+

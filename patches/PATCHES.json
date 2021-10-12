@@ -84,6 +84,12 @@
         "end_version": 438570
     },
     {
+        "comment": "[UPSTREAM] DebugInfo: Use sugared function type when emitting function declarations for call sites",
+        "rel_patch_path": "cherry/85f612efeb352e759f120ee183bf31b1fd7e801a.patch",
+        "start_version": 433403,
+        "end_version": 439192
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "start_version": 428724,
