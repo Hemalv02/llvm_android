@@ -103,6 +103,11 @@ def parse_args():
         default=False,
         help='Build default targets only.')
     parser.add_argument(
+        '--skip-tests',
+        action='store_true',
+        default=False,
+        help='Build with --skip-tests option.')
+    parser.add_argument(
         '--flashall-path',
         nargs='?',
         help='Use internal '
@@ -114,6 +119,10 @@ def parse_args():
         help='Build for specified '
         'target. This will work only when --build-only is '
         'enabled.')
+    parser.add_argument(
+        '--module',
+        action='append',
+        help='Build the specified modules, default is dist.')
     parser.add_argument(
         '--with-tidy',
         action='store_true',
@@ -214,7 +223,8 @@ def invoke_llvm_tools(profiler: ClangProfileHandler):
                              env=env)
 
 
-def build_target(android_base: Path, clang_version: version.Version, target : str,
+def build_target(android_base: Path, clang_version: version.Version,
+                 target: str, modules: List[str],
                  max_jobs: int, redirect_stderr: bool, with_tidy: bool,
                  profiler: Optional[ClangProfileHandler]=None) -> None:
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
@@ -260,7 +270,6 @@ def build_target(android_base: Path, clang_version: version.Version, target : st
     if with_tidy:
         env['WITH_TIDY'] = '1'
 
-    modules = ['dist']
     if profiler is not None:
         # Build only a subset of targets and collect profiles
         modules = ['libart', 'libc', 'libLLVM_android-host64']
@@ -280,7 +289,7 @@ def build_target(android_base: Path, clang_version: version.Version, target : st
 
 
 def test_device(android_base: Path, clang_version: version.Version, device: List[str],
-                max_jobs: int, clean_output: str, flashall_path: Optional[Path],
+                modules: List[str], max_jobs: int, clean_output: str, flashall_path: Optional[Path],
                 redirect_stderr: bool, with_tidy: bool) -> bool:
     [label, target] = device[-1].split(':')
     # If current device is not connected correctly we will just skip it.
@@ -290,7 +299,7 @@ def test_device(android_base: Path, clang_version: version.Version, device: List
     else:
         target = 'aosp_' + target + '-eng'
     try:
-        build_target(android_base, clang_version, target, max_jobs,
+        build_target(android_base, clang_version, target, modules, max_jobs,
                      redirect_stderr, with_tidy)
         if flashall_path is None:
             bin_path = (android_base / 'out' / 'host' /
@@ -348,6 +357,9 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     args = parse_args()
+    modules = ['dist']
+    if args.module:
+        modules = args.module
     if args.clang_path is not None:
         clang_path = Path(args.clang_path)
     elif args.clang_package_path is not None:
@@ -356,6 +368,8 @@ def main():
         cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb']
         if args.profile:
             cmd.append('--build-instrumented')
+            cmd.append('--skip-tests')
+        elif args.skip_tests:
             cmd.append('--skip-tests')
         utils.check_call(cmd)
         clang_path = paths.get_package_install_path(hosts.build_host(), 'clang-dev')
@@ -367,7 +381,8 @@ def main():
 
         targets = [args.target] if args.target else TARGETS
         for target in targets:
-            build_target(Path(args.android_path), clang_version, target, args.jobs,
+            build_target(Path(args.android_path), clang_version, target,
+                         modules, args.jobs,
                          args.redirect_stderr, args.with_tidy, profiler)
 
         if profiler is not None:
@@ -380,7 +395,7 @@ def main():
             print("You don't have any devices connected.")
         for device in devices:
             result = test_device(Path(args.android_path), clang_version, device,
-                                 args.jobs, args.clean_built_target,
+                                 modules, args.jobs, args.clean_built_target,
                                  Path(args.flashall_path) if args.flashall_path else None,
                                  args.redirect_stderr,
                                  args.with_tidy)
