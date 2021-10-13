@@ -257,6 +257,7 @@ def repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
            '--current-branch',
            '--yes', # Answer yes to all safe prompts
            '--verify', # Run upload hooks without prompting.
+           '-o', 'uploadvalidator~skip', # Ignore blocked keyword checker
            f'--push-option=topic={topic}',
            f'--hashtag={hashtag}',]
     if is_testing:
