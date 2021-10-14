@@ -322,7 +322,7 @@ class AndroidConfig(_BaseConfig):
             # used for apexes targeting that API level.
             return 29
         if self.target_arch in [hosts.Arch.ARM, hosts.Arch.I386]:
-            return 16
+            return 19
         return 21
 
     def __str__(self) -> str:
