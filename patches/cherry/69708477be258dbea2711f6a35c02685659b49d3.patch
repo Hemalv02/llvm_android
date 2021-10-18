@@ -1,0 +1,73 @@
+From 69708477be258dbea2711f6a35c02685659b49d3 Mon Sep 17 00:00:00 2001
+From: Pirama Arumuga Nainar <pirama@google.com>
+Date: Fri, 15 Oct 2021 11:56:16 -0700
+Subject: [PATCH] [compiler-rt/profile] Hide __llvm_profile_raw_version
+
+Hide __llvm_profile_raw_version so as not to resolve reference from a
+dependent shared object.  Since libclang_rt.profile is added later in
+the command line, a definition of __llvm_profile_raw_version is not
+included if it is provided from an earlier object, e.g.  from a shared
+dependency.
+
+This causes an extra dependence edge where if libA.so depends on libB.so
+and both are coverage-instrumented, libA.so uses libB.so's definition of
+__llvm_profile_raw_version.  This leads to a runtime link failure if the
+libB.so available at runtime does not provide this symbol (but provides
+the other dependent symbols).  Such a scenario can occur in Android's
+mainline modules.
+E.g.:
+  ld -o libB.so libclang_rt.profile-x86_64.a
+  ld -o libA.so -l B libclang_rt.profile-x86_64.a
+
+libB.so has a global definition of __llvm_profile_raw_version.  libA.so
+uses libB.so's definition of __llvm_profile_raw_version.  At runtime,
+libB.so may not be coverage-instrumented (i.e. not export
+__llvm_profile_raw_version) so runtime linking of libA.so will fail.
+
+Marking this symbol as hidden forces each binary to use the definition
+of __llvm_profile_raw_version from libclang_rt.profile.
+
+Differential Revision: https://reviews.llvm.org/D111759
+---
+ compiler-rt/lib/profile/InstrProfiling.h           | 13 +++++--------
+ compiler-rt/lib/profile/InstrProfilingVersionVar.c |  3 ++-
+ 2 files changed, 7 insertions(+), 9 deletions(-)
+
+diff --git a/compiler-rt/lib/profile/InstrProfiling.h b/compiler-rt/lib/profile/InstrProfiling.h
+index 3fbee92ea5e4..4c75edabb47c 100644
+--- a/compiler-rt/lib/profile/InstrProfiling.h
++++ b/compiler-rt/lib/profile/InstrProfiling.h
+@@ -301,14 +301,11 @@ void __llvm_profile_set_dumped();
+ COMPILER_RT_VISIBILITY extern int INSTR_PROF_PROFILE_RUNTIME_VAR;
+ 
+ /*!
+- * This variable is defined in InstrProfiling.c. Its main purpose is to
+- * encode the raw profile version value and other format related information
+- * such as whether the profile is from IR based instrumentation. The variable
+- * is defined as weak so that compiler can emit an overriding definition
+- * depending on user option.  Since we don't support mixing FE and IR based
+- * data in the same raw profile data file (in other words, shared libs and
+- * main program are expected to be instrumented in the same way), there is
+- * no need for this variable to be hidden.
++ * This variable is defined in InstrProfilingVersionVar.c as a hidden symbol.
++ * Its main purpose is to encode the raw profile version value and other format
++ * related information such as whether the profile is from IR based
++ * instrumentation. The variable is defined as weak so that compiler can emit an
++ * overriding definition depending on user option.
+  */
+ extern uint64_t INSTR_PROF_RAW_VERSION_VAR; /* __llvm_profile_raw_version */
+ 
+diff --git a/compiler-rt/lib/profile/InstrProfilingVersionVar.c b/compiler-rt/lib/profile/InstrProfilingVersionVar.c
+index a6f222150794..21400bfb2caa 100644
+--- a/compiler-rt/lib/profile/InstrProfilingVersionVar.c
++++ b/compiler-rt/lib/profile/InstrProfilingVersionVar.c
+@@ -14,4 +14,5 @@
+  * user has not specified one. Set this up by moving the runtime's copy of this
+  * symbol to an object file within the archive.
+  */
+-COMPILER_RT_WEAK uint64_t INSTR_PROF_RAW_VERSION_VAR = INSTR_PROF_RAW_VERSION;
++COMPILER_RT_VISIBILITY COMPILER_RT_WEAK uint64_t INSTR_PROF_RAW_VERSION_VAR =
++    INSTR_PROF_RAW_VERSION;
+-- 
+2.33.0.1079.g6e70778dc9-goog
+
