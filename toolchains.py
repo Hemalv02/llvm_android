@@ -133,6 +133,10 @@ class Toolchain:
         return self.lib_dir / 'clang' / self.version.long_version()
 
     @property
+    def clang_builtin_header_dir(self) -> Path:
+        return self.lib_dir / 'include'
+
+    @property
     def resource_dir(self) -> Path:
         return self.clang_lib_dir / 'lib' / 'linux'
 

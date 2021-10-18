@@ -145,7 +145,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
-                'clang-tools-extra', 'openmp', 'polly'}
+                'clang-tools-extra', 'polly'}
         if self.build_lldb:
             proj.add('lldb')
         return proj
@@ -184,8 +184,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         defines['SANITIZER_ALLOW_CXXABI'] = 'OFF'
-        defines['OPENMP_ENABLE_OMPT_TOOLS'] = 'FALSE'
-        defines['LIBOMP_ENABLE_SHARED'] = 'FALSE'
         defines['CLANG_PYTHON_BINDINGS_VERSIONS'] = '3'
 
         if (self.lto and
@@ -562,6 +560,12 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         dst_dir = self.install_dir
         dst_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src_lib, dst_dir / libname)
+
+        # install omp.h, omp-tools.h (it's enough to do for just one config).
+        if self._config.target_arch == hosts.Arch.AARCH64:
+            for header in ['omp.h', 'omp-tools.h']:
+                shutil.copy2(self.output_dir / 'runtime' / 'src' / header,
+                             self.output_toolchain.clang_builtin_header_dir)
 
 
 class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
