@@ -246,6 +246,12 @@
         "end_version": 434407
     },
     {
+        "comment": "[UPSTREAM] [compiler-rt/profile] Hide __llvm_profile_raw_version",
+        "rel_patch_path": "cherry/69708477be258dbea2711f6a35c02685659b49d3.patch",
+        "start_version": 416183,
+        "end_version": 440947
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
