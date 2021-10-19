@@ -86,7 +86,7 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
 
     output = []
     base_revision = get_base_llvm_revision(source_dir)
-    github_url = 'https://github.com/llvm/llvm-project/commit/' + base_revision
+    github_url = 'https://github.com/llvm/llvm-project/commits/' + base_revision
     output.append(f'Base revision: [{base_revision}]({github_url})')
     output.append('')
 
