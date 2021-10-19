@@ -20,6 +20,7 @@ Package to manage LLVM sources when building a toolchain.
 import logging
 from pathlib import Path
 import os
+import re
 import shutil
 import string
 import subprocess
@@ -77,12 +78,24 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
     url_prefix = 'https://android.googlesource.com/toolchain/llvm_android/+/' +\
         get_scripts_sha()
 
+    def _get_subject(patch_file):
+        with open(patch_file) as pf:
+            contents = pf.read()
+        subject = re.search('Subject: (.*)\n', contents).groups()[0]
+        trim_str = '[PATCH] '
+        if subject.startswith(trim_str):
+            subject = subject[len(trim_str):]
+        return subject
+
+
     def _format_patch_line(patch):
         if all(c in lowercase_hexdigits for c in patch[:-len('.patch')]):
-            suffix = '/patches/cherry/' + patch
+            url_suffix = '/patches/cherry/' + patch
+            link_text = _get_subject(paths.SCRIPTS_DIR / 'patches' / 'cherry' / patch)
         else:
-            suffix = '/patches/' + patch
-        return f'- [{patch}]({url_prefix}{suffix})'
+            url_suffix = '/patches/' + patch
+            link_text = patch
+        return f'- [{link_text}]({url_prefix}{url_suffix})'
 
     output = []
     base_revision = get_base_llvm_revision(source_dir)
