@@ -186,6 +186,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
     if host.is_linux:
         libs = {'libLLVM': 'libLLVM-{version}git.so',
                 'libclang': 'libclang.so.{version}git',
+                'libclang-cpp': 'libclang-cpp.so.{version}git',
                 'libclang_cxx': 'libclang_cxx.so.{version}git',
                 'libc++': 'libc++.so.{version}',
                 'libc++abi': 'libc++abi.so.{version}'
@@ -196,7 +197,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
                }
 
     def getVersions(libname: str) -> Tuple[str, str]:
-        if libname == 'libclang_cxx':
+        if libname == 'libclang_cxx' or libname == 'libclang-cpp':
             return version.major, version.major
         if not libname.startswith('libc++'):
             return version.long_version(), version.major
@@ -209,11 +210,11 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
 
         soname_version = '13' if libname == 'libclang' else major
         soname_lib = os.path.join(libdir, libformat.format(version=soname_version))
-        if libname.startswith('libclang'):
+        if libname.startswith('libclang') and libname != 'libclang-cpp':
             soname_lib = soname_lib[:-3]
         real_lib = os.path.join(libdir, libformat.format(version=short_version))
 
-        preserved_libnames = ('libLLVM', 'libclang_cxx')
+        preserved_libnames = ('libLLVM', 'libclang_cxx', 'libclang-cpp')
         if libname not in preserved_libnames:
             # Rename the library to match its SONAME
             if not os.path.isfile(real_lib):
@@ -226,10 +227,13 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         # Retain only soname_lib and delete other files for this library.  We
         # still need libc++.so or libc++.dylib symlinks for a subsequent stage1
         # build using these prebuilts (where CMake tries to find C++ atomics
-        # support) to succeed.
+        # support) to succeed.  We also need a few checks to ensure libclang-cpp
+        # is not deleted when cleaning up libclang.so* and libc++abi is not
+        # deleted when cleaning up libc++.so*.
         libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
         all_libs = [lib for lib in os.listdir(libdir) if
                     lib != libcxx_name and
+                    not lib.startswith('libclang-cpp') and # retain libclang-cpp
                     not lib.endswith('.a') and # skip static host libraries
                     (lib.startswith(libname + '.') or # so libc++abi is ignored
                      lib.startswith(libname + '-'))]
