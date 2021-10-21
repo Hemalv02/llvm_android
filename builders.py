@@ -281,7 +281,7 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         arch = self._config.target_arch
         defines['COMPILER_RT_BUILTINS_HIDE_SYMBOLS'] = \
             'TRUE' if not self.is_exported else 'FALSE'
-        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = arch.llvm_triple
+        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = self._config.llvm_triple
         # For CMake feature testing, create an archive instead of an executable,
         # because we can't link an executable until builtins have been built.
         defines['CMAKE_TRY_COMPILE_TARGET_TYPE'] = 'STATIC_LIBRARY'
@@ -341,7 +341,7 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         # personality routine warnings caused by r309226.
         # defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
         defines['COMPILER_RT_TEST_COMPILER_CFLAGS'] = defines['CMAKE_C_FLAGS']
-        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = arch.llvm_triple
+        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = self._config.llvm_triple
         defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
         defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
         # With CMAKE_SYSTEM_NAME='Android', compiler-rt will be installed to
@@ -815,8 +815,8 @@ class SysrootsBuilder(base_builders.Builder):
                             sysroot / 'usr' / 'local' / 'include', symlinks=True)
 
         # Copy over usr/lib/$TRIPLE.
-        src_lib = src_sysroot / 'usr' / 'lib' / arch.ndk_triple
-        dest_lib = sysroot / 'usr' / 'lib' / arch.ndk_triple
+        src_lib = src_sysroot / 'usr' / 'lib' / config.ndk_sysroot_triple
+        dest_lib = sysroot / 'usr' / 'lib' / config.ndk_sysroot_triple
         shutil.copytree(src_lib, dest_lib, symlinks=True)
 
         # Remove the NDK's libcompiler_rt-extras.  For the platform, also remove
@@ -855,7 +855,7 @@ class SysrootsBuilder(base_builders.Builder):
 
         if platform:
             # Create a stub library for the platform's libc++.
-            platform_stubs = paths.OUT_DIR / 'platform_stubs' / arch.ndk_arch
+            platform_stubs = paths.OUT_DIR / 'platform_stubs' / config.ndk_arch
             platform_stubs.mkdir(parents=True, exist_ok=True)
             libdir = sysroot / 'usr' / ('lib64' if arch == hosts.Arch.X86_64 else 'lib')
             libdir.mkdir(parents=True, exist_ok=True)
@@ -872,7 +872,7 @@ class SysrootsBuilder(base_builders.Builder):
                 """))
 
             utils.check_call([self.toolchain.cc,
-                              f'--target={arch.llvm_triple}',
+                              f'--target={config.llvm_triple}',
                               '-fuse-ld=lld', '-nostdlib', '-shared',
                               '-Wl,-soname,libc++.so',
                               '-o{}'.format(libdir / 'libc++.so'),
