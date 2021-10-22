@@ -346,6 +346,7 @@ class CMakeBuilder(Builder):
             'CMAKE_OBJDUMP': str(self.toolchain.objdump),
             'CMAKE_RANLIB': str(self.toolchain.ranlib),
             'CMAKE_RC_COMPILER': str(self.toolchain.rc),
+            'CMAKE_RC_FLAGS': f'-I {paths.MINGW_ROOT}/include/',
             'CMAKE_READELF': str(self.toolchain.readelf),
             'CMAKE_STRIP': str(self.toolchain.strip),
             'CMAKE_MT': str(self.toolchain.mt),

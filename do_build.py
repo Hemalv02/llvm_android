@@ -274,8 +274,7 @@ def install_license_files(install_dir: Path) -> None:
 def install_winpthreads(bin_dir: Path, lib_dir: Path) -> None:
     """Installs the winpthreads runtime to the Windows bin and lib directory."""
     lib_name = 'libwinpthread-1.dll'
-    mingw_dir = paths.MINGW_ROOT / 'x86_64-w64-mingw32'
-    lib_path = mingw_dir / 'bin' / lib_name
+    lib_path = paths.MINGW_ROOT / 'bin' / lib_name
 
     shutil.copy2(lib_path, lib_dir / lib_name)
     shutil.copy2(lib_path, bin_dir / lib_name)
