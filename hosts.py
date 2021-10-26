@@ -68,26 +68,6 @@ class Arch(enum.Enum):
             Arch.X86_64: 'x86_64',
         }[self]
 
-    @property
-    def llvm_triple(self) -> str:
-        """Converts to llvm triple."""
-        return f'{self.llvm_arch}-linux-android'
-
-    @property
-    def ndk_arch(self) -> str:
-        """Converts to ndk arch."""
-        return {
-            Arch.ARM: 'arm',
-            Arch.AARCH64: 'arm64',
-            Arch.I386: 'x86',
-            Arch.X86_64: 'x86_64',
-        }[self]
-
-    @property
-    def ndk_triple(self) -> str:
-        if self == Arch.ARM:
-            return 'arm-linux-androideabi'
-        return self.llvm_triple
 
 def _get_default_host() -> Host:
     """Returns the Host matching the current machine."""
