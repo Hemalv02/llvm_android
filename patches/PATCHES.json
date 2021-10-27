@@ -2,171 +2,202 @@
     {
         "comment": "[UPSTREAM] [NewPM] Add CrossDSOCFI pass irrespective of LTO optimization level",
         "rel_patch_path": "cherry/c45e17f11f508d1aea97eded3f1bda2a448f2032.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 433637
     },
     {
         "comment": "[UPSTREAM] [DebugInfo] Correctly update debug users of SSA values in tail duplication",
         "rel_patch_path": "cherry/31e75512174e1bdaa242ee5c7f30fe56e68c3748.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 433807
     },
     {
         "comment": "[UPSTREAM] [MBP] findBestLoopTopHelper should exit if OldTop is not a chain header",
         "rel_patch_path": "cherry/50b62731452cb83979bbf3c06e828d26a4698dca.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 434174
     },
     {
         "comment": "[UPSTREAM] [hwasan] Add __hwasan_init constructor to runtime lib.",
         "rel_patch_path": "cherry/0ebb75608759cc1ee1016699e15d03e8e3f30d14.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 434763
     },
     {
         "comment": "[UPSTREAM] [llvm-objcopy] [COFF] Do not patch debug entries if PointerToRawData is zero",
         "rel_patch_path": "cherry/16ebb7ab5c462518388527b6ebee2f0e1080b777.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 434976
     },
     {
         "comment": "[UPSTREAM] [openmp] Do not use shared memory on Android",
         "rel_patch_path": "cherry/49fabd9d76b470e3d3fdd47011826207a4e4a8eb.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 435105
     },
     {
         "comment": "[UPSTREAM] [hwasan] Prevent reordering of tag checks.",
         "rel_patch_path": "cherry/0deedaa23f71587d121a5ffab40571fd4a64599a.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 435678
     },
     {
         "comment": "[UPSTREAM] hwasan: Move stack ring buffer initialization before InitStackAndTls.",
         "rel_patch_path": "cherry/affb132ab89f0acffcbaf20b9357bf9e966985fe.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 435715
     },
     {
         "comment": "[UPSTREAM] Remove unused imports.",
         "rel_patch_path": "cherry/d42be2d63ccf0cb38d218ee67746d6e108685a71.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 435733
     },
     {
         "comment": "[UPSTREAM] StackLifetime: Remove asserts for multiple lifetime intrinsics.",
         "rel_patch_path": "cherry/6f85225ef3791357f9b1aa097b575b0a2b0dff48.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 435885
     },
     {
         "comment": "[UPSTREAM] [clang] Do not warn unused -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang",
         "rel_patch_path": "cherry/ca6d5813d17598cd180995fb3bdfca00f364475f.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 435946
     },
     {
         "comment": "[UPSTREAM] [clang] Don't generate warn-stack-size when the warning is ignored",
         "rel_patch_path": "cherry/5fc4828aa6c6df03bd98b1f066e85655383d0cce.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 436353
     },
     {
         "comment": "[UPSTREAM] [Driver][Linux] Fix regression when -DLIBCXX_LIBDIR_SUFFIX=64",
         "rel_patch_path": "cherry/d280a76908e841da9e956a113d219e35247272bf.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 436438
     },
     {
+        "comment": "[UPSTREAM] Add missing `REQUIRES: asserts` to combine-icmp-to-lhs-known-bits.mir",
+        "rel_patch_path": "cherry/bd22a99c57b472774a8addcaeef503540abe7b57.patch",
+        "bugs_tests": [
+            "check-llvm, combine-icmp-to-lhs-known-bits.mir"
+        ],
+        "start_version": 437112,
+        "end_version": 437145
+    },
+    {
+        "comment": "[UPSTREAM] Revert [Coroutines] [Clang] Look up coroutine component in std namespace first",
+        "rel_patch_path": "cherry/79f8b5f0d00fd10fee8aee3c3c58e17a8fea8946.patch",
+        "bugs_tests": null,
+        "start_version": 437112,
+        "end_version": 437168
+    },
+    {
+        "comment": "[UPSTREAM] [OpenMP][libomptarget] Change device vector elements to unique_ptr type",
+        "rel_patch_path": "cherry/c3aecf87d5b97c3d3580457164e7fe4a19c4221a.patch",
+        "bugs_tests": null,
+        "start_version": 437112,
+        "end_version": 437297
+    },
+    {
+        "comment": "[UPSTREAM] [MergeICmps] Don't reorder unmerged comparisons",
+        "rel_patch_path": "cherry/f2fa6ad0476b318fdba46f09a2d59187228431ee.patch",
+        "bugs_tests": [
+            "idmap2_tests, SIGSEGV in idmap2/libidmap2/XmlParser.cpp"
+        ],
+        "start_version": 437112,
+        "end_version": 438499
+    },
+    {
         "comment": "[UPSTREAM] Don't fold (select C, (gep Ptr, Idx), Ptr) if C is vector but Idx is scalar",
         "rel_patch_path": "cherry/d0746f2e9bbf08f52196ae12f25d0ef7edcbbe4c.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 438570
     },
     {
         "comment": "[UPSTREAM] DebugInfo: Use sugared function type when emitting function declarations for call sites",
         "rel_patch_path": "cherry/85f612efeb352e759f120ee183bf31b1fd7e801a.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 439192
     },
     {
         "comment": "[UPSTREAM] [compiler-rt/profile] Hide __llvm_profile_raw_version",
         "rel_patch_path": "cherry/69708477be258dbea2711f6a35c02685659b49d3.patch",
+        "bugs_tests": null,
         "start_version": 433403,
         "end_version": 440947
     },
     {
-        "comment": "[UPSTREAM] [OpenMP][libomptarget] Change device vector elements to unique_ptr type",
-        "rel_patch_path": "cherry/c3aecf87d5b97c3d3580457164e7fe4a19c4221a.patch",
-        "start_version": 437112,
-        "end_version": 437297
-    },
-    {
-        "comment": "[UPSTREAM] Revert [Coroutines] [Clang] Look up coroutine component in std namespace first",
-        "rel_patch_path": "cherry/79f8b5f0d00fd10fee8aee3c3c58e17a8fea8946.patch",
-        "start_version": 437112,
-        "end_version": 437168
-    },
-    {
-        "comment": "[UPSTREAM] Add missing `REQUIRES: asserts` to combine-icmp-to-lhs-known-bits.mir",
-        "rel_patch_path": "cherry/bd22a99c57b472774a8addcaeef503540abe7b57.patch",
-        "bugs_tests": ["check-llvm, combine-icmp-to-lhs-known-bits.mir"],
-        "start_version": 437112,
-        "end_version": 437145
-    },
-    {
-        "comment": "[UPSTREAM] [MergeICmps] Don't reorder unmerged comparisons",
-        "rel_patch_path": "cherry/f2fa6ad0476b318fdba46f09a2d59187228431ee.patch",
-        "bugs_tests": ["idmap2_tests, SIGSEGV in idmap2/libidmap2/XmlParser.cpp"],
-        "start_version": 437112,
-        "end_version": 438499
-    },
-    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": null
     },
     {
         "comment": "Add stubs and headers for nl_types APIs.",
         "rel_patch_path": "Add-stubs-and-headers-for-nl_types-APIs.patch",
+        "bugs_tests": null,
         "start_version": 370808,
         "end_version": null
     },
     {
         "comment": "Add a new library, libclang-cxx",
         "rel_patch_path": "Add-a-new-library-libclang-cxx.v2.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": null
     },
     {
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v3.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 437112
     },
     {
         "comment": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\"",
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v4.patch",
-        "bugs_tests": ["b/197147102, bionic/tests/clang_fortify_tests.cpp"],
+        "bugs_tests": [
+            "b/197147102, bionic/tests/clang_fortify_tests.cpp"
+        ],
         "start_version": 437112,
         "end_version": null
     },
     {
         "comment": "Mark XFAIL tests",
         "rel_patch_path": "Mark-XFAIL-tests.patch",
+        "bugs_tests": null,
         "start_version": 428724,
         "end_version": 437112
     },
     {
         "comment": "Ensure that we use our toolchain's lipo, and not the system version",
         "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
+        "bugs_tests": null,
         "start_version": 407598,
         "end_version": null
     },
     {
         "comment": "Undef FS macro for Android x86_64",
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
+        "bugs_tests": null,
         "start_version": 412851,
         "end_version": null
     }
