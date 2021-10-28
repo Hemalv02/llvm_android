@@ -43,7 +43,7 @@ def parse_args():
                         help='check if patches can be applied cleanly')
     parser.add_argument('--create-cl', action='store_true', help='create a CL')
     parser.add_argument('--bug', help='bug to reference in CLs created (if any)')
-    parser.add_argument('--reason', help='issue/reason to mention in CL subject line')
+    parser.add_argument('--reason', help='issue/reason to mention in CL subject line', required=True)
     args = parser.parse_args()
     return args
 
