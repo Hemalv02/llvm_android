@@ -74,8 +74,10 @@ aosp-master:
         groups: x86_64
     sdk_x86_64-sdk:
     ndk:
-    renderscript:
     test_suites_x86_64:
+
+aosp-master-throttled:
+    renderscript:
 
 # device_boot_health_check_extra fails in stage-aosp-master because of
 # unchecked selinux denials.  Use device_boot_health_check instead.
