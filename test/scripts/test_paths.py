@@ -63,6 +63,5 @@ def internal_names() -> Dict[str, str]:
     global _internal_names_dict
     if _internal_names_dict:
         return _internal_names_dict
-    _internal_names_dict = yaml.load(_read_key_file(INTERNAL_NAMES_YAML),
-                                     Loader=yaml.FullLoader)
+    _internal_names_dict = yaml.safe_load(_read_key_file(INTERNAL_NAMES_YAML))
     return _internal_names_dict

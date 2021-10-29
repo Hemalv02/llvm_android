@@ -67,7 +67,7 @@ class TestConfig(NamedTuple):
 
 def _load_configs() -> List[TestConfig]:
     with open(test_paths.CONFIGS_YAML) as infile:
-        configs = yaml.load(infile, Loader=yaml.FullLoader)
+        configs = yaml.safe_load(infile)
     result = []
     for branch, targets in configs.items():
         for target, target_config in targets.items():

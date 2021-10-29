@@ -82,7 +82,7 @@ class ClusterRecord(NamedTuple):
 
 def _read_cluster_info() -> Dict[str, ClusterRecord]:
     with open(test_paths.CLUSTER_INFO_YAML) as infile:
-        info = yaml.load(infile, Loader=yaml.FullLoader)
+        info = yaml.safe_load(infile)
         return {
             device: ClusterRecord(**record) for device, record in info.items()
         }
