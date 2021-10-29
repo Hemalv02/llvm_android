@@ -31,25 +31,52 @@ except ImportError:
     raise ImportError(missingImportString)
 
 from typing import Tuple, List
+import getpass
 import io
 import logging
 
 from data import WorkNodeRecord, TestResultRecord
+import utils
 
 ANDROID_BUILD_API_SCOPE = (
     'https://www.googleapis.com/auth/androidbuild.internal')
 ANDROID_BUILD_API_NAME = 'androidbuildinternal'
 ANDROID_BUILD_API_VERSION = 'v3'
-TRADEFED_KEY_FILE = '/google/data/ro/teams/tradefed/configs/tradefed.json'
 CHUNK_SIZE = 10 * 1024 * 1024  # 10M
+
+
+STUBBY_COMMAND_PATH = '/google/data/ro/teams/android-llvm/tests/sso_stubby_cmd.sh'
+STUBBY_REQUEST = """
+target: {{
+  scope: GAIA_USER
+  name: "{user}@google.com"
+}}
+target_credential: {{
+  type: OAUTH2_TOKEN
+  oauth2_attributes: {{
+    scope: '{scope}'
+  }}
+}}
+"""
+
+
+def _get_oauth2_token():
+    request = STUBBY_REQUEST.format(
+        user=getpass.getuser(), scope=ANDROID_BUILD_API_SCOPE)
+    with open(STUBBY_COMMAND_PATH) as stubby_command_file:
+        stubby_command = stubby_command_file.read().strip().split()
+    output = utils.check_output(stubby_command, input=request)
+    # output is of the format:
+    # oauth2_token: "<TOKEN>"
+    return output.split('"')[1]
 
 
 class AndroidBuildClient():
     """Helper class to query the Android build API."""
 
     def __init__(self):
-        creds = oauth2_client.GoogleCredentials.from_stream(TRADEFED_KEY_FILE)
-        self.creds = creds.create_scoped([ANDROID_BUILD_API_SCOPE])
+        creds = oauth2_client.AccessTokenCredentials(
+                access_token=_get_oauth2_token(), user_agent='unused/1.0')
 
         self.client = apiclient.discovery.build(
             ANDROID_BUILD_API_NAME,
@@ -93,6 +120,9 @@ class AndroidBuildClient():
                 # invocation is completed.
                 workDone = worknode['status'] == 'complete'
                 continue
+            if msg == 'forrestRun':
+                # Book keeping about a forrest invocation.  Safe to ignore.
+                continue
 
             workOutput = worknode.get('workOutput', None)
             success = workOutput and workOutput['success']
@@ -125,6 +155,9 @@ class AndroidBuildClient():
                     build_id, ants_id = 'NA', 'NA'
                 test_name = params['testName']
                 display_message = workOutput['displayMessage']
+            else:
+                raise RuntimeError(f'Unexpected workExecutorType {msg} with ' +
+                                   f'worknode data:\n{worknode}')
 
             branch = params['branch']
             target = params['target']
