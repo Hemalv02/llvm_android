@@ -202,6 +202,16 @@ class MinGWConfig(_GccConfig):
         cflags.append('-D__MSVCRT_VERSION__=0x1400')
         return cflags
 
+    @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        ldflags.append('-Wl,--dynamicbase')
+        ldflags.append('-Wl,--nxcompat')
+        ldflags.append('-Wl,--high-entropy-va')
+        ldflags.append('-Wl,--Xlink=-Brepro')
+        return ldflags
+
+
 
 class MSVCConfig(Config):
     """Configuration for MSVC toolchain."""
@@ -248,6 +258,10 @@ class MSVCConfig(Config):
     def ldflags(self) -> List[str]:
         return super().ldflags + [
             '/MANIFEST:NO',
+            '/dynamicbase',
+            '/nxcompat',
+            '/highentropyva',
+            '/Brepro',
         ]
 
     @property
