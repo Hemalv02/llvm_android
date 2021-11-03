@@ -151,6 +151,13 @@
         "end_version": 441985
     },
     {
+        "comment": "[UPSTREAM] [ARM][AsmParser] Don't emit \"deprecated instruction in IT block\" warning if requested",
+        "rel_patch_path": "cherry/803d4f8a35ca8d6eeb5c172ae02705645e6dfe1f.patch",
+        "bugs_tests": null,
+        "start_version": 437112,
+        "end_version": 442582
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "bugs_tests": null,
