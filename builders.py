@@ -1024,16 +1024,8 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
             # pthread is needed by libgcc_eh.
             ldflags.append('-pthread')
 
-            ldflags.append('-Wl,--dynamicbase')
-            ldflags.append('-Wl,--nxcompat')
-            ldflags.append('-Wl,--high-entropy-va')
-            ldflags.append('-Wl,--Xlink=-Brepro')
             libpath_prefix = '-L'
         else:
-            ldflags.append('/dynamicbase')
-            ldflags.append('/nxcompat')
-            ldflags.append('/highentropyva')
-            ldflags.append('/Brepro')
             libpath_prefix = '/LIBPATH:'
 
         ldflags.append(libpath_prefix + str(paths.WIN_ZLIB_LIB_PATH))
