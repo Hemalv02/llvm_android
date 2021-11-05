@@ -111,7 +111,7 @@ def package(build_name: str) -> None:
                       '--build-mode', '--all-modules',
                       f'--dir={paths.ANDROID_DIR}',
                       '-k', 'merge_zips'])
-    merge_zips_path = (paths.OUT_DIR / 'soong' / 'host' / hosts.build_host().os_tag /
+    merge_zips_path = (paths.OUT_DIR / 'host' / hosts.build_host().os_tag /
                        'bin' / 'merge_zips')
 
     # Call: merge_zips $DIST_DIR/<build_name>.kzip <kzip files>
