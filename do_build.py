@@ -78,11 +78,6 @@ def build_llvm_for_windows(enable_assertions: bool,
     if not win_sdk.is_enabled():
         # Build and install libcxxabi and libcxx and use them to build Clang.
         libcxx_builder = builders.LibCxxBuilder(config_list)
-        libcxxabi_builder = builders.LibCxxAbiBuilder(config_list)
-        libcxxabi_builder.enable_assertions = enable_assertions
-        libcxxabi_builder.build()
-
-        libcxx_builder.libcxx_abi_path = libcxxabi_builder.install_dir
         libcxx_builder.enable_assertions = enable_assertions
         libcxx_builder.build()
         win_builder.libcxx_path = libcxx_builder.install_dir

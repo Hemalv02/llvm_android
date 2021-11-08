@@ -448,7 +448,7 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
 
 class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'libunwind'
-    src_dir: Path = paths.LLVM_PATH / 'libunwind'
+    src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
     # Build two copies of the builtins library:
     #  - A copy targeting the NDK with hidden symbols.
@@ -485,6 +485,7 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
+        defines['LLVM_ENABLE_RUNTIMES'] = 'libunwind'
         defines['LIBUNWIND_HIDE_SYMBOLS'] = 'TRUE' if not self.is_exported else 'FALSE'
         defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
         if self.enable_assertions:
@@ -748,40 +749,6 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         shutil.copy2(src_path, install_dir)
 
 
-class LibCxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
-    name = 'libcxxabi'
-    src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
-
-    @property
-    def install_dir(self):
-        return paths.OUT_DIR / 'windows-x86-64-install'
-
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        defines: Dict[str, str] = super().cmake_defines
-        defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = self.toolchain.libcxx_headers
-
-        # Build only the static library.
-        defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
-
-        if self.enable_assertions:
-            defines['LIBCXXABI_ENABLE_ASSERTIONS'] = 'ON'
-        defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
-
-        return defines
-
-    @property
-    def cflags(self) -> List[str]:
-        cflags: List[str] = super().cflags
-        # Disable libcxx visibility annotations and enable WIN32 threads.  These
-        # are needed because the libcxxabi build happens before libcxx and uses
-        # headers from stage1/stage2.
-        cflags.append('-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS')
-        cflags.append('-D_LIBCPP_HAS_THREAD_API_WIN32')
-        return cflags
-
-
 class SysrootsBuilder(base_builders.Builder):
     name: str = 'sysroots'
     config_list: List[configs.Config] = (
@@ -881,16 +848,21 @@ class SysrootsBuilder(base_builders.Builder):
 
 class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     name = 'platform-libcxxabi'
-    src_dir: Path = paths.LLVM_PATH / 'libcxxabi'
+    src_dir: Path = paths.LLVM_PATH / 'runtimes'
     config_list: List[configs.Config] = configs.android_configs(
         platform=True, suppress_libcxx_headers=True)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LIBCXXABI_LIBCXX_INCLUDES'] = self.toolchain.libcxx_headers
+        defines['LLVM_ENABLE_RUNTIMES'] ='libcxxabi;libcxx'
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
+
+        defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+        defines['LIBCXX_TARGET_TRIPLE'] = self._config.llvm_triple
+        defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+        defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         return defines
 
     def _is_64bit(self) -> bool:
@@ -921,8 +893,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
 
 class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
     name = 'libcxx'
-    src_dir: Path = paths.LLVM_PATH / 'libcxx'
-    libcxx_abi_path: Path
+    src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
     @property
     def install_dir(self):
@@ -931,36 +902,28 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
+        defines['LLVM_ENABLE_RUNTIMES'] ='libcxx;libcxxabi'
+
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         defines['LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS'] = 'ON'
+        defines['LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS'] = 'OFF'
         defines['LIBCXX_CXX_ABI'] = 'libcxxabi'
         defines['LIBCXX_HAS_WIN32_THREAD_API'] = 'ON'
         defines['LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
         defines['LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
         defines['LIBCXX_TARGET_TRIPLE'] = self._config.llvm_triple
-
-        # Use cxxabi header from the source directory since it gets installed
-        # into install_dir only during libcxx's install step.  But use the
-        # library from install_dir.
-        defines['LIBCXX_CXX_ABI_INCLUDE_PATHS'] = str(paths.LLVM_PATH / 'libcxxabi' / 'include')
-        defines['LIBCXX_CXX_ABI_LIBRARY_PATH'] = str(self.libcxx_abi_path / 'lib64')
+        defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
 
         # Build only the static library.
         defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+        defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXX_ENABLE_EXPERIMENTAL_LIBRARY'] = 'OFF'
 
         if self.enable_assertions:
             defines['LIBCXX_ENABLE_ASSERTIONS'] = 'ON'
+            defines['LIBCXXABI_ENABLE_ASSERTIONS'] = 'ON'
 
         return defines
-
-    @property
-    def cflags(self) -> List[str]:
-        cflags: List[str] = super().cflags
-        # Disable libcxxabi visibility annotations since we're only building it
-        # statically.
-        cflags.append('-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS')
-        return cflags
 
 
 class WindowsToolchainBuilder(base_builders.LLVMBuilder):
