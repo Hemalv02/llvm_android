@@ -158,6 +158,13 @@
         "end_version": 442582
     },
     {
+        "comment": "[UPSTREAM] [PATCH] Fix rendezvous for rebase_exec=true case",
+        "rel_patch_path": "cherry/d5629b5d4d41ce71703105362f58dfcdbb6cc175.patch",
+        "bugs_tests": null,
+        "start_version": 437112,
+        "end_version": 439004
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "bugs_tests": null,
