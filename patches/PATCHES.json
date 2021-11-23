@@ -172,6 +172,13 @@
         "end_version": 443921
     },
     {
+        "comment": "[UPSTREAM] [compiler-rt/profile] Include __llvm_profile_get_magic in module signature",
+        "rel_patch_path": "cherry/1df7289af66c630480a676e2a5347dca5a3ede15.patch",
+        "bugs_tests": null,
+        "start_version": 437112,
+        "end_version": 444461
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "bugs_tests": null,
