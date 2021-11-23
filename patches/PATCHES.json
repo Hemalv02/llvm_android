@@ -130,6 +130,13 @@
         "end_version": 438570
     },
     {
+        "comment": "[UPSTREAM] [PATCH] Fix rendezvous for rebase_exec=true case",
+        "rel_patch_path": "cherry/d5629b5d4d41ce71703105362f58dfcdbb6cc175.patch",
+        "bugs_tests": null,
+        "start_version": 437112,
+        "end_version": 439004
+    },
+    {
         "comment": "[UPSTREAM] DebugInfo: Use sugared function type when emitting function declarations for call sites",
         "rel_patch_path": "cherry/85f612efeb352e759f120ee183bf31b1fd7e801a.patch",
         "bugs_tests": null,
@@ -158,11 +165,11 @@
         "end_version": 442582
     },
     {
-        "comment": "[UPSTREAM] [PATCH] Fix rendezvous for rebase_exec=true case",
-        "rel_patch_path": "cherry/d5629b5d4d41ce71703105362f58dfcdbb6cc175.patch",
+        "comment": "[UPSTREAM] [compiler-rt/profile] Reland mark __llvm_profile_raw_version as hidden",
+        "rel_patch_path": "cherry/078279ff017f799d9cb8fe515808fcc518fe0c41.patch",
         "bugs_tests": null,
-        "start_version": 437112,
-        "end_version": 439004
+        "start_version": 441431,
+        "end_version": 443921
     },
     {
         "comment": "Revert two changes that break Android builds.",
