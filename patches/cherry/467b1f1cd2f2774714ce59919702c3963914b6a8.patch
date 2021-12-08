@@ -1,0 +1,114 @@
+From cae4dcb195ef9534c69fe00aba52f73630879241 Mon Sep 17 00:00:00 2001
+From: Florian Hahn <flo@fhahn.com>
+Date: Tue, 13 Apr 2021 08:24:24 +0100
+Subject: [SimplifyCFG] Allow hoisting terminators only with
+ HoistCommonInsts=false.
+
+As a side-effect of the change to default HoistCommonInsts to false
+early in the pipeline, we fail to convert conditional branch & phis to
+selects early on, which prevents vectorization for loops that contain
+conditional branches that effectively are selects (or if the loop gets
+vectorized, it will get vectorized very inefficiently).
+
+This patch updates SimplifyCFG to perform hoisting if the only
+instruction in both BBs is an equal branch. In this case, the only
+additional instructions are selects for phis, which should be cheap.
+
+Even though we perform hoisting, the benefits of this kind of hoisting
+should by far outweigh the negatives.
+
+For example, the loop in the code below will not get vectorized on
+AArch64 with the current default, but will with the patch. This is a
+fundamental pattern we should definitely vectorize. Besides that, I
+think the select variants should be easier to use for reasoning across
+other passes as well.
+
+https://clang.godbolt.org/z/sbjd8Wshx
+
+```
+double clamp(double v) {
+  if (v < 0.0)
+    return 0.0;
+  if (v > 6.0)
+    return 6.0;
+  return v;
+}
+
+void loop(double* X, double *Y) {
+  for (unsigned i = 0; i < 20000; i++) {
+    X[i] = clamp(Y[i]);
+  }
+}
+```
+
+Reviewed By: lebedev.ri
+
+Differential Revision: https://reviews.llvm.org/D100329
+
+Change-Id: I31fb3a735990846a0824f68fdab925e568f53d03
+---
+ llvm/lib/Transforms/Utils/SimplifyCFG.cpp | 26 +++++++++++++++++------
+ 1 file changed, 20 insertions(+), 6 deletions(-)
+
+diff --git a/llvm/lib/Transforms/Utils/SimplifyCFG.cpp b/llvm/lib/Transforms/Utils/SimplifyCFG.cpp
+index 7fe33fd3c759..16feb0110c2c 100644
+--- a/llvm/lib/Transforms/Utils/SimplifyCFG.cpp
++++ b/llvm/lib/Transforms/Utils/SimplifyCFG.cpp
+@@ -247,7 +247,8 @@ class SimplifyCFGOpt {
+   bool tryToSimplifyUncondBranchWithICmpInIt(ICmpInst *ICI,
+                                              IRBuilder<> &Builder);
+ 
+-  bool HoistThenElseCodeToIf(BranchInst *BI, const TargetTransformInfo &TTI);
++  bool HoistThenElseCodeToIf(BranchInst *BI, const TargetTransformInfo &TTI,
++                             bool EqTermsOnly);
+   bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB,
+                               const TargetTransformInfo &TTI);
+   bool SimplifyTerminatorOnSelect(Instruction *OldTerm, Value *Cond,
+@@ -1349,9 +1350,12 @@ static bool passingValueIsAlwaysUndefined(Value *V, Instruction *I, bool PtrValu
+ 
+ /// Given a conditional branch that goes to BB1 and BB2, hoist any common code
+ /// in the two blocks up into the branch block. The caller of this function
+-/// guarantees that BI's block dominates BB1 and BB2.
++/// guarantees that BI's block dominates BB1 and BB2. If EqTermsOnly is given,
++/// only perform hoisting in case both blocks only contain a terminator. In that
++/// case, only the original BI will be replaced and selects for PHIs are added.
+ bool SimplifyCFGOpt::HoistThenElseCodeToIf(BranchInst *BI,
+-                                           const TargetTransformInfo &TTI) {
++                                           const TargetTransformInfo &TTI,
++                                           bool EqTermsOnly) {
+   // This does very trivial matching, with limited scanning, to find identical
+   // instructions in the two blocks.  In particular, we don't want to get into
+   // O(M*N) situations here where M and N are the sizes of BB1 and BB2.  As
+@@ -1388,6 +1392,16 @@ bool SimplifyCFGOpt::HoistThenElseCodeToIf(BranchInst *BI,
+       ++NumHoistCommonCode;
+   });
+ 
++  // Check if only hoisting terminators is allowed. This does not add new
++  // instructions to the hoist location.
++  if (EqTermsOnly) {
++    if (!I1->isIdenticalToWhenDefined(I2))
++      return false;
++    if (!I1->isTerminator())
++      return false;
++    goto HoistTerminator;
++  }
++
+   do {
+     // If we are hoisting the terminator instruction, don't move one (making a
+     // broken BB), instead clone it, and remove BI.
+@@ -6497,9 +6511,9 @@ bool SimplifyCFGOpt::simplifyCondBranch(BranchInst *BI, IRBuilder<> &Builder) {
+   // can hoist it up to the branching block.
+   if (BI->getSuccessor(0)->getSinglePredecessor()) {
+     if (BI->getSuccessor(1)->getSinglePredecessor()) {
+-      if (HoistCommon && Options.HoistCommonInsts)
+-        if (HoistThenElseCodeToIf(BI, TTI))
+-          return requestResimplify();
++      if (HoistCommon &&
++          HoistThenElseCodeToIf(BI, TTI, !Options.HoistCommonInsts))
++        return requestResimplify();
+     } else {
+       // If Successor #1 has multiple preds, we may be able to conditionally
+       // execute Successor #0 if it branches to Successor #1.
+-- 
+2.34.1.400.ga245620fadb-goog
+

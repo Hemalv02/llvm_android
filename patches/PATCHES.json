@@ -204,6 +204,12 @@
         "end_version": 424247
     },
     {
+        "comment": "[UPSTREAM] [SimplifyCFG] Allow hoisting terminators only with HoistCommonInsts=false.",
+        "rel_patch_path": "cherry/467b1f1cd2f2774714ce59919702c3963914b6a8.patch",
+        "start_version": 416183,
+        "end_version": 424280
+    },
+    {
         "comment": "[UPSTREAM] [AArch64][v8.5A] Add BTI to all function starts",
         "rel_patch_path": "cherry/cca40aa8d8aa732a226c8978e53cd47e7b7c76ec.patch",
         "start_version": 416183,
