@@ -174,18 +174,6 @@
     {
         "end_version": null,
         "metadata": {
-            "info": [],
-            "title": "Add a new library, libclang-cxx"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Add-a-new-library-libclang-cxx.v2.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": null,
-        "metadata": {
             "info": [
                 "b/197147102, bionic/tests/clang_fortify_tests.cpp"
             ],

@@ -182,7 +182,6 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         libs = {'libLLVM': 'libLLVM-{version}git.so',
                 'libclang': 'libclang.so.{version}git',
                 'libclang-cpp': 'libclang-cpp.so.{version}git',
-                'libclang_cxx': 'libclang_cxx.so.{version}git',
                 'libc++': 'libc++.so.{version}',
                 'libc++abi': 'libc++abi.so.{version}'
                }
@@ -192,7 +191,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
                }
 
     def getVersions(libname: str) -> Tuple[str, str]:
-        if libname == 'libclang_cxx' or libname == 'libclang-cpp':
+        if libname == 'libclang-cpp':
             return version.major, version.major
         if not libname.startswith('libc++'):
             return version.long_version(), version.major
@@ -209,7 +208,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
             soname_lib = soname_lib[:-3]
         real_lib = os.path.join(libdir, libformat.format(version=short_version))
 
-        preserved_libnames = ('libLLVM', 'libclang_cxx', 'libclang-cpp')
+        preserved_libnames = ('libLLVM', 'libclang-cpp')
         if libname not in preserved_libnames:
             # Rename the library to match its SONAME
             if not os.path.isfile(real_lib):
