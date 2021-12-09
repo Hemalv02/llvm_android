@@ -1,161 +1,5 @@
 [
     {
-        "end_version": 433637,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [NewPM] Add CrossDSOCFI pass irrespective of LTO optimization level"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/c45e17f11f508d1aea97eded3f1bda2a448f2032.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": 433807,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [DebugInfo] Correctly update debug users of SSA values in tail duplication"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/31e75512174e1bdaa242ee5c7f30fe56e68c3748.patch",
-        "start_version": 433403
-    },
-    {
-        "end_version": 434174,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [MBP] findBestLoopTopHelper should exit if OldTop is not a chain header"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/50b62731452cb83979bbf3c06e828d26a4698dca.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": 434763,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [hwasan] Add __hwasan_init constructor to runtime lib."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/0ebb75608759cc1ee1016699e15d03e8e3f30d14.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": 434976,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [llvm-objcopy] [COFF] Do not patch debug entries if PointerToRawData is zero"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/16ebb7ab5c462518388527b6ebee2f0e1080b777.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": 435105,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [openmp] Do not use shared memory on Android"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/49fabd9d76b470e3d3fdd47011826207a4e4a8eb.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": 435678,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [hwasan] Prevent reordering of tag checks."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/0deedaa23f71587d121a5ffab40571fd4a64599a.patch",
-        "start_version": 433403
-    },
-    {
-        "end_version": 435715,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] hwasan: Move stack ring buffer initialization before InitStackAndTls."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/affb132ab89f0acffcbaf20b9357bf9e966985fe.patch",
-        "start_version": 433403
-    },
-    {
-        "end_version": 435733,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] Remove unused imports."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/d42be2d63ccf0cb38d218ee67746d6e108685a71.patch",
-        "start_version": 428724
-    },
-    {
-        "end_version": 435885,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] StackLifetime: Remove asserts for multiple lifetime intrinsics."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/6f85225ef3791357f9b1aa097b575b0a2b0dff48.patch",
-        "start_version": 433403
-    },
-    {
-        "end_version": 435946,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [clang] Do not warn unused -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/ca6d5813d17598cd180995fb3bdfca00f364475f.patch",
-        "start_version": 433403
-    },
-    {
-        "end_version": 436353,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [clang] Don't generate warn-stack-size when the warning is ignored"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/5fc4828aa6c6df03bd98b1f066e85655383d0cce.patch",
-        "start_version": 433403
-    },
-    {
-        "end_version": 436438,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [Driver][Linux] Fix regression when -DLIBCXX_LIBDIR_SUFFIX=64"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/d280a76908e841da9e956a113d219e35247272bf.patch",
-        "start_version": 433403
-    },
-    {
         "end_version": 437145,
         "metadata": {
             "info": [
@@ -340,18 +184,6 @@
         "start_version": 428724
     },
     {
-        "end_version": 437112,
-        "metadata": {
-            "info": [],
-            "title": "Revert \"[Sema] Introduce BuiltinAttr, per-declaration builtin-ness\""
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v3.patch",
-        "start_version": 428724
-    },
-    {
         "end_version": null,
         "metadata": {
             "info": [
@@ -364,18 +196,6 @@
         ],
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v4.patch",
         "start_version": 437112
-    },
-    {
-        "end_version": 437112,
-        "metadata": {
-            "info": [],
-            "title": "Mark XFAIL tests"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Mark-XFAIL-tests.patch",
-        "start_version": 428724
     },
     {
         "end_version": null,
