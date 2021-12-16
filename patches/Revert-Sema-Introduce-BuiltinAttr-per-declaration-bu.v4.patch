@@ -1,6 +1,6 @@
-From 0eb704a289b3abe25f73fd0ea7a55d3f1753240b Mon Sep 17 00:00:00 2001
+From 7cf14318bc1cf8363724b4a156d47f3fdea748a8 Mon Sep 17 00:00:00 2001
 From: Chih-Hung Hsieh <chh@google.com>
-Date: Sat, 9 Oct 2021 00:37:50 -0700
+Date: Thu, 16 Dec 2021 15:33:52 -0800
 Subject: [PATCH] Revert "[Sema] Introduce BuiltinAttr, per-declaration
  builtin-ness"
 
@@ -14,7 +14,7 @@ Change-Id: I3e2502d284a63558a891f2e49c73251ec1e244bf
  clang/include/clang/Basic/IdentifierTable.h   |  12 ++
  clang/include/clang/Sema/Sema.h               |   2 -
  clang/lib/AST/Decl.cpp                        |  29 ++++-
- clang/lib/Headers/intrin.h                    |  91 +++++++++----
+ clang/lib/Headers/intrin.h                    |  93 ++++++++++----
  clang/lib/Sema/SemaDecl.cpp                   | 121 +++++++-----------
  clang/lib/Sema/SemaExpr.cpp                   |   1 -
  clang/lib/Sema/SemaLookup.cpp                 |   7 +-
@@ -24,16 +24,10 @@ Change-Id: I3e2502d284a63558a891f2e49c73251ec1e244bf
  clang/test/Analysis/kmalloc-linux.c           |   2 +
  clang/test/Analysis/malloc-custom.c           |   2 +
  clang/test/Analysis/string-with-signedness.c  |   2 +
- clang/test/CodeGen/X86/ms-x86-intrinsics.c    |   2 +
  clang/test/CodeGen/builtin-redeclaration.c    |  16 ---
  clang/test/CodeGen/callback_pthread_create.c  |   4 -
- clang/test/CodeGen/ms-barriers-intrinsics.c   |   2 +
- clang/test/CodeGen/ms-intrinsics-cpuid.c      |   2 +
- clang/test/CodeGen/ms-intrinsics.c            |   2 +
  clang/test/CodeGenCXX/builtins.cpp            |  16 +--
  clang/test/CodeGenCXX/unknown-anytype.cpp     |   2 +
- clang/test/Headers/ms-intrin.cpp              |   2 +
- clang/test/Sema/bittest-intrinsics.c          |   2 +
  clang/test/Sema/builtin-setjmp.c              |   2 +
  clang/test/Sema/implicit-builtin-decl.c       |   5 +
  clang/test/Sema/implicit-builtin-redecl.c     |   2 +
@@ -41,11 +35,11 @@ Change-Id: I3e2502d284a63558a891f2e49c73251ec1e244bf
  clang/test/Sema/warn-fortify-source.c         |  19 ++-
  clang/test/SemaCXX/cxx11-compat.cpp           |   2 +-
  .../SemaCXX/warn-unused-local-typedef.cpp     |   4 +-
- 32 files changed, 221 insertions(+), 162 deletions(-)
+ 32 files changed, 221 insertions(+), 164 deletions(-)
  delete mode 100644 clang/test/CodeGen/builtin-redeclaration.c
 
 diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.td
-index a54039501a7f7..0bab7d6d096f5 100644
+index a54039501a7f..0bab7d6d096f 100644
 --- a/clang/include/clang/Basic/Attr.td
 +++ b/clang/include/clang/Basic/Attr.td
 @@ -3815,14 +3815,6 @@ def ReleaseHandle : InheritableParamAttr {
@@ -64,7 +58,7 @@ index a54039501a7f7..0bab7d6d096f5 100644
    let Spellings = [Clang<"enforce_tcb">];
    let Subjects = SubjectList<[Function]>;
 diff --git a/clang/include/clang/Basic/Builtins.def b/clang/include/clang/Basic/Builtins.def
-index 0e3898537bcfb..1d2e56d23490e 100644
+index 0e3898537bcf..1d2e56d23490 100644
 --- a/clang/include/clang/Basic/Builtins.def
 +++ b/clang/include/clang/Basic/Builtins.def
 @@ -1088,7 +1088,6 @@ LIBBUILTIN(strncasecmp, "icC*cC*z", "f",   "strings.h", ALL_GNU_LANGUAGES)
@@ -76,7 +70,7 @@ index 0e3898537bcfb..1d2e56d23490e 100644
  
  // POSIX setjmp.h
 diff --git a/clang/include/clang/Basic/IdentifierTable.h b/clang/include/clang/Basic/IdentifierTable.h
-index 9c4833b278294..aec98c74872f8 100644
+index 9c4833b27829..aec98c74872f 100644
 --- a/clang/include/clang/Basic/IdentifierTable.h
 +++ b/clang/include/clang/Basic/IdentifierTable.h
 @@ -268,6 +268,18 @@ public:
@@ -99,7 +93,7 @@ index 9c4833b278294..aec98c74872f8 100644
    ///
    /// 0 is not-built-in. 1+ are specific builtin functions.
 diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
-index 919a2af4a3080..6d5da647ea52b 100644
+index 919a2af4a308..6d5da647ea52 100644
 --- a/clang/include/clang/Sema/Sema.h
 +++ b/clang/include/clang/Sema/Sema.h
 @@ -4277,8 +4277,6 @@ public:
@@ -112,7 +106,7 @@ index 919a2af4a3080..6d5da647ea52b 100644
                                   Scope *S, bool ForRedeclaration,
                                   SourceLocation Loc);
 diff --git a/clang/lib/AST/Decl.cpp b/clang/lib/AST/Decl.cpp
-index 835e28c0bc9fc..4556f9dc30964 100644
+index 835e28c0bc9f..4556f9dc3096 100644
 --- a/clang/lib/AST/Decl.cpp
 +++ b/clang/lib/AST/Decl.cpp
 @@ -3296,26 +3296,45 @@ FunctionDecl *FunctionDecl::getCanonicalDecl() { return getFirstDecl(); }
@@ -167,7 +161,7 @@ index 835e28c0bc9fc..4556f9dc30964 100644
      return BuiltinID;
  
 diff --git a/clang/lib/Headers/intrin.h b/clang/lib/Headers/intrin.h
-index 4803277472ee8..ba6ad6be28e17 100644
+index 4803277472ee..b75ee3b22af0 100644
 --- a/clang/lib/Headers/intrin.h
 +++ b/clang/lib/Headers/intrin.h
 @@ -57,11 +57,16 @@ void __addfsbyte(unsigned long, unsigned char);
@@ -406,7 +400,7 @@ index 4803277472ee8..ba6ad6be28e17 100644
    __asm__ __volatile__("rep stosw"
                         : "+D"(__dst), "+c"(__n)
                         : "a"(__x)
-@@ -512,8 +551,8 @@ static __inline__ void __DEFAULT_FN_ATTRS __stosw(unsigned short *__dst,
+@@ -512,16 +551,15 @@ static __inline__ void __DEFAULT_FN_ATTRS __stosw(unsigned short *__dst,
  }
  #endif
  #ifdef __x86_64__
@@ -417,17 +411,17 @@ index 4803277472ee8..ba6ad6be28e17 100644
    __asm__ __volatile__("rep movsq"
                         : "+D"(__dst), "+S"(__src), "+c"(__n)
                         :
-@@ -521,7 +560,8 @@ static __inline__ void __DEFAULT_FN_ATTRS __movsq(
+                        : "memory");
  }
- static __inline__ void __DEFAULT_FN_ATTRS __stosq(unsigned __int64 *__dst,
-                                                   unsigned __int64 __x,
+-static __inline__ void __DEFAULT_FN_ATTRS __stosq(unsigned __int64 *__dst,
+-                                                  unsigned __int64 __x,
 -                                                  size_t __n) {
 +static __inline__ void __DEFAULT_FN_ATTRS
 +__stosq(unsigned __int64 *__dst, unsigned __int64 __x, size_t __n) {
    __asm__ __volatile__("rep stosq" : "+D"(__dst), "+c"(__n) : "a"(__x)
                         : "memory");
  }
-@@ -599,7 +639,8 @@ __readmsr(unsigned long __register) {
+@@ -599,7 +637,8 @@ __readmsr(unsigned long __register) {
  }
  #endif
  
@@ -438,7 +432,7 @@ index 4803277472ee8..ba6ad6be28e17 100644
    __asm__ __volatile__ ("mov %%cr3, %0" : "=r"(__cr3_val) : : "memory");
    return __cr3_val;
 diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
-index f9738f0ddfca7..6d33c583dca71 100644
+index f9738f0ddfca..6d33c583dca7 100644
 --- a/clang/lib/Sema/SemaDecl.cpp
 +++ b/clang/lib/Sema/SemaDecl.cpp
 @@ -2100,43 +2100,6 @@ static StringRef getHeaderName(Builtin::Context &BuiltinInfo, unsigned ID,
@@ -605,7 +599,7 @@ index f9738f0ddfca7..6d33c583dca71 100644
    checkAttributesAfterMerging(*this, *NewFD);
  
 diff --git a/clang/lib/Sema/SemaExpr.cpp b/clang/lib/Sema/SemaExpr.cpp
-index 9d7738c3a2349..ea86691fe4062 100644
+index 9d7738c3a234..ea86691fe406 100644
 --- a/clang/lib/Sema/SemaExpr.cpp
 +++ b/clang/lib/Sema/SemaExpr.cpp
 @@ -6260,7 +6260,6 @@ static FunctionDecl *rewriteBuiltinFunctionDecl(Sema *Sema, ASTContext &Context,
@@ -617,7 +611,7 @@ index 9d7738c3a2349..ea86691fe4062 100644
  }
  
 diff --git a/clang/lib/Sema/SemaLookup.cpp b/clang/lib/Sema/SemaLookup.cpp
-index a88bf52b4d8ba..566a0505cdcf2 100644
+index a88bf52b4d8b..566a0505cdcf 100644
 --- a/clang/lib/Sema/SemaLookup.cpp
 +++ b/clang/lib/Sema/SemaLookup.cpp
 @@ -936,9 +936,10 @@ bool Sema::LookupBuiltin(LookupResult &R) {
@@ -635,7 +629,7 @@ index a88bf52b4d8ba..566a0505cdcf2 100644
            return true;
          }
 diff --git a/clang/lib/Serialization/ASTReader.cpp b/clang/lib/Serialization/ASTReader.cpp
-index dfa7d55af735d..752f87e01b4f0 100644
+index dfa7d55af735..752f87e01b4f 100644
 --- a/clang/lib/Serialization/ASTReader.cpp
 +++ b/clang/lib/Serialization/ASTReader.cpp
 @@ -931,8 +931,9 @@ ASTIdentifierLookupTraitBase::ReadKey(const unsigned char* d, unsigned n) {
@@ -672,7 +666,7 @@ index dfa7d55af735d..752f87e01b4f0 100644
           "Incorrect extension token flag");
    (void)ExtensionToken;
 diff --git a/clang/lib/Serialization/ASTWriter.cpp b/clang/lib/Serialization/ASTWriter.cpp
-index 66c207ad9243d..c4f06c792736f 100644
+index 66c207ad9243..c4f06c792736 100644
 --- a/clang/lib/Serialization/ASTWriter.cpp
 +++ b/clang/lib/Serialization/ASTWriter.cpp
 @@ -3277,8 +3277,9 @@ class ASTIdentifierTableTrait {
@@ -696,7 +690,7 @@ index 66c207ad9243d..c4f06c792736f 100644
      Bits = (Bits << 1) | unsigned(II->isCPlusPlusOperatorKeyword());
      LE.write<uint16_t>(Bits);
 diff --git a/clang/test/AST/ast-dump-attr.cpp b/clang/test/AST/ast-dump-attr.cpp
-index c2bd768dc2adf..95491a02f8b2d 100644
+index c2bd768dc2ad..95491a02f8b2 100644
 --- a/clang/test/AST/ast-dump-attr.cpp
 +++ b/clang/test/AST/ast-dump-attr.cpp
 @@ -119,7 +119,6 @@ namespace Test {
@@ -708,7 +702,7 @@ index c2bd768dc2adf..95491a02f8b2d 100644
  
  alignas(8) extern int x;
 diff --git a/clang/test/Analysis/kmalloc-linux.c b/clang/test/Analysis/kmalloc-linux.c
-index 4cca5712b0967..29e6257ef8a66 100644
+index 4cca5712b096..29e6257ef8a6 100644
 --- a/clang/test/Analysis/kmalloc-linux.c
 +++ b/clang/test/Analysis/kmalloc-linux.c
 @@ -1,3 +1,5 @@
@@ -718,7 +712,7 @@ index 4cca5712b0967..29e6257ef8a66 100644
  // RUN:   -Wno-incompatible-library-redeclaration \
  // RUN:   -analyzer-checker=core \
 diff --git a/clang/test/Analysis/malloc-custom.c b/clang/test/Analysis/malloc-custom.c
-index 053d0ee31ca89..4fee25ebfe992 100644
+index 053d0ee31ca8..4fee25ebfe99 100644
 --- a/clang/test/Analysis/malloc-custom.c
 +++ b/clang/test/Analysis/malloc-custom.c
 @@ -1,3 +1,5 @@
@@ -728,7 +722,7 @@ index 053d0ee31ca89..4fee25ebfe992 100644
  
  // Various tests to make the analyzer is robust against custom
 diff --git a/clang/test/Analysis/string-with-signedness.c b/clang/test/Analysis/string-with-signedness.c
-index 1b00971a834cf..135fdd7a311ea 100644
+index 1b00971a834c..135fdd7a311e 100644
 --- a/clang/test/Analysis/string-with-signedness.c
 +++ b/clang/test/Analysis/string-with-signedness.c
 @@ -1,3 +1,5 @@
@@ -737,19 +731,9 @@ index 1b00971a834cf..135fdd7a311ea 100644
  // RUN: %clang_analyze_cc1 -Wno-incompatible-library-redeclaration -analyzer-checker=core,unix.cstring,alpha.unix.cstring -verify %s
  
  // expected-no-diagnostics
-diff --git a/clang/test/CodeGen/X86/ms-x86-intrinsics.c b/clang/test/CodeGen/X86/ms-x86-intrinsics.c
-index 0eca455bb5c32..a66053bd89311 100644
---- a/clang/test/CodeGen/X86/ms-x86-intrinsics.c
-+++ b/clang/test/CodeGen/X86/ms-x86-intrinsics.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -Werror -ffreestanding -fms-extensions -fms-compatibility -fms-compatibility-version=17.00 \
- // RUN:         -triple i686--windows -Oz -emit-llvm %s -o - \
- // RUN:         | FileCheck %s -check-prefix=CHECK -check-prefix=CHECK-I386
 diff --git a/clang/test/CodeGen/builtin-redeclaration.c b/clang/test/CodeGen/builtin-redeclaration.c
 deleted file mode 100644
-index 582907184ea53..0000000000000
+index 582907184ea5..000000000000
 --- a/clang/test/CodeGen/builtin-redeclaration.c
 +++ /dev/null
 @@ -1,16 +0,0 @@
@@ -770,7 +754,7 @@ index 582907184ea53..0000000000000
 -  return exp(1);
 -}
 diff --git a/clang/test/CodeGen/callback_pthread_create.c b/clang/test/CodeGen/callback_pthread_create.c
-index 80457cb3ade3b..d1b01b91eac3f 100644
+index 80457cb3ade3..d1b01b91eac3 100644
 --- a/clang/test/CodeGen/callback_pthread_create.c
 +++ b/clang/test/CodeGen/callback_pthread_create.c
 @@ -1,7 +1,3 @@
@@ -781,38 +765,8 @@ index 80457cb3ade3b..d1b01b91eac3f 100644
  // RUN: %clang_cc1 %s -S -emit-llvm -o - -disable-llvm-optzns | FileCheck %s
  
  // CHECK: declare !callback ![[cid:[0-9]+]] {{.*}}i32 @pthread_create
-diff --git a/clang/test/CodeGen/ms-barriers-intrinsics.c b/clang/test/CodeGen/ms-barriers-intrinsics.c
-index e0e948209e3ee..6715c29980665 100644
---- a/clang/test/CodeGen/ms-barriers-intrinsics.c
-+++ b/clang/test/CodeGen/ms-barriers-intrinsics.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -ffreestanding -fms-extensions -fms-compatibility -fms-compatibility-version=17.00 \
- // RUN:         -triple i686--windows -emit-llvm %s -o - \
- // RUN:         | FileCheck %s
-diff --git a/clang/test/CodeGen/ms-intrinsics-cpuid.c b/clang/test/CodeGen/ms-intrinsics-cpuid.c
-index e8be5ad23d7e0..e4bdd41623f91 100644
---- a/clang/test/CodeGen/ms-intrinsics-cpuid.c
-+++ b/clang/test/CodeGen/ms-intrinsics-cpuid.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -ffreestanding -fms-extensions -fms-compatibility -fms-compatibility-version=17.00 \
- // RUN:         -triple i686-windows-msvc -emit-llvm %s -o - | FileCheck %s --check-prefix=X86
- // RUN: %clang_cc1 -ffreestanding -fms-extensions -fms-compatibility -fms-compatibility-version=17.00 \
-diff --git a/clang/test/CodeGen/ms-intrinsics.c b/clang/test/CodeGen/ms-intrinsics.c
-index 92bcc2cea2f63..54aba7658db46 100644
---- a/clang/test/CodeGen/ms-intrinsics.c
-+++ b/clang/test/CodeGen/ms-intrinsics.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -ffreestanding -fms-extensions -fms-compatibility -fms-compatibility-version=17.00 \
- // RUN:         -triple i686--windows -Oz -emit-llvm %s -o - \
- // RUN:         | FileCheck %s -check-prefixes CHECK,CHECK-I386,CHECK-INTEL
 diff --git a/clang/test/CodeGenCXX/builtins.cpp b/clang/test/CodeGenCXX/builtins.cpp
-index 5a95786beed54..62520c0877d26 100644
+index 5a95786beed5..62520c0877d2 100644
 --- a/clang/test/CodeGenCXX/builtins.cpp
 +++ b/clang/test/CodeGenCXX/builtins.cpp
 @@ -1,19 +1,7 @@
@@ -838,7 +792,7 @@ index 5a95786beed54..62520c0877d26 100644
  extern "C" char memmove();
  
 diff --git a/clang/test/CodeGenCXX/unknown-anytype.cpp b/clang/test/CodeGenCXX/unknown-anytype.cpp
-index 045b445037271..3055967b7f2fb 100644
+index 045b44503727..3055967b7f2f 100644
 --- a/clang/test/CodeGenCXX/unknown-anytype.cpp
 +++ b/clang/test/CodeGenCXX/unknown-anytype.cpp
 @@ -1,3 +1,5 @@
@@ -847,28 +801,8 @@ index 045b445037271..3055967b7f2fb 100644
  // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -funknown-anytype -emit-llvm -o %t %s
  // RUN: FileCheck -check-prefix COMMON %s < %t
  // RUN: FileCheck -check-prefix X86_64 %s < %t
-diff --git a/clang/test/Headers/ms-intrin.cpp b/clang/test/Headers/ms-intrin.cpp
-index d3b6a1a278dab..5354170484aee 100644
---- a/clang/test/Headers/ms-intrin.cpp
-+++ b/clang/test/Headers/ms-intrin.cpp
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -triple i386-pc-win32 -target-cpu pentium4 \
- // RUN:     -fms-extensions -fms-compatibility -fms-compatibility-version=17.00 \
- // RUN:     -ffreestanding -fsyntax-only -Werror \
-diff --git a/clang/test/Sema/bittest-intrinsics.c b/clang/test/Sema/bittest-intrinsics.c
-index 536c1eb066c79..f5b220c64de7d 100644
---- a/clang/test/Sema/bittest-intrinsics.c
-+++ b/clang/test/Sema/bittest-intrinsics.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -ffreestanding -fms-compatibility -fms-compatibility-version=19 -verify %s -triple i686-windows-msvc -fms-extensions -DTEST_X86
- // RUN: %clang_cc1 -ffreestanding -fms-compatibility -fms-compatibility-version=19 -verify %s -triple x86_64-windows-msvc -fms-extensions -DTEST_X64
- // RUN: %clang_cc1 -ffreestanding -fms-compatibility -fms-compatibility-version=19 -verify %s -triple arm-windows-msvc -fms-extensions -DTEST_ARM
 diff --git a/clang/test/Sema/builtin-setjmp.c b/clang/test/Sema/builtin-setjmp.c
-index 604d534eb504a..b8fd44910fc1e 100644
+index 604d534eb504..b8fd44910fc1 100644
 --- a/clang/test/Sema/builtin-setjmp.c
 +++ b/clang/test/Sema/builtin-setjmp.c
 @@ -1,3 +1,5 @@
@@ -878,7 +812,7 @@ index 604d534eb504a..b8fd44910fc1e 100644
  // RUN: %clang_cc1 -triple x86_64-unknown-unknown -fsyntax-only -verify=c,expected -DWRONG_JMP_BUF %s -ast-dump | FileCheck %s --check-prefixes=CHECK1,CHECK2
  // RUN: %clang_cc1 -triple x86_64-unknown-unknown -fsyntax-only -verify=c,expected -DRIGHT_JMP_BUF %s -ast-dump | FileCheck %s --check-prefixes=CHECK1,CHECK2
 diff --git a/clang/test/Sema/implicit-builtin-decl.c b/clang/test/Sema/implicit-builtin-decl.c
-index 9434b507a3af3..5ef13cf91df76 100644
+index 9434b507a3af..5ef13cf91df7 100644
 --- a/clang/test/Sema/implicit-builtin-decl.c
 +++ b/clang/test/Sema/implicit-builtin-decl.c
 @@ -1,4 +1,5 @@
@@ -898,7 +832,7 @@ index 9434b507a3af3..5ef13cf91df76 100644
  // PR40692
  void pthread_create(); // no warning expected
 diff --git a/clang/test/Sema/implicit-builtin-redecl.c b/clang/test/Sema/implicit-builtin-redecl.c
-index 9fb7e62454bdc..a30a3a3ed7e56 100644
+index 9fb7e62454bd..a30a3a3ed7e5 100644
 --- a/clang/test/Sema/implicit-builtin-redecl.c
 +++ b/clang/test/Sema/implicit-builtin-redecl.c
 @@ -1,3 +1,5 @@
@@ -908,7 +842,7 @@ index 9fb7e62454bdc..a30a3a3ed7e56 100644
  
  // PR3592
 diff --git a/clang/test/Sema/memset-invalid.c b/clang/test/Sema/memset-invalid.c
-index c763858e26ec6..f6105e7fd4119 100644
+index c763858e26ec..f6105e7fd411 100644
 --- a/clang/test/Sema/memset-invalid.c
 +++ b/clang/test/Sema/memset-invalid.c
 @@ -1,3 +1,5 @@
@@ -918,7 +852,7 @@ index c763858e26ec6..f6105e7fd4119 100644
  
  char memset(); // expected-warning {{incompatible redeclaration of library function 'memset'}} expected-note{{'memset' is a builtin with type}}
 diff --git a/clang/test/Sema/warn-fortify-source.c b/clang/test/Sema/warn-fortify-source.c
-index 6ec9c6e036ce8..41f5c5dbfb538 100644
+index 6ec9c6e036ce..41f5c5dbfb53 100644
 --- a/clang/test/Sema/warn-fortify-source.c
 +++ b/clang/test/Sema/warn-fortify-source.c
 @@ -1,6 +1,8 @@
@@ -962,7 +896,7 @@ index 6ec9c6e036ce8..41f5c5dbfb538 100644
  
  void call_strncat() {
 diff --git a/clang/test/SemaCXX/cxx11-compat.cpp b/clang/test/SemaCXX/cxx11-compat.cpp
-index f17c900201f76..07cd6b1fcf93b 100644
+index f17c900201f7..07cd6b1fcf93 100644
 --- a/clang/test/SemaCXX/cxx11-compat.cpp
 +++ b/clang/test/SemaCXX/cxx11-compat.cpp
 @@ -31,7 +31,7 @@ struct S {
@@ -975,7 +909,7 @@ index f17c900201f76..07cd6b1fcf93b 100644
  typedef __typeof(sizeof(int)) size_t;
  void h(size_t foo, size_t bar) {
 diff --git a/clang/test/SemaCXX/warn-unused-local-typedef.cpp b/clang/test/SemaCXX/warn-unused-local-typedef.cpp
-index 554ea37eeb282..7e893ba506a5f 100644
+index 554ea37eeb28..7e893ba506a5 100644
 --- a/clang/test/SemaCXX/warn-unused-local-typedef.cpp
 +++ b/clang/test/SemaCXX/warn-unused-local-typedef.cpp
 @@ -67,10 +67,10 @@ int printf(char const *, ...);
@@ -992,5 +926,5 @@ index 554ea37eeb282..7e893ba506a5f 100644
  #pragma clang diagnostic push
  #pragma clang diagnostic ignored "-Wunused-local-typedef"
 -- 
-2.33.0.882.g93a45727a2-goog
+2.34.1.173.g76aa8bc2d0-goog
 
