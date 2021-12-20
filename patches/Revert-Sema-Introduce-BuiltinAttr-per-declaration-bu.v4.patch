@@ -1,41 +1,37 @@
-From 7cf14318bc1cf8363724b4a156d47f3fdea748a8 Mon Sep 17 00:00:00 2001
+From f576073fb0c337fdaf843e3874383d5e3aeed1de Mon Sep 17 00:00:00 2001
 From: Chih-Hung Hsieh <chh@google.com>
-Date: Thu, 16 Dec 2021 15:33:52 -0800
+Date: Mon, 20 Dec 2021 12:54:39 -0800
 Subject: [PATCH] Revert "[Sema] Introduce BuiltinAttr, per-declaration
  builtin-ness"
 
-This reverts commit e09107ab80dced55414fa458cf78e6cdfe90da6e.
-Mark 14 tests as XFAIL due to this change.
+* This reverts commit e09107ab80dced55414fa458cf78e6cdfe90da6e,
+  to keep Android bionic FORTIFY working, see b/197147102.
+* Mark 3 tests as XFAIL due to this change.
 
-Change-Id: I3e2502d284a63558a891f2e49c73251ec1e244bf
+Change-Id: Ie361ebe275819c60d7ef9aebab2e42ed0a9c3ec9
 ---
  clang/include/clang/Basic/Attr.td             |   8 --
  clang/include/clang/Basic/Builtins.def        |   1 -
  clang/include/clang/Basic/IdentifierTable.h   |  12 ++
  clang/include/clang/Sema/Sema.h               |   2 -
  clang/lib/AST/Decl.cpp                        |  29 ++++-
- clang/lib/Headers/intrin.h                    |  93 ++++++++++----
- clang/lib/Sema/SemaDecl.cpp                   | 121 +++++++-----------
+ clang/lib/Headers/intrin.h                    |  93 +++++++++----
+ clang/lib/Sema/SemaDecl.cpp                   | 122 +++++++-----------
  clang/lib/Sema/SemaExpr.cpp                   |   1 -
  clang/lib/Sema/SemaLookup.cpp                 |   7 +-
  clang/lib/Serialization/ASTReader.cpp         |  12 +-
  clang/lib/Serialization/ASTWriter.cpp         |   6 +-
  clang/test/AST/ast-dump-attr.cpp              |   1 -
- clang/test/Analysis/kmalloc-linux.c           |   2 +
- clang/test/Analysis/malloc-custom.c           |   2 +
- clang/test/Analysis/string-with-signedness.c  |   2 +
  clang/test/CodeGen/builtin-redeclaration.c    |  16 ---
  clang/test/CodeGen/callback_pthread_create.c  |   4 -
  clang/test/CodeGenCXX/builtins.cpp            |  16 +--
  clang/test/CodeGenCXX/unknown-anytype.cpp     |   2 +
  clang/test/Sema/builtin-setjmp.c              |   2 +
  clang/test/Sema/implicit-builtin-decl.c       |   5 +
- clang/test/Sema/implicit-builtin-redecl.c     |   2 +
- clang/test/Sema/memset-invalid.c              |   2 +
  clang/test/Sema/warn-fortify-source.c         |  19 ++-
  clang/test/SemaCXX/cxx11-compat.cpp           |   2 +-
  .../SemaCXX/warn-unused-local-typedef.cpp     |   4 +-
- 32 files changed, 221 insertions(+), 164 deletions(-)
+ 21 files changed, 200 insertions(+), 164 deletions(-)
  delete mode 100644 clang/test/CodeGen/builtin-redeclaration.c
 
 diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.td
@@ -432,7 +428,7 @@ index 4803277472ee..b75ee3b22af0 100644
    __asm__ __volatile__ ("mov %%cr3, %0" : "=r"(__cr3_val) : : "memory");
    return __cr3_val;
 diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
-index f9738f0ddfca..6d33c583dca7 100644
+index f9738f0ddfca..47c808dccdf7 100644
 --- a/clang/lib/Sema/SemaDecl.cpp
 +++ b/clang/lib/Sema/SemaDecl.cpp
 @@ -2100,43 +2100,6 @@ static StringRef getHeaderName(Builtin::Context &BuiltinInfo, unsigned ID,
@@ -479,7 +475,7 @@ index f9738f0ddfca..6d33c583dca7 100644
  /// LazilyCreateBuiltin - The specified Builtin-ID was first used at
  /// file scope.  lazily create a decl for it. ForRedeclaration is true
  /// if we're creating this built-in in anticipation of redeclaring the
-@@ -2187,7 +2150,40 @@ NamedDecl *Sema::LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
+@@ -2187,7 +2150,41 @@ NamedDecl *Sema::LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
    if (R.isNull())
      return nullptr;
  
@@ -498,6 +494,7 @@ index f9738f0ddfca..6d33c583dca7 100644
 +                                           Parent,
 +                                           Loc, Loc, II, R, /*TInfo=*/nullptr,
 +                                           SC_Extern,
++                                           getCurFPFeatures().isFPConstrained(),
 +                                           false,
 +                                           R->isFunctionProtoType());
 +  New->setImplicit();
@@ -521,7 +518,7 @@ index f9738f0ddfca..6d33c583dca7 100644
    RegisterLocallyScopedExternCDecl(New, S);
  
    // TUScope is the translation-unit scope to insert this function into.
-@@ -2195,7 +2191,7 @@ NamedDecl *Sema::LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
+@@ -2195,7 +2192,7 @@ NamedDecl *Sema::LazilyCreateBuiltin(IdentifierInfo *II, unsigned ID,
    // relate Scopes to DeclContexts, and probably eliminate CurContext
    // entirely, but we're not there yet.
    DeclContext *SavedContext = CurContext;
@@ -530,7 +527,7 @@ index f9738f0ddfca..6d33c583dca7 100644
    PushOnScopeChains(New, TUScope);
    CurContext = SavedContext;
    return New;
-@@ -3443,10 +3439,7 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
+@@ -3443,10 +3440,7 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
        // there but not here.
        NewTypeInfo = NewTypeInfo.withCallingConv(OldTypeInfo.getCC());
        RequiresAdjustment = true;
@@ -542,7 +539,7 @@ index f9738f0ddfca..6d33c583dca7 100644
        // Calling Conventions on a Builtin aren't really useful and setting a
        // default calling convention and cdecl'ing some builtin redeclarations is
        // common, so warn and ignore the calling convention on the redeclaration.
-@@ -3879,6 +3872,18 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
+@@ -3879,6 +3873,18 @@ bool Sema::MergeFunctionDecl(FunctionDecl *New, NamedDecl *&OldD,
        Diag(New->getLocation(), diag::warn_redecl_library_builtin) << New;
        Diag(OldLocation, diag::note_previous_builtin_declaration)
          << Old << Old->getType();
@@ -561,7 +558,7 @@ index f9738f0ddfca..6d33c583dca7 100644
        return false;
      }
  
-@@ -9857,36 +9862,6 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
+@@ -9857,36 +9863,6 @@ Sema::ActOnFunctionDeclarator(Scope *S, Declarator &D, DeclContext *DC,
      }
    }
  
@@ -701,36 +698,6 @@ index c2bd768dc2ad..95491a02f8b2 100644
  // CHECK-NEXT: FormatAttr{{.*}}Implicit printf 1 2
  
  alignas(8) extern int x;
-diff --git a/clang/test/Analysis/kmalloc-linux.c b/clang/test/Analysis/kmalloc-linux.c
-index 4cca5712b096..29e6257ef8a6 100644
---- a/clang/test/Analysis/kmalloc-linux.c
-+++ b/clang/test/Analysis/kmalloc-linux.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_analyze_cc1 -triple x86_64-unknown-linux %s -verify \
- // RUN:   -Wno-incompatible-library-redeclaration \
- // RUN:   -analyzer-checker=core \
-diff --git a/clang/test/Analysis/malloc-custom.c b/clang/test/Analysis/malloc-custom.c
-index 053d0ee31ca8..4fee25ebfe99 100644
---- a/clang/test/Analysis/malloc-custom.c
-+++ b/clang/test/Analysis/malloc-custom.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_analyze_cc1 -analyzer-checker=core,unix.Malloc -Wno-incompatible-library-redeclaration -verify %s
- 
- // Various tests to make the analyzer is robust against custom
-diff --git a/clang/test/Analysis/string-with-signedness.c b/clang/test/Analysis/string-with-signedness.c
-index 1b00971a834c..135fdd7a311e 100644
---- a/clang/test/Analysis/string-with-signedness.c
-+++ b/clang/test/Analysis/string-with-signedness.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_analyze_cc1 -Wno-incompatible-library-redeclaration -analyzer-checker=core,unix.cstring,alpha.unix.cstring -verify %s
- 
- // expected-no-diagnostics
 diff --git a/clang/test/CodeGen/builtin-redeclaration.c b/clang/test/CodeGen/builtin-redeclaration.c
 deleted file mode 100644
 index 582907184ea5..000000000000
@@ -831,26 +798,6 @@ index 9434b507a3af..5ef13cf91df7 100644
 +
  // PR40692
  void pthread_create(); // no warning expected
-diff --git a/clang/test/Sema/implicit-builtin-redecl.c b/clang/test/Sema/implicit-builtin-redecl.c
-index 9fb7e62454bd..a30a3a3ed7e5 100644
---- a/clang/test/Sema/implicit-builtin-redecl.c
-+++ b/clang/test/Sema/implicit-builtin-redecl.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -fsyntax-only -verify %s
- 
- // PR3592
-diff --git a/clang/test/Sema/memset-invalid.c b/clang/test/Sema/memset-invalid.c
-index c763858e26ec..f6105e7fd411 100644
---- a/clang/test/Sema/memset-invalid.c
-+++ b/clang/test/Sema/memset-invalid.c
-@@ -1,3 +1,5 @@
-+// Revert-Sema-Introduce-BuiltinAttr-per-declaration... fails this test.
-+// XFAIL: *
- // RUN: %clang_cc1 -fsyntax-only %s -verify
- 
- char memset(); // expected-warning {{incompatible redeclaration of library function 'memset'}} expected-note{{'memset' is a builtin with type}}
 diff --git a/clang/test/Sema/warn-fortify-source.c b/clang/test/Sema/warn-fortify-source.c
 index 6ec9c6e036ce..41f5c5dbfb53 100644
 --- a/clang/test/Sema/warn-fortify-source.c
@@ -926,5 +873,5 @@ index 554ea37eeb28..7e893ba506a5 100644
  #pragma clang diagnostic push
  #pragma clang diagnostic ignored "-Wunused-local-typedef"
 -- 
-2.34.1.173.g76aa8bc2d0-goog
+2.34.1.307.g9b7440fafd-goog
 
