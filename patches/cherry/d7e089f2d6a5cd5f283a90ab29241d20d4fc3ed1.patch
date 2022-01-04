@@ -1,0 +1,84 @@
+From d7e089f2d6a5cd5f283a90ab29241d20d4fc3ed1 Mon Sep 17 00:00:00 2001
+From: Ard Biesheuvel <ardb@google.com>
+Date: Wed, 27 Oct 2021 16:27:00 -0700
+Subject: [PATCH] [ARM] Use hardware TLS register in Thumb2 mode when -mtp=cp15
+ is passed
+
+In ARM mode, passing -mtp=cp15 forces the use of an inline MRC system register read to move the thread pointer value into a register.
+
+Currently, in Thumb2 mode, -mtp=cp15 is ignored, and a call to the __aeabi_read_tp helper is emitted instead.
+
+This is inconsistent, and breaks the Linux/ARM build for Thumb2 targets, as the Linux kernel does not provide an implementation of __aeabi_read_tp,.
+
+Reviewed By: nickdesaulniers, peter.smith
+
+Differential Revision: https://reviews.llvm.org/D112600
+---
+ llvm/lib/Target/ARM/ARMInstrThumb.td    | 1 +
+ llvm/lib/Target/ARM/ARMInstrThumb2.td   | 3 +++
+ llvm/test/CodeGen/ARM/readtp.ll         | 2 ++
+ llvm/test/CodeGen/ARM/thread_pointer.ll | 8 ++++++--
+ 4 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/llvm/lib/Target/ARM/ARMInstrThumb.td b/llvm/lib/Target/ARM/ARMInstrThumb.td
+index 0305d13c61c5..bf717a4056e9 100644
+--- a/llvm/lib/Target/ARM/ARMInstrThumb.td
++++ b/llvm/lib/Target/ARM/ARMInstrThumb.td
+@@ -1520,6 +1520,7 @@ def tTBH_JT : tPseudoInst<(outs),
+ let isCall = 1, Defs = [R0, R12, LR, CPSR], Uses = [SP] in
+ def tTPsoft : tPseudoInst<(outs), (ins), 4, IIC_Br,
+                           [(set R0, ARMthread_pointer)]>,
++                          Requires<[IsThumb, IsReadTPSoft]>,
+                           Sched<[WriteBr]>;
+ 
+ //===----------------------------------------------------------------------===//
+diff --git a/llvm/lib/Target/ARM/ARMInstrThumb2.td b/llvm/lib/Target/ARM/ARMInstrThumb2.td
+index 0cb58b8318bd..783db9dde17f 100644
+--- a/llvm/lib/Target/ARM/ARMInstrThumb2.td
++++ b/llvm/lib/Target/ARM/ARMInstrThumb2.td
+@@ -4671,6 +4671,9 @@ def t2CDP2 : T2Cop<0b1111, (outs), (ins p_imm:$cop, imm0_15:$opc1,
+ }
+ 
+ 
++// Reading thread pointer from coprocessor register
++def : T2Pat<(ARMthread_pointer), (t2MRC 15, 0, 13, 0, 3)>,
++      Requires<[IsThumb2, IsReadTPHard]>;
+ 
+ //===----------------------------------------------------------------------===//
+ // ARMv8.1 Privilege Access Never extension
+diff --git a/llvm/test/CodeGen/ARM/readtp.ll b/llvm/test/CodeGen/ARM/readtp.ll
+index 190768076351..0a97bfcd3b4b 100644
+--- a/llvm/test/CodeGen/ARM/readtp.ll
++++ b/llvm/test/CodeGen/ARM/readtp.ll
+@@ -1,5 +1,7 @@
+ ; RUN: llc -mtriple=armeb-linux-gnueabihf -O2 -mattr=+read-tp-hard %s -o - | FileCheck %s -check-prefix=CHECK-HARD
+ ; RUN: llc -mtriple=armeb-linux-gnueabihf -O2 %s -o - | FileCheck %s -check-prefix=CHECK-SOFT
++; RUN: llc -mtriple=thumbv7-linux-gnueabihf -O2 -mattr=+read-tp-hard %s -o - | FileCheck %s -check-prefix=CHECK-HARD
++; RUN: llc -mtriple=thumbv7-linux-gnueabihf -O2 %s -o - | FileCheck %s -check-prefix=CHECK-SOFT
+ 
+ 
+ ; __thread int counter;
+diff --git a/llvm/test/CodeGen/ARM/thread_pointer.ll b/llvm/test/CodeGen/ARM/thread_pointer.ll
+index c6318a58277c..f1ef2ddac2d0 100644
+--- a/llvm/test/CodeGen/ARM/thread_pointer.ll
++++ b/llvm/test/CodeGen/ARM/thread_pointer.ll
+@@ -1,4 +1,7 @@
+-; RUN: llc -mtriple arm-linux-gnueabi -filetype asm -o - %s | FileCheck %s
++; RUN: llc -mtriple arm-linux-gnueabi -o - %s | FileCheck %s -check-prefix=CHECK-SOFT
++; RUN: llc -mtriple arm-linux-gnueabi -mattr=+read-tp-hard -o - %s | FileCheck %s -check-prefix=CHECK-HARD
++; RUN: llc -mtriple thumbv7-linux-gnueabi -o - %s | FileCheck %s -check-prefix=CHECK-SOFT
++; RUN: llc -mtriple thumbv7-linux-gnueabi -mattr=+read-tp-hard -o - %s | FileCheck %s -check-prefix=CHECK-HARD
+ 
+ declare i8* @llvm.thread.pointer()
+ 
+@@ -8,5 +11,6 @@ entry:
+   ret i8* %tmp1
+ }
+ 
+-; CHECK: bl __aeabi_read_tp
++; CHECK-SOFT: bl __aeabi_read_tp
++; CHECK-HARD: mrc p15, #0, {{r[0-9]+}}, c13, c0, #3
+ 
+-- 
+2.34.1.448.ga2b2bfdf31-goog
+
