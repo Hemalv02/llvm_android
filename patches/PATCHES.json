@@ -112,6 +112,18 @@
         "start_version": 437112
     },
     {
+        "end_version": 442024,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ARM] Use hardware TLS register in Thumb2 mode when -mtp=cp15 is passed"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d7e089f2d6a5cd5f283a90ab29241d20d4fc3ed1.patch",
+        "start_version": 437112
+    },
+    {
         "end_version": 442582,
         "metadata": {
             "info": [],
@@ -148,15 +160,15 @@
         "start_version": 437112
     },
     {
-        "end_version": 442024,
+        "end_version": 444762,
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] [ARM] Use hardware TLS register in Thumb2 mode when -mtp=cp15 is passed"
+            "title": "[UPSTREAM] [ARM] implement support for ALU/LDR PC-relative group relocations"
         },
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/d7e089f2d6a5cd5f283a90ab29241d20d4fc3ed1.patch",
+        "rel_patch_path": "cherry/da66263b6e505a4c605efbe8d68c3b09ad3606a4.patch",
         "start_version": 437112
     },
     {
