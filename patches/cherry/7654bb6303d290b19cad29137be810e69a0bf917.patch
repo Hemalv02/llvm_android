@@ -1,0 +1,176 @@
+From 7654bb6303d290b19cad29137be810e69a0bf917 Mon Sep 17 00:00:00 2001
+From: Alexey Bataev <a.bataev@outlook.com>
+Date: Wed, 24 Mar 2021 09:24:24 -0700
+Subject: [PATCH] [OPENMP]Fix PR48571: critical/master in outlined contexts
+ cause crash.
+
+If emit inlined region for master/critical directives, no need to clear
+lambda/block context data, otherwise the variables cannot be found and
+it causes a crash at compile time.
+
+Differential Revision: https://reviews.llvm.org/D99280
+---
+ clang/lib/CodeGen/CGOpenMPRuntime.cpp  | 32 ++++++++++++++---------
+ clang/test/OpenMP/critical_codegen.cpp | 25 ++++++++++++++++++
+ clang/test/OpenMP/master_codegen.cpp   | 35 ++++++++++++++++++++++++++
+ 3 files changed, 80 insertions(+), 12 deletions(-)
+
+diff --git a/clang/lib/CodeGen/CGOpenMPRuntime.cpp b/clang/lib/CodeGen/CGOpenMPRuntime.cpp
+index e41eeef04331..a8f21548d3e0 100644
+--- a/clang/lib/CodeGen/CGOpenMPRuntime.cpp
++++ b/clang/lib/CodeGen/CGOpenMPRuntime.cpp
+@@ -409,6 +409,7 @@ class InlinedOpenMPRegionRAII {
+   llvm::DenseMap<const VarDecl *, FieldDecl *> LambdaCaptureFields;
+   FieldDecl *LambdaThisCaptureField = nullptr;
+   const CodeGen::CGBlockInfo *BlockInfo = nullptr;
++  bool NoInheritance = false;
+ 
+ public:
+   /// Constructs region for combined constructs.
+@@ -416,16 +417,19 @@ public:
+   /// a list of functions used for code generation of implicitly inlined
+   /// regions.
+   InlinedOpenMPRegionRAII(CodeGenFunction &CGF, const RegionCodeGenTy &CodeGen,
+-                          OpenMPDirectiveKind Kind, bool HasCancel)
+-      : CGF(CGF) {
++                          OpenMPDirectiveKind Kind, bool HasCancel,
++                          bool NoInheritance = true)
++      : CGF(CGF), NoInheritance(NoInheritance) {
+     // Start emission for the construct.
+     CGF.CapturedStmtInfo = new CGOpenMPInlinedRegionInfo(
+         CGF.CapturedStmtInfo, CodeGen, Kind, HasCancel);
+-    std::swap(CGF.LambdaCaptureFields, LambdaCaptureFields);
+-    LambdaThisCaptureField = CGF.LambdaThisCaptureField;
+-    CGF.LambdaThisCaptureField = nullptr;
+-    BlockInfo = CGF.BlockInfo;
+-    CGF.BlockInfo = nullptr;
++    if (NoInheritance) {
++      std::swap(CGF.LambdaCaptureFields, LambdaCaptureFields);
++      LambdaThisCaptureField = CGF.LambdaThisCaptureField;
++      CGF.LambdaThisCaptureField = nullptr;
++      BlockInfo = CGF.BlockInfo;
++      CGF.BlockInfo = nullptr;
++    }
+   }
+ 
+   ~InlinedOpenMPRegionRAII() {
+@@ -434,9 +438,11 @@ public:
+         cast<CGOpenMPInlinedRegionInfo>(CGF.CapturedStmtInfo)->getOldCSI();
+     delete CGF.CapturedStmtInfo;
+     CGF.CapturedStmtInfo = OldCSI;
+-    std::swap(CGF.LambdaCaptureFields, LambdaCaptureFields);
+-    CGF.LambdaThisCaptureField = LambdaThisCaptureField;
+-    CGF.BlockInfo = BlockInfo;
++    if (NoInheritance) {
++      std::swap(CGF.LambdaCaptureFields, LambdaCaptureFields);
++      CGF.LambdaThisCaptureField = LambdaThisCaptureField;
++      CGF.BlockInfo = BlockInfo;
++    }
+   }
+ };
+ 
+@@ -3857,7 +3863,7 @@ static void emitPrivatesInit(CodeGenFunction &CGF,
+           // Processing for implicitly captured variables.
+           InlinedOpenMPRegionRAII Region(
+               CGF, [](CodeGenFunction &, PrePostActionTy &) {}, OMPD_unknown,
+-              /*HasCancel=*/false);
++              /*HasCancel=*/false, /*NoInheritance=*/true);
+           SharedRefLValue = CGF.EmitLValue(Pair.second.OriginalRef);
+         }
+         if (Type->isArrayType()) {
+@@ -6218,7 +6224,9 @@ void CGOpenMPRuntime::emitInlinedDirective(CodeGenFunction &CGF,
+                                            bool HasCancel) {
+   if (!CGF.HaveInsertPoint())
+     return;
+-  InlinedOpenMPRegionRAII Region(CGF, CodeGen, InnerKind, HasCancel);
++  InlinedOpenMPRegionRAII Region(CGF, CodeGen, InnerKind, HasCancel,
++                                 InnerKind != OMPD_critical &&
++                                     InnerKind != OMPD_master);
+   CGF.CapturedStmtInfo->EmitBody(CGF, /*S=*/nullptr);
+ }
+ 
+diff --git a/clang/test/OpenMP/critical_codegen.cpp b/clang/test/OpenMP/critical_codegen.cpp
+index 46fad63b3bd8..d84f2b2af22b 100644
+--- a/clang/test/OpenMP/critical_codegen.cpp
++++ b/clang/test/OpenMP/critical_codegen.cpp
+@@ -68,6 +68,31 @@ int main() {
+   return a;
+ }
+ 
++// ALL-LABEL:        lambda_critical
++// TERM_DEBUG-LABEL: lambda_critical
++void lambda_critical(int a, int b) {
++  auto l = [=]() {
++#pragma omp critical
++    {
++      // ALL: call void @__kmpc_critical(
++      int c = a + b;
++    }
++  };
++
++  l();
++
++  auto l1 = [=]() {
++#pragma omp parallel
++#pragma omp critical
++    {
++      // ALL: call void @__kmpc_critical(
++      int c = a + b;
++    }
++  };
++
++  l1();
++}
++
+ struct S {
+   int a;
+ };
+diff --git a/clang/test/OpenMP/master_codegen.cpp b/clang/test/OpenMP/master_codegen.cpp
+index 8554ad8e7dec..353284ea8541 100644
+--- a/clang/test/OpenMP/master_codegen.cpp
++++ b/clang/test/OpenMP/master_codegen.cpp
+@@ -55,6 +55,41 @@ int main() {
+   return a;
+ }
+ 
++// ALL-LABEL:        lambda_master
++// TERM_DEBUG-LABEL: lambda_master
++void lambda_master(int a, int b) {
++  auto l = [=]() {
++#pragma omp master
++    {
++      // ALL: call i32 @__kmpc_master(
++      int c = a + b;
++    }
++  };
++
++  l();
++
++  auto l1 = [=]() {
++#pragma omp parallel
++#pragma omp master
++    {
++      // ALL: call i32 @__kmpc_master(
++      int c = a + b;
++    }
++  };
++
++  l1();
++
++  auto l2 = [=]() {
++#pragma omp parallel master
++    {
++      // ALL: call i32 @__kmpc_master(
++      int c = a + b;
++    }
++  };
++
++  l2();
++}
++
+ // ALL-LABEL:      parallel_master
+ // TERM_DEBUG-LABEL: parallel_master
+ void parallel_master() {
+-- 
+2.34.1.448.ga2b2bfdf31-goog
+

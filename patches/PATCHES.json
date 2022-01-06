@@ -186,6 +186,12 @@
         "end_version": 421672
     },
     {
+        "comment": "[UPSTREAM] [OPENMP]Fix PR48571: critical/master in outlined contexts cause crash.",
+        "rel_patch_path": "cherry/7654bb6303d290b19cad29137be810e69a0bf917.patch",
+        "start_version": 416183,
+        "end_version": 422678
+    },
+    {
         "comment": "[UPSTREAM] [compiler-rt][aarch64] Add PAC-RET/BTI support to HWASAN.",
         "rel_patch_path": "cherry/a46effbd2aec88012c8f94b81da51dfd5b9e141b.patch",
         "start_version": 416183,
