@@ -59,20 +59,22 @@ def parse_start_version(start_version: str) -> int:
 
 @dataclass
 class PatchItem:
-    comment: str
-    rel_patch_path: str
-    bugs_tests: Optional[List(str)]
-    start_version: int
     end_version: Optional[int]
+    metadata: Dict[str, Any]
+        # info: Optional[List[str]]
+        # title: str
+    platforms: List[str]
+    rel_patch_path: str
+    start_version: int
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> PatchItem:
         return PatchItem(
-            comment=d['comment'],
+            end_version=d['end_version'],
+            metadata=d['metadata'],
+            platforms=d['platforms'],
             rel_patch_path=d['rel_patch_path'],
-            bugs_tests=d['bugs_tests'],
-            start_version=d['start_version'],
-            end_version=d['end_version'])
+            start_version=d['start_version'])
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self, dict_factory=collections.OrderedDict)
@@ -114,7 +116,8 @@ class PatchList(list):
     def save_to_file(self):
         array = [patch.to_dict() for patch in self]
         with open(self.JSON_FILE_PATH, 'w') as fh:
-            json.dump(array, fh, indent=4)
+            json.dump(array, fh, indent=4, separators=(',', ': '), sort_keys=True)
+            fh.write('\n')
 
 
 def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
@@ -133,11 +136,13 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
 
         commit_subject = check_output(
             f'git log -n1 --format=%s {sha}', shell=True, cwd=upstream_dir)
-        comment = '[UPSTREAM] ' + commit_subject.strip()
+        info: Optional[List[str]] = []
+        title = '[UPSTREAM] ' + commit_subject.strip()
         rel_patch_path = f'cherry/{sha}.patch'
         end_version = sha_to_revision(sha)
-        bugs_tests = None
-        result.append(PatchItem(comment, rel_patch_path, bugs_tests, start_version, end_version))
+        metadata = { 'info': info, 'title': title }
+        platforms = ['android']
+        result.append(PatchItem(end_version, metadata, platforms, rel_patch_path, start_version))
     return result
 
 
@@ -162,7 +167,7 @@ def create_cl(new_patches: PatchList, bug: Optional[str], reason: Optional[str])
             commit_lines += [f'Bug: {bug}', '']
     for patch in new_patches:
         sha = patch.sha[:11]
-        subject = patch.comment
+        subject = patch.metadata['title']
         if subject.startswith('[UPSTREAM] '):
             subject = subject[len('[UPSTREAM] '):]
         commit_lines.append(sha + ' ' + subject)
