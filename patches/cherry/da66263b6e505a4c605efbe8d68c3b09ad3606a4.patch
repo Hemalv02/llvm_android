@@ -1,0 +1,522 @@
+From da66263b6e505a4c605efbe8d68c3b09ad3606a4 Mon Sep 17 00:00:00 2001
+From: Ard Biesheuvel <ardb@kernel.org>
+Date: Sat, 27 Nov 2021 10:26:37 +0100
+Subject: [PATCH] [ARM] implement support for ALU/LDR PC-relative group
+ relocations
+
+Currently, LLD does not support the complete set of ARM group relocations.
+Given that I intend to start using these in the Linux kernel [0], let's add
+support for these.
+
+This implements the group processing as documented in the ELF psABI. Notably,
+this means support is dropped for very far symbol references that also carry a
+small component, where the immediate is rotated in such a way that only part of
+it wraps to the other end of the 32-bit word. To me, it seems unlikely that
+this is something anyone could be relying on, but of course I could be wrong.
+
+[0] https://lore.kernel.org/r/20211122092816.2865873-8-ardb@kernel.org/
+
+Reviewed By: peter.smith, MaskRay
+
+Differential Revision: https://reviews.llvm.org/D114172
+---
+ lld/ELF/Arch/ARM.cpp            | 202 ++++++++++++++++++++------------
+ lld/test/ELF/arm-adr-err-long.s |  57 +++++++++
+ lld/test/ELF/arm-adr-err.s      |   6 +
+ lld/test/ELF/arm-adr-long.s     | 111 ++++++++++++++----
+ lld/test/ELF/arm-adr.s          |   4 +-
+ 5 files changed, 275 insertions(+), 105 deletions(-)
+ create mode 100644 lld/test/ELF/arm-adr-err-long.s
+
+diff --git a/lld/ELF/Arch/ARM.cpp b/lld/ELF/Arch/ARM.cpp
+index f2e4a2a14ad6..b7c2eb74757c 100644
+--- a/lld/ELF/Arch/ARM.cpp
++++ b/lld/ELF/Arch/ARM.cpp
+@@ -140,7 +140,16 @@ RelExpr ARM::getRelExpr(RelType type, const Symbol &s,
+   case R_ARM_THM_MOVT_PREL:
+     return R_PC;
+   case R_ARM_ALU_PC_G0:
++  case R_ARM_ALU_PC_G0_NC:
++  case R_ARM_ALU_PC_G1:
++  case R_ARM_ALU_PC_G1_NC:
++  case R_ARM_ALU_PC_G2:
+   case R_ARM_LDR_PC_G0:
++  case R_ARM_LDR_PC_G1:
++  case R_ARM_LDR_PC_G2:
++  case R_ARM_LDRS_PC_G0:
++  case R_ARM_LDRS_PC_G1:
++  case R_ARM_LDRS_PC_G2:
+   case R_ARM_THM_ALU_PREL_11_0:
+   case R_ARM_THM_PC8:
+   case R_ARM_THM_PC12:
+@@ -411,56 +420,83 @@ static void stateChangeWarning(uint8_t *loc, RelType relt, const Symbol &s) {
+   }
+ }
+ 
+-// Utility functions taken from ARMAddressingModes.h, only changes are LLD
+-// coding style.
+-
+ // Rotate a 32-bit unsigned value right by a specified amt of bits.
+ static uint32_t rotr32(uint32_t val, uint32_t amt) {
+   assert(amt < 32 && "Invalid rotate amount");
+   return (val >> amt) | (val << ((32 - amt) & 31));
+ }
+ 
+-// Rotate a 32-bit unsigned value left by a specified amt of bits.
+-static uint32_t rotl32(uint32_t val, uint32_t amt) {
+-  assert(amt < 32 && "Invalid rotate amount");
+-  return (val << amt) | (val >> ((32 - amt) & 31));
++static std::pair<uint32_t, uint32_t> getRemAndLZForGroup(unsigned group,
++                                                         uint32_t val) {
++  uint32_t rem, lz;
++  do {
++    lz = llvm::countLeadingZeros(val) & ~1;
++    rem = val;
++    if (lz == 32) // implies rem == 0
++      break;
++    val &= 0xffffff >> lz;
++  } while (group--);
++  return {rem, lz};
+ }
+ 
+-// Try to encode a 32-bit unsigned immediate imm with an immediate shifter
+-// operand, this form is an 8-bit immediate rotated right by an even number of
+-// bits. We compute the rotate amount to use.  If this immediate value cannot be
+-// handled with a single shifter-op, determine a good rotate amount that will
+-// take a maximal chunk of bits out of the immediate.
+-static uint32_t getSOImmValRotate(uint32_t imm) {
+-  // 8-bit (or less) immediates are trivially shifter_operands with a rotate
+-  // of zero.
+-  if ((imm & ~255U) == 0)
+-    return 0;
+-
+-  // Use CTZ to compute the rotate amount.
+-  unsigned tz = llvm::countTrailingZeros(imm);
+-
+-  // Rotate amount must be even.  Something like 0x200 must be rotated 8 bits,
+-  // not 9.
+-  unsigned rotAmt = tz & ~1;
+-
+-  // If we can handle this spread, return it.
+-  if ((rotr32(imm, rotAmt) & ~255U) == 0)
+-    return (32 - rotAmt) & 31; // HW rotates right, not left.
++static void encodeAluGroup(uint8_t *loc, const Relocation &rel, uint64_t val,
++                           int group, bool check) {
++  // ADD/SUB (immediate) add = bit23, sub = bit22
++  // immediate field carries is a 12-bit modified immediate, made up of a 4-bit
++  // even rotate right and an 8-bit immediate.
++  uint32_t opcode = 0x00800000;
++  if (val >> 63) {
++    opcode = 0x00400000;
++    val = -val;
++  }
++  uint32_t imm, lz;
++  std::tie(imm, lz) = getRemAndLZForGroup(group, val);
++  uint32_t rot = 0;
++  if (lz < 24) {
++    imm = rotr32(imm, 24 - lz);
++    rot = (lz + 8) << 7;
++  }
++  if (check && imm > 0xff)
++    error(getErrorLocation(loc) + "unencodeable immediate " + Twine(val).str() +
++          " for relocation " + toString(rel.type));
++  write32le(loc, (read32le(loc) & 0xff3ff000) | opcode | rot | (imm & 0xff));
++}
+ 
+-  // For values like 0xF000000F, we should ignore the low 6 bits, then
+-  // retry the hunt.
+-  if (imm & 63U) {
+-    unsigned tz2 = countTrailingZeros(imm & ~63U);
+-    unsigned rotAmt2 = tz2 & ~1;
+-    if ((rotr32(imm, rotAmt2) & ~255U) == 0)
+-      return (32 - rotAmt2) & 31; // HW rotates right, not left.
++static void encodeLdrGroup(uint8_t *loc, const Relocation &rel, uint64_t val,
++                           int group) {
++  // R_ARM_LDR_PC_Gn is S + A - P, we have ((S + A) | T) - P, if S is a
++  // function then addr is 0 (modulo 2) and Pa is 0 (modulo 4) so we can clear
++  // bottom bit to recover S + A - P.
++  if (rel.sym->isFunc())
++    val &= ~0x1;
++  // LDR (literal) u = bit23
++  uint32_t opcode = 0x00800000;
++  if (val >> 63) {
++    opcode = 0x0;
++    val = -val;
+   }
++  uint32_t imm = getRemAndLZForGroup(group, val).first;
++  checkUInt(loc, imm, 12, rel);
++  write32le(loc, (read32le(loc) & 0xff7ff000) | opcode | imm);
++}
+ 
+-  // Otherwise, we have no way to cover this span of bits with a single
+-  // shifter_op immediate.  Return a chunk of bits that will be useful to
+-  // handle.
+-  return (32 - rotAmt) & 31; // HW rotates right, not left.
++static void encodeLdrsGroup(uint8_t *loc, const Relocation &rel, uint64_t val,
++                            int group) {
++  // R_ARM_LDRS_PC_Gn is S + A - P, we have ((S + A) | T) - P, if S is a
++  // function then addr is 0 (modulo 2) and Pa is 0 (modulo 4) so we can clear
++  // bottom bit to recover S + A - P.
++  if (rel.sym->isFunc())
++    val &= ~0x1;
++  // LDRD/LDRH/LDRSB/LDRSH (literal) u = bit23
++  uint32_t opcode = 0x00800000;
++  if (val >> 63) {
++    opcode = 0x0;
++    val = -val;
++  }
++  uint32_t imm = getRemAndLZForGroup(group, val).first;
++  checkUInt(loc, imm, 8, rel);
++  write32le(loc, (read32le(loc) & 0xff7ff0f0) | opcode | ((imm & 0xf0) << 4) |
++                     (imm & 0xf));
+ }
+ 
+ void ARM::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
+@@ -633,45 +669,39 @@ void ARM::relocate(uint8_t *loc, const Relocation &rel, uint64_t val) const {
+                   ((val << 4) & 0x7000) |    // imm3
+                   (val & 0x00ff));           // imm8
+     break;
+-  case R_ARM_ALU_PC_G0: {
+-    // ADR (literal) add = bit23, sub = bit22
+-    // literal is a 12-bit modified immediate, made up of a 4-bit even rotate
+-    // right and an 8-bit immediate. The code-sequence here is derived from
+-    // ARMAddressingModes.h in llvm/Target/ARM/MCTargetDesc. In our case we
+-    // want to give an error if we cannot encode the constant.
+-    uint32_t opcode = 0x00800000;
+-    if (val >> 63) {
+-      opcode = 0x00400000;
+-      val = ~val + 1;
+-    }
+-    if ((val & ~255U) != 0) {
+-      uint32_t rotAmt = getSOImmValRotate(val);
+-      // Error if we cannot encode this with a single shift
+-      if (rotr32(~255U, rotAmt) & val)
+-        error(getErrorLocation(loc) + "unencodeable immediate " +
+-              Twine(val).str() + " for relocation " + toString(rel.type));
+-      val = rotl32(val, rotAmt) | ((rotAmt >> 1) << 8);
+-    }
+-    write32le(loc, (read32le(loc) & 0xff0ff000) | opcode | val);
++  case R_ARM_ALU_PC_G0:
++    encodeAluGroup(loc, rel, val, 0, true);
+     break;
+-  }
+-  case R_ARM_LDR_PC_G0: {
+-    // R_ARM_LDR_PC_G0 is S + A - P, we have ((S + A) | T) - P, if S is a
+-    // function then addr is 0 (modulo 2) and Pa is 0 (modulo 4) so we can clear
+-    // bottom bit to recover S + A - P.
+-    if (rel.sym->isFunc())
+-      val &= ~0x1;
+-    // LDR (literal) u = bit23
+-    int64_t imm = val;
+-    uint32_t u = 0x00800000;
+-    if (imm < 0) {
+-      imm = -imm;
+-      u = 0;
+-    }
+-    checkUInt(loc, imm, 12, rel);
+-    write32le(loc, (read32le(loc) & 0xff7ff000) | u | imm);
++  case R_ARM_ALU_PC_G0_NC:
++    encodeAluGroup(loc, rel, val, 0, false);
++    break;
++  case R_ARM_ALU_PC_G1:
++    encodeAluGroup(loc, rel, val, 1, true);
++    break;
++  case R_ARM_ALU_PC_G1_NC:
++    encodeAluGroup(loc, rel, val, 1, false);
++    break;
++  case R_ARM_ALU_PC_G2:
++    encodeAluGroup(loc, rel, val, 2, true);
++    break;
++  case R_ARM_LDR_PC_G0:
++    encodeLdrGroup(loc, rel, val, 0);
++    break;
++  case R_ARM_LDR_PC_G1:
++    encodeLdrGroup(loc, rel, val, 1);
++    break;
++  case R_ARM_LDR_PC_G2:
++    encodeLdrGroup(loc, rel, val, 2);
++    break;
++  case R_ARM_LDRS_PC_G0:
++    encodeLdrsGroup(loc, rel, val, 0);
++    break;
++  case R_ARM_LDRS_PC_G1:
++    encodeLdrsGroup(loc, rel, val, 1);
++    break;
++  case R_ARM_LDRS_PC_G2:
++    encodeLdrsGroup(loc, rel, val, 2);
+     break;
+-  }
+   case R_ARM_THM_ALU_PREL_11_0: {
+     // ADR encoding T2 (sub), T3 (add) i:imm3:imm8
+     int64_t imm = val;
+@@ -816,7 +846,11 @@ int64_t ARM::getImplicitAddend(const uint8_t *buf, RelType type) const {
+                             ((lo & 0x7000) >> 4) |  // imm3
+                             (lo & 0x00ff));         // imm8
+   }
+-  case R_ARM_ALU_PC_G0: {
++  case R_ARM_ALU_PC_G0:
++  case R_ARM_ALU_PC_G0_NC:
++  case R_ARM_ALU_PC_G1:
++  case R_ARM_ALU_PC_G1_NC:
++  case R_ARM_ALU_PC_G2: {
+     // 12-bit immediate is a modified immediate made up of a 4-bit even
+     // right rotation and 8-bit constant. After the rotation the value
+     // is zero-extended. When bit 23 is set the instruction is an add, when
+@@ -825,13 +859,25 @@ int64_t ARM::getImplicitAddend(const uint8_t *buf, RelType type) const {
+     uint32_t val = rotr32(instr & 0xff, ((instr & 0xf00) >> 8) * 2);
+     return (instr & 0x00400000) ? -val : val;
+   }
+-  case R_ARM_LDR_PC_G0: {
++  case R_ARM_LDR_PC_G0:
++  case R_ARM_LDR_PC_G1:
++  case R_ARM_LDR_PC_G2: {
+     // ADR (literal) add = bit23, sub = bit22
+     // LDR (literal) u = bit23 unsigned imm12
+     bool u = read32le(buf) & 0x00800000;
+     uint32_t imm12 = read32le(buf) & 0xfff;
+     return u ? imm12 : -imm12;
+   }
++  case R_ARM_LDRS_PC_G0:
++  case R_ARM_LDRS_PC_G1:
++  case R_ARM_LDRS_PC_G2: {
++    // LDRD/LDRH/LDRSB/LDRSH (literal) u = bit23 unsigned imm8
++    uint32_t opcode = read32le(buf);
++    bool u = opcode & 0x00800000;
++    uint32_t imm4l = opcode & 0xf;
++    uint32_t imm4h = (opcode & 0xf00) >> 4;
++    return u ? (imm4h | imm4l) : -(imm4h | imm4l);
++  }
+   case R_ARM_THM_ALU_PREL_11_0: {
+     // Thumb2 ADR, which is an alias for a sub or add instruction with an
+     // unsigned immediate.
+diff --git a/lld/test/ELF/arm-adr-err-long.s b/lld/test/ELF/arm-adr-err-long.s
+new file mode 100644
+index 000000000000..a4aa86b6eb96
+--- /dev/null
++++ b/lld/test/ELF/arm-adr-err-long.s
+@@ -0,0 +1,57 @@
++// REQUIRES: arm
++// RUN: split-file %s %t
++// RUN: llvm-mc --triple=armv7a-none-eabi --arm-add-build-attributes -filetype=obj -o %t.o %t/asm
++// RUN: not ld.lld --script %t/lds %t.o -o /dev/null 2>&1 | FileCheck %s
++
++//--- lds
++SECTIONS {
++    .text.0 0x0100000 : AT(0x0100000) { *(.text.0) }
++    .text.1 0x0800000 : AT(0x0800000) { *(.text.1) }
++    .text.2 0xf0f0000 : AT(0xf0f0000) { *(.text.2) }
++}
++
++//--- asm
++/// This is a variant of arm-adr-long.s with some _NC relocs changed into their
++/// checking counterparts, to verify that out-of-range references are caught.
++
++ .section .text.0, "ax", %progbits
++dat1:
++ .word 0
++
++ .section .text.1, "ax", %progbits
++ .global _start
++ .type _start, %function
++_start:
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .reloc 0, R_ARM_ALU_PC_G0, dat1
++// CHECK: {{.*}}.s.tmp.o:(.text.1+0x0): unencodeable immediate 7340040 for relocation R_ARM_ALU_PC_G0
++ .reloc 4, R_ARM_ALU_PC_G1, dat1
++
++ .inst 0xe24f1008 // sub r1, pc, #8
++ .inst 0xe2411004 // sub r1, r1, #4
++ .inst 0xe2411000 // sub r1, r1, #0
++ .reloc 8, R_ARM_ALU_PC_G0_NC, dat2
++ .reloc 12, R_ARM_ALU_PC_G1, dat2
++// CHECK: {{.*}}.s.tmp.o:(.text.1+0xc): unencodeable immediate 244252656 for relocation R_ARM_ALU_PC_G1
++ .reloc 16, R_ARM_ALU_PC_G2, dat2
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .inst 0xe2400000 // sub r0, r0, #0
++ .reloc 20, R_ARM_ALU_PC_G0, dat1
++// CHECK: {{.*}}.s.tmp.o:(.text.1+0x14): unencodeable immediate 7340060 for relocation R_ARM_ALU_PC_G0
++ .reloc 24, R_ARM_ALU_PC_G1, dat1
++ .reloc 28, R_ARM_ALU_PC_G2, dat1
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .inst 0xe1c000d0 // ldrd r0, r1, [r0, #0]
++ .reloc 32, R_ARM_ALU_PC_G0_NC, dat2
++ .reloc 36, R_ARM_ALU_PC_G1_NC, dat2
++// CHECK: {{.*}}.s.tmp.o:(.text.1+0x28): relocation R_ARM_LDRS_PC_G2 out of range: 4056 is not in [0, 255]
++ .reloc 40, R_ARM_LDRS_PC_G2, dat2
++
++ .section .text.2, "ax", %progbits
++dat2:
++ .word 0
+diff --git a/lld/test/ELF/arm-adr-err.s b/lld/test/ELF/arm-adr-err.s
+index cd60cc6b845b..be1305e7b010 100644
+--- a/lld/test/ELF/arm-adr-err.s
++++ b/lld/test/ELF/arm-adr-err.s
+@@ -23,6 +23,12 @@ _start:
+  .inst 0xe24f1008
+  .reloc 4, R_ARM_ALU_PC_G0, unaligned
+ 
++ .balign 512
++/// ldrd r0, r1, _start
++// CHECK: {{.*}}.s.tmp.o:(.os1+0x200): relocation R_ARM_LDRS_PC_G0 out of range: 512 is not in [0, 255]; references _start
++ .reloc ., R_ARM_LDRS_PC_G0, _start
++ .inst 0xe14f00d0
++
+  .section .os2, "ax", %progbits
+  .balign 1024
+  .thumb_func
+diff --git a/lld/test/ELF/arm-adr-long.s b/lld/test/ELF/arm-adr-long.s
+index 9ce7fea3f8ec..60ef789cf7b7 100644
+--- a/lld/test/ELF/arm-adr-long.s
++++ b/lld/test/ELF/arm-adr-long.s
+@@ -1,15 +1,20 @@
+ // REQUIRES: arm
+-// RUN: llvm-mc --triple=armv7a-none-eabi --arm-add-build-attributes -filetype=obj -o %t.o %s
+-// RUN: echo "SECTIONS { \
+-// RUN:                 .text.0 0x10000000 : AT(0x10000000) { *(.text.0) } \
+-// RUN:                 .text.1 0x80000000 : AT(0x80000000) { *(.text.1) } \
+-// RUN:                 .text.2 0xf0000010 : AT(0xf0000010) { *(.text.2) } \
+-// RUN:               } " > %t.script
+-// RUN: ld.lld --script %t.script %t.o -o %t
+-// RUN: llvm-objdump -d --no-show-raw-insn --triple=armv7a-none-eabi %t | FileCheck %s
+-
+-/// Test the long range encoding of R_ARM_ALU_PC_G0. We can encode an 8-bit
++// RUN: split-file %s %t
++// RUN: llvm-mc --triple=armv7a-none-eabi --arm-add-build-attributes -filetype=obj -o %t.o %t/asm
++// RUN: ld.lld --script %t/lds %t.o -o %t2
++// RUN: llvm-objdump -d --no-show-raw-insn --triple=armv7a-none-eabi %t2 | FileCheck %s
++
++/// Test the long range encoding of R_ARM_ALU_PC_Gx sequences. We can encode an 8-bit
+ /// immediate rotated right by an even 4-bit field.
++
++//--- lds
++SECTIONS {
++    .text.0 0x0100000 : AT(0x0100000) { *(.text.0) }
++    .text.1 0x0800000 : AT(0x0800000) { *(.text.1) }
++    .text.2 0xf0f0000 : AT(0xf0f0000) { *(.text.2) }
++}
++
++//--- asm
+  .section .text.0, "ax", %progbits
+ dat1:
+  .word 0
+@@ -18,25 +23,81 @@ dat1:
+  .global _start
+  .type _start, %function
+ _start:
+-/// adr.w r0, dat1
+- .inst 0xe24f0008
+- .reloc 0, R_ARM_ALU_PC_G0, dat1
+-/// adr.w r1, dat2
+- .inst 0xe24f1008
+- .reloc 4, R_ARM_ALU_PC_G0, dat2
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .reloc 0, R_ARM_ALU_PC_G0_NC, dat1
++ .reloc 4, R_ARM_ALU_PC_G1, dat1
++
++ .inst 0xe24f1008 // sub r1, pc, #8
++ .inst 0xe2411004 // sub r1, r1, #4
++ .inst 0xe2411000 // sub r1, r1, #0
++ .reloc 8, R_ARM_ALU_PC_G0_NC, dat2
++ .reloc 12, R_ARM_ALU_PC_G1_NC, dat2
++ .reloc 16, R_ARM_ALU_PC_G2, dat2
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .inst 0xe2400000 // sub r0, r0, #0
++ .reloc 20, R_ARM_ALU_PC_G0_NC, dat1
++ .reloc 24, R_ARM_ALU_PC_G1_NC, dat1
++ .reloc 28, R_ARM_ALU_PC_G2, dat1
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .inst 0xe5900000 // ldr r0, [r0, #0]
++ .reloc 32, R_ARM_ALU_PC_G0_NC, dat2
++ .reloc 36, R_ARM_ALU_PC_G1_NC, dat2
++ .reloc 40, R_ARM_LDR_PC_G2, dat2
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe5100004 // ldr r0, [r0, #-4]
++ .reloc 44, R_ARM_ALU_PC_G0_NC, dat1
++ .reloc 48, R_ARM_LDR_PC_G1, dat1
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe2400004 // sub r0, r0, #4
++ .inst 0xe5900000 // ldr r0, [r0, #0]
++ .reloc 52, R_ARM_ALU_PC_G0_NC, dat1
++ .reloc 56, R_ARM_ALU_PC_G1_NC, dat1
++ .reloc 60, R_ARM_LDR_PC_G2, dat1
++
++ .inst 0xe24f0008 // sub r0, pc, #8
++ .inst 0xe14000d4 // ldrd r0, [r0, #-4]
++ .reloc 64, R_ARM_ALU_PC_G0_NC, dat1
++ .reloc 68, R_ARM_LDRS_PC_G1, dat1
+ 
+  .section .text.2, "ax", %progbits
+ dat2:
+  .word 0
+ 
+-// CHECK:      10000000 <dat1>:
+-// CHECK-NEXT: 10000000: andeq   r0, r0, r0
++// CHECK:      00100000 <dat1>:
++// CHECK-NEXT:   100000: andeq   r0, r0, r0
++
++// CHECK:      00800000 <_start>:
++// CHECK-NEXT:   800000: sub     r0, pc, #112, #16
++// CHECK-NEXT:   800004: sub     r0, r0, #8
++
++// CHECK-NEXT:   800008: add     r1, pc, #232, #12
++// CHECK-NEXT:   80000c: add     r1, r1, #978944
++// CHECK-NEXT:   800010: add     r1, r1, #4080
++
++// CHECK-NEXT:   800014: sub     r0, pc, #112, #16
++// CHECK-NEXT:   800018: sub     r0, r0, #28
++// CHECK-NEXT:   80001c: sub     r0, r0, #0
++
++// CHECK-NEXT:   800020: add     r0, pc, #232, #12
++// CHECK-NEXT:   800024: add     r0, r0, #978944
++// CHECK-NEXT:   800028: ldr     r0, [r0, #4056]
++
++// CHECK-NEXT:   80002c: sub     r0, pc, #112, #16
++// CHECK-NEXT:   800030: ldr     r0, [r0, #-52]
++
++// CHECK-NEXT:   800034: sub     r0, pc, #112, #16
++// CHECK-NEXT:   800038: sub     r0, r0, #60
++// CHECK-NEXT:   80003c: ldr     r0, [r0, #-0]
+ 
+-// CHECK:      80000000 <_start>:
+-/// 0x80000000 + 0x8 - 0x70000008 = 0x10000000
+-// CHECK-NEXT: 80000000: sub     r0, pc, #1879048200
+-/// 0x80000004 + 0x8 + 0x70000004 = 0xf0000010
+-// CHECK-NEXT: 80000004: add     r1, pc, #1879048196
++// CHECK-NEXT:   800040: sub     r0, pc, #112, #16
++// CHECK-NEXT:   800044: ldrd    r0, r1, [r0, #-72]
+ 
+-// CHECK:      f0000010 <dat2>:
+-// CHECK-NEXT: f0000010: andeq   r0, r0, r0
++// CHECK:      0f0f0000 <dat2>:
++// CHECK-NEXT:  f0f0000: andeq   r0, r0, r0
+diff --git a/lld/test/ELF/arm-adr.s b/lld/test/ELF/arm-adr.s
+index 1fb8505f71f5..05e8cc2f92db 100644
+--- a/lld/test/ELF/arm-adr.s
++++ b/lld/test/ELF/arm-adr.s
+@@ -87,9 +87,9 @@ afunc:
+ /// 0x20804 + 0x8 - 0x3f8 = 0x11414 = dat2
+ // CHECK-NEXT: 20804: sub     r0, pc, #1016
+ /// 0x20808 + 0x8 + 0x400 = 0x11c10 = dat3
+-// CHECK-NEXT: 20808: add     r0, pc, #1024
++// CHECK-NEXT: 20808: add     r0, pc, #64, #28
+ /// 0x2080c + 0x8 + 0x400 = 0x11c14 = dat4
+-// CHECK-NEXT: 2080c: add     r0, pc, #1024
++// CHECK-NEXT: 2080c: add     r0, pc, #64, #28
+ 
+ // CHECK:      00020c10 <dat3>:
+ // CHECK-NEXT: 20c10: andeq   r0, r0, r0
+-- 
+2.34.1
+

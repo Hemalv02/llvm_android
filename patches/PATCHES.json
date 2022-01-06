@@ -160,6 +160,18 @@
         "start_version": 437112
     },
     {
+        "end_version": 444762,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ARM] implement support for ALU/LDR PC-relative group relocations"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/da66263b6e505a4c605efbe8d68c3b09ad3606a4.patch",
+        "start_version": 437112
+    },
+    {
         "end_version": null,
         "metadata": {
             "info": [],
