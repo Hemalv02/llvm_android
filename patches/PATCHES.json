@@ -112,6 +112,18 @@
         "start_version": 437112
     },
     {
+        "end_version": 442024,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ARM] Use hardware TLS register in Thumb2 mode when -mtp=cp15 is passed"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d7e089f2d6a5cd5f283a90ab29241d20d4fc3ed1.patch",
+        "start_version": 437112
+    },
+    {
         "end_version": 442582,
         "metadata": {
             "info": [],
@@ -145,18 +157,6 @@
             "android"
         ],
         "rel_patch_path": "cherry/1df7289af66c630480a676e2a5347dca5a3ede15.patch",
-        "start_version": 437112
-    },
-    {
-        "end_version": 442024,
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [ARM] Use hardware TLS register in Thumb2 mode when -mtp=cp15 is passed"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/d7e089f2d6a5cd5f283a90ab29241d20d4fc3ed1.patch",
         "start_version": 437112
     },
     {
