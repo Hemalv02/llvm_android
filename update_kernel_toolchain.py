@@ -180,13 +180,13 @@ Bug: %s
 
     def update_kernel_toolchain(self):
         green_print("Updating kernel toolchain")
-        config_path = path.join(self.kernel_dir, "build.config.common")
+        config_path = path.join(self.kernel_dir, "build.config.constants")
         if self.dry_run:
             print("Updating %s to use %s." % (config_path, self.clang_revision))
             return
         for line in fileinput.input(config_path, inplace=True):
-            line = re.sub("clang-r[0-9a-z]+", "clang-" + self.clang_revision,
-                          line)
+            line = re.sub("CLANG_VERSION=r[0-9a-z]+",
+                          "CLANG_VERSION=" + self.clang_revision, line)
             print(line, end="")
 
     def commit_kernel_toolchain(self):
