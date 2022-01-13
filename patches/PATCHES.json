@@ -38,6 +38,18 @@
         "start_version": 437112
     },
     {
+        "end_version": 437539,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] AArch64 SVE restore SVE registers after expression"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/8901f8beea3a70f92be8c0b80313260502f03727.patch",
+        "start_version": 437112
+    },
+    {
         "end_version": 438499,
         "metadata": {
             "info": [
@@ -181,6 +193,18 @@
             "android"
         ],
         "rel_patch_path": "cherry/da66263b6e505a4c605efbe8d68c3b09ad3606a4.patch",
+        "start_version": 437112
+    },
+    {
+        "end_version": 446311,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64][SVE] Fix handling of stack protection with SVE"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/dc9f65be4555406262ff693c8bac5f1f0b960a97.patch",
         "start_version": 437112
     },
     {

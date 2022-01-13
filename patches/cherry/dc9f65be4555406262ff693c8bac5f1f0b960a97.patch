@@ -1,0 +1,594 @@
+From dc9f65be4555406262ff693c8bac5f1f0b960a97 Mon Sep 17 00:00:00 2001
+From: John Brawn <john.brawn@arm.com>
+Date: Tue, 14 Dec 2021 11:11:41 +0000
+Subject: [PATCH] [AArch64][SVE] Fix handling of stack protection with SVE
+
+Fix a couple of things that were causing stack protection to not work
+correctly in functions that have scalable vectors on the stack:
+ * Use TypeSize when determining if accesses to a variable are
+   considered out-of-bounds so that the behaviour is correct for
+   scalable vectors.
+ * When stack protection is enabled move the stack protector location
+   to the top of the SVE locals, so that any overflow in them (or the
+   other locals which are below that) will be detected.
+
+Fixes: https://github.com/llvm/llvm-project/issues/51137
+
+Differential Revision: https://reviews.llvm.org/D111631
+---
+ llvm/include/llvm/CodeGen/StackProtector.h    |   2 +-
+ llvm/lib/CodeGen/LocalStackSlotAllocation.cpp |   6 +-
+ llvm/lib/CodeGen/PrologEpilogInserter.cpp     |  14 +-
+ llvm/lib/CodeGen/StackProtector.cpp           |  21 +-
+ .../Target/AArch64/AArch64FrameLowering.cpp   |  11 +
+ .../Target/AArch64/AArch64ISelLowering.cpp    |  20 +-
+ .../AArch64/stack-guard-reassign-sve.mir      |  47 +++
+ llvm/test/CodeGen/AArch64/stack-guard-sve.ll  | 338 ++++++++++++++++++
+ 8 files changed, 447 insertions(+), 12 deletions(-)
+ create mode 100644 llvm/test/CodeGen/AArch64/stack-guard-reassign-sve.mir
+ create mode 100644 llvm/test/CodeGen/AArch64/stack-guard-sve.ll
+
+diff --git a/llvm/include/llvm/CodeGen/StackProtector.h b/llvm/include/llvm/CodeGen/StackProtector.h
+index f6513e8d4ea0..57456b3f6c16 100644
+--- a/llvm/include/llvm/CodeGen/StackProtector.h
++++ b/llvm/include/llvm/CodeGen/StackProtector.h
+@@ -95,7 +95,7 @@ private:
+                                 bool InStruct = false) const;
+ 
+   /// Check whether a stack allocation has its address taken.
+-  bool HasAddressTaken(const Instruction *AI, uint64_t AllocSize);
++  bool HasAddressTaken(const Instruction *AI, TypeSize AllocSize);
+ 
+   /// RequiresStackProtector - Check whether or not this function needs a
+   /// stack protector based upon the stack protector level.
+diff --git a/llvm/lib/CodeGen/LocalStackSlotAllocation.cpp b/llvm/lib/CodeGen/LocalStackSlotAllocation.cpp
+index ee2387d1e8e6..37fd3e4853ac 100644
+--- a/llvm/lib/CodeGen/LocalStackSlotAllocation.cpp
++++ b/llvm/lib/CodeGen/LocalStackSlotAllocation.cpp
+@@ -210,7 +210,11 @@ void LocalStackSlotPass::calculateFrameObjectOffsets(MachineFunction &Fn) {
+     StackObjSet SmallArrayObjs;
+     StackObjSet AddrOfObjs;
+ 
+-    AdjustStackOffset(MFI, StackProtectorFI, Offset, StackGrowsDown, MaxAlign);
++    // Only place the stack protector in the local stack area if the target
++    // allows it.
++    if (TFI.isStackIdSafeForLocalArea(MFI.getStackID(StackProtectorFI)))
++      AdjustStackOffset(MFI, StackProtectorFI, Offset, StackGrowsDown,
++                        MaxAlign);
+ 
+     // Assign large stack objects first.
+     for (unsigned i = 0, e = MFI.getObjectIndexEnd(); i != e; ++i) {
+diff --git a/llvm/lib/CodeGen/PrologEpilogInserter.cpp b/llvm/lib/CodeGen/PrologEpilogInserter.cpp
+index 29a88480fd9f..8d8a6126dad0 100644
+--- a/llvm/lib/CodeGen/PrologEpilogInserter.cpp
++++ b/llvm/lib/CodeGen/PrologEpilogInserter.cpp
+@@ -953,12 +953,22 @@ void PEI::calculateFrameObjectOffsets(MachineFunction &MF) {
+     // LocalStackSlotPass didn't already allocate a slot for it.
+     // If we are told to use the LocalStackAllocationBlock, the stack protector
+     // is expected to be already pre-allocated.
+-    if (!MFI.getUseLocalStackAllocationBlock())
++    if (MFI.getStackID(StackProtectorFI) != TargetStackID::Default) {
++      // If the stack protector isn't on the default stack then it's up to the
++      // target to set the stack offset.
++      assert(MFI.getObjectOffset(StackProtectorFI) != 0 &&
++             "Offset of stack protector on non-default stack expected to be "
++             "already set.");
++      assert(!MFI.isObjectPreAllocated(MFI.getStackProtectorIndex()) &&
++             "Stack protector on non-default stack expected to not be "
++             "pre-allocated by LocalStackSlotPass.");
++    } else if (!MFI.getUseLocalStackAllocationBlock()) {
+       AdjustStackOffset(MFI, StackProtectorFI, StackGrowsDown, Offset, MaxAlign,
+                         Skew);
+-    else if (!MFI.isObjectPreAllocated(MFI.getStackProtectorIndex()))
++    } else if (!MFI.isObjectPreAllocated(MFI.getStackProtectorIndex())) {
+       llvm_unreachable(
+           "Stack protector not pre-allocated by LocalStackSlotPass.");
++    }
+ 
+     // Assign large stack objects first.
+     for (unsigned i = 0, e = MFI.getObjectIndexEnd(); i != e; ++i) {
+diff --git a/llvm/lib/CodeGen/StackProtector.cpp b/llvm/lib/CodeGen/StackProtector.cpp
+index 7445f77c955d..6765fd274686 100644
+--- a/llvm/lib/CodeGen/StackProtector.cpp
++++ b/llvm/lib/CodeGen/StackProtector.cpp
+@@ -162,7 +162,7 @@ bool StackProtector::ContainsProtectableArray(Type *Ty, bool &IsLarge,
+ }
+ 
+ bool StackProtector::HasAddressTaken(const Instruction *AI,
+-                                     uint64_t AllocSize) {
++                                     TypeSize AllocSize) {
+   const DataLayout &DL = M->getDataLayout();
+   for (const User *U : AI->users()) {
+     const auto *I = cast<Instruction>(U);
+@@ -170,7 +170,8 @@ bool StackProtector::HasAddressTaken(const Instruction *AI,
+     // the bounds of the allocated object.
+     Optional<MemoryLocation> MemLoc = MemoryLocation::getOrNone(I);
+     if (MemLoc.hasValue() && MemLoc->Size.hasValue() &&
+-        MemLoc->Size.getValue() > AllocSize)
++        !TypeSize::isKnownGE(AllocSize,
++                             TypeSize::getFixed(MemLoc->Size.getValue())))
+       return true;
+     switch (I->getOpcode()) {
+     case Instruction::Store:
+@@ -203,13 +204,19 @@ bool StackProtector::HasAddressTaken(const Instruction *AI,
+       // would use it could also be out-of-bounds meaning stack protection is
+       // required.
+       const GetElementPtrInst *GEP = cast<GetElementPtrInst>(I);
+-      unsigned TypeSize = DL.getIndexTypeSizeInBits(I->getType());
+-      APInt Offset(TypeSize, 0);
+-      APInt MaxOffset(TypeSize, AllocSize);
+-      if (!GEP->accumulateConstantOffset(DL, Offset) || Offset.ugt(MaxOffset))
++      unsigned IndexSize = DL.getIndexTypeSizeInBits(I->getType());
++      APInt Offset(IndexSize, 0);
++      if (!GEP->accumulateConstantOffset(DL, Offset))
++        return true;
++      TypeSize OffsetSize = TypeSize::Fixed(Offset.getLimitedValue());
++      if (!TypeSize::isKnownGT(AllocSize, OffsetSize))
+         return true;
+       // Adjust AllocSize to be the space remaining after this offset.
+-      if (HasAddressTaken(I, AllocSize - Offset.getLimitedValue()))
++      // We can't subtract a fixed size from a scalable one, so in that case
++      // assume the scalable value is of minimum size.
++      TypeSize NewAllocSize =
++          TypeSize::Fixed(AllocSize.getKnownMinValue()) - OffsetSize;
++      if (HasAddressTaken(I, NewAllocSize))
+         return true;
+       break;
+     }
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+index b630f4f0df5f..638e45b30d99 100644
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -3041,10 +3041,21 @@ static int64_t determineSVEStackObjectOffsets(MachineFrameInfo &MFI,
+ 
+   // Create a buffer of SVE objects to allocate and sort it.
+   SmallVector<int, 8> ObjectsToAllocate;
++  // If we have a stack protector, and we've previously decided that we have SVE
++  // objects on the stack and thus need it to go in the SVE stack area, then it
++  // needs to go first.
++  int StackProtectorFI = -1;
++  if (MFI.hasStackProtectorIndex()) {
++    StackProtectorFI = MFI.getStackProtectorIndex();
++    if (MFI.getStackID(StackProtectorFI) == TargetStackID::ScalableVector)
++      ObjectsToAllocate.push_back(StackProtectorFI);
++  }
+   for (int I = 0, E = MFI.getObjectIndexEnd(); I != E; ++I) {
+     unsigned StackID = MFI.getStackID(I);
+     if (StackID != TargetStackID::ScalableVector)
+       continue;
++    if (I == StackProtectorFI)
++      continue;
+     if (MaxCSFrameIndex >= I && I >= MinCSFrameIndex)
+       continue;
+     if (MFI.isDeadObjectIndex(I))
+diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+index 792e268137b1..e313c72ec7b2 100644
+--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+@@ -18584,7 +18584,25 @@ AArch64TargetLowering::getVaListSizeInBits(const DataLayout &DL) const {
+ }
+ 
+ void AArch64TargetLowering::finalizeLowering(MachineFunction &MF) const {
+-  MF.getFrameInfo().computeMaxCallFrameSize(MF);
++  MachineFrameInfo &MFI = MF.getFrameInfo();
++  // If we have any vulnerable SVE stack objects then the stack protector
++  // needs to be placed at the top of the SVE stack area, as the SVE locals
++  // are placed above the other locals, so we allocate it as if it were a
++  // scalable vector.
++  // FIXME: It may be worthwhile having a specific interface for this rather
++  // than doing it here in finalizeLowering.
++  if (MFI.hasStackProtectorIndex()) {
++    for (unsigned int i = 0, e = MFI.getObjectIndexEnd(); i != e; ++i) {
++      if (MFI.getStackID(i) == TargetStackID::ScalableVector &&
++          MFI.getObjectSSPLayout(i) != MachineFrameInfo::SSPLK_None) {
++        MFI.setStackID(MFI.getStackProtectorIndex(),
++                       TargetStackID::ScalableVector);
++        MFI.setObjectAlignment(MFI.getStackProtectorIndex(), Align(16));
++        break;
++      }
++    }
++  }
++  MFI.computeMaxCallFrameSize(MF);
+   TargetLoweringBase::finalizeLowering(MF);
+ }
+ 
+diff --git a/llvm/test/CodeGen/AArch64/stack-guard-reassign-sve.mir b/llvm/test/CodeGen/AArch64/stack-guard-reassign-sve.mir
+new file mode 100644
+index 000000000000..6af66df29030
+--- /dev/null
++++ b/llvm/test/CodeGen/AArch64/stack-guard-reassign-sve.mir
+@@ -0,0 +1,47 @@
++# RUN: llc -mtriple=aarch64--linux-gnu -mattr=+sve -start-before=localstackalloc -stop-after=prologepilog -o - %s | FileCheck %s
++
++--- |
++  @__stack_chk_guard = external global i8*
++  define i32 @main(i32, i8**) {
++    %StackGuardSlot = alloca i8*
++    unreachable
++  }
++...
++---
++name:            main
++tracksRegLiveness: true
++frameInfo:
++# CHECK: stackSize: 544
++# CHECK: localFrameSize: 516
++  stackProtector:  '%stack.3.StackGuardSlot'
++stack:
++# Stack objects 0 and 1 should end up in the local stack area, objects 2 and 3
++# should end up in the SVE stack area with 3 (the stack guard) on top.
++  - { id: 0, size: 512, alignment: 1, stack-id: default }
++# CHECK:       - { id: 0, name: '', type: default, offset: -528, size: 512, alignment: 1,
++# CHECK-NEXT:      stack-id: default, callee-saved-register: '', callee-saved-restored: true,
++# CHECK-NEXT:      local-offset: -512, debug-info-variable: '', debug-info-expression: '',
++# CHECK-NEXT:      debug-info-location: '' }
++  - { id: 1, size: 4, alignment: 4, stack-id: default }
++# CHECK:       - { id: 1, name: '', type: default, offset: -532, size: 4, alignment: 4,
++# CHECK-NEXT:      stack-id: default, callee-saved-register: '', callee-saved-restored: true,
++# CHECK-NEXT:      local-offset: -516, debug-info-variable: '', debug-info-expression: '',
++# CHECK-NEXT:      debug-info-location: '' }
++  - { id: 2, size: 16, alignment: 16, stack-id: scalable-vector }
++# CHECK:       - { id: 2, name: '', type: default, offset: -32, size: 16, alignment: 16,
++# CHECK-NEXT:      stack-id: scalable-vector, callee-saved-register: '', callee-saved-restored: true,
++# CHECK-NEXT:      debug-info-variable: '', debug-info-expression: '', debug-info-location: '' }
++  - { id: 3, name: StackGuardSlot, size: 8, alignment: 16, stack-id: scalable-vector }
++# CHECK:       - { id: 3, name: StackGuardSlot, type: default, offset: -16, size: 8,
++# CHECK-NEXT:      alignment: 16, stack-id: scalable-vector, callee-saved-register: '',
++# CHECK-NEXT:      callee-saved-restored: true, debug-info-variable: '', debug-info-expression: '',
++# CHECK-NEXT:      debug-info-location: '' }
++body:             |
++  bb.0:
++    %25:gpr64common = LOAD_STACK_GUARD :: (dereferenceable invariant load (s64) from @__stack_chk_guard)
++    STRXui killed %25, %stack.3.StackGuardSlot, 0 :: (volatile store (s64) into %stack.3.StackGuardSlot)
++    %28:gpr64 = LDRXui %stack.3.StackGuardSlot, 0 :: (volatile load (s64) from %stack.3.StackGuardSlot)
++    %29:gpr64common = LOAD_STACK_GUARD :: (dereferenceable invariant load (s64) from @__stack_chk_guard)
++    RET_ReallyLR implicit undef $w0, implicit killed %28, implicit killed %29
++
++...
+diff --git a/llvm/test/CodeGen/AArch64/stack-guard-sve.ll b/llvm/test/CodeGen/AArch64/stack-guard-sve.ll
+new file mode 100644
+index 000000000000..32669e411e8c
+--- /dev/null
++++ b/llvm/test/CodeGen/AArch64/stack-guard-sve.ll
+@@ -0,0 +1,338 @@
++; RUN: llc -mtriple=aarch64--linux-gnu -mattr=+sve < %s | FileCheck %s
++
++declare dso_local void @val_fn(<vscale x 4 x float>)
++declare dso_local void @ptr_fn(<vscale x 4 x float>*)
++
++; An alloca of a scalable vector shouldn't trigger stack protection.
++
++; CHECK-LABEL: call_value:
++; CHECK-NOT: mov x19, sp
++; CHECK: addvl sp, sp, #-1
++; CHECK-NOT: __stack_chk_guard
++; CHECK: st1w { {{z[0-9]+.s}} }, {{p[0-9]+}}, [x29, #-1, mul vl]
++define void @call_value() #0 {
++entry:
++  %x = alloca <vscale x 4 x float>, align 16
++  store <vscale x 4 x float> zeroinitializer, <vscale x 4 x float>* %x, align 16
++  %0 = load <vscale x 4 x float>, <vscale x 4 x float>* %x, align 16
++  call void @val_fn(<vscale x 4 x float> %0)
++  ret void
++}
++
++; CHECK-LABEL: call_value_strong:
++; CHECK-NOT: mov x19, sp
++; CHECK: addvl sp, sp, #-1
++; CHECK-NOT: __stack_chk_guard
++; CHECK: st1w { {{z[0-9]+.s}} }, {{p[0-9]+}}, [x29, #-1, mul vl]
++define void @call_value_strong() #1 {
++entry:
++  %x = alloca <vscale x 4 x float>, align 16
++  store <vscale x 4 x float> zeroinitializer, <vscale x 4 x float>* %x, align 16
++  %0 = load <vscale x 4 x float>, <vscale x 4 x float>* %x, align 16
++  call void @val_fn(<vscale x 4 x float> %0)
++  ret void
++}
++
++; Address-taking of a scalable vector should trigger stack protection only with
++; sspstrong, and the scalable vector should be be placed below the stack guard.
++
++; CHECK-LABEL: call_ptr:
++; CHECK-NOT: mov x19, sp
++; CHECK: addvl sp, sp, #-1
++; CHECK-NOT: __stack_chk_guard
++; CHECK: addvl x0, x29, #-1
++; CHECK: bl ptr_fn
++define void @call_ptr() #0 {
++entry:
++  %x = alloca <vscale x 4 x float>, align 16
++  call void @ptr_fn(<vscale x 4 x float>* %x)
++  ret void
++}
++
++; CHECK-LABEL: call_ptr_strong:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-2
++; CHECK-DAG: addvl [[ADDR:x[0-9]+]], x29, #-1
++; CHECK-DAG: ldr [[VAL:x[0-9]+]], [{{x[0-9]+}}, :lo12:__stack_chk_guard]
++; CHECK-DAG: str [[VAL]], {{\[}}[[ADDR]]]
++; CHECK-DAG: addvl x0, x29, #-2
++; CHECK: bl ptr_fn
++define void @call_ptr_strong() #1 {
++entry:
++  %x = alloca <vscale x 4 x float>, align 16
++  call void @ptr_fn(<vscale x 4 x float>* %x)
++  ret void
++}
++
++; Check that both variables are addressed in the same way
++
++; CHECK-LABEL: call_both:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-2
++; CHECK-NOT: __stack_chk_guard
++; CHECK: st1w { {{z[0-9]+.s}} }, {{p[0-9]+}}, [x29, #-1, mul vl]
++; CHECK: bl val_fn
++; CHECK: addvl x0, x29, #-2
++; CHECK: bl ptr_fn
++define void @call_both() #0 {
++entry:
++  %x = alloca <vscale x 4 x float>, align 16
++  %y = alloca <vscale x 4 x float>, align 16
++  store <vscale x 4 x float> zeroinitializer, <vscale x 4 x float>* %x, align 16
++  %0 = load <vscale x 4 x float>, <vscale x 4 x float>* %x, align 16
++  call void @val_fn(<vscale x 4 x float> %0)
++  call void @ptr_fn(<vscale x 4 x float>* %y)
++  ret void
++}
++
++; CHECK-LABEL: call_both_strong:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-3
++; CHECK-DAG: addvl [[ADDR:x[0-9]+]], x29, #-1
++; CHECK-DAG: ldr [[VAL:x[0-9]+]], [{{x[0-9]+}}, :lo12:__stack_chk_guard]
++; CHECK-DAG: str [[VAL]], {{\[}}[[ADDR]]]
++; CHECK-DAG: st1w { {{z[0-9]+.s}} }, {{p[0-9]+}}, [x29, #-2, mul vl]
++; CHECK: bl val_fn
++; CHECK: addvl x0, x29, #-3
++; CHECK: bl ptr_fn
++define void @call_both_strong() #1 {
++entry:
++  %x = alloca <vscale x 4 x float>, align 16
++  %y = alloca <vscale x 4 x float>, align 16
++  store <vscale x 4 x float> zeroinitializer, <vscale x 4 x float>* %x, align 16
++  %0 = load <vscale x 4 x float>, <vscale x 4 x float>* %x, align 16
++  call void @val_fn(<vscale x 4 x float> %0)
++  call void @ptr_fn(<vscale x 4 x float>* %y)
++  ret void
++}
++
++; Pushed callee-saved regs should be above the stack guard
++
++; CHECK-LABEL: callee_save:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-18
++; CHECK: str {{z[0-9]+}}, [sp, #{{[0-9]+}}, mul vl]
++; CHECK-NOT: mov x29, sp
++; CHECK: addvl sp, sp, #-1
++; CHECK-NOT: __stack_chk_guard
++; CHECK: addvl [[REG:x[0-9]+]], x29, #-11
++; CHECK: st1w { {{z[0-9]+.s}} }, {{p[0-9]+}}, {{\[}}[[REG]], #-8, mul vl]
++define void @callee_save(<vscale x 4 x float> %x) #0 {
++entry:
++  %x.addr = alloca <vscale x 4 x float>, align 16
++  store <vscale x 4 x float> %x, <vscale x 4 x float>* %x.addr, align 16
++  call void @ptr_fn(<vscale x 4 x float>* %x.addr)
++  ret void
++}
++
++; CHECK-LABEL: callee_save_strong:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-18
++; CHECK: str {{z[0-9]+}}, [sp, #{{[0-9]+}}, mul vl]
++; CHECK: addvl sp, sp, #-2
++; CHECK-DAG: addvl [[ADDR:x[0-9]+]], x29, #-19
++; CHECK-DAG: ldr [[VAL:x[0-9]+]], [{{x[0-9]+}}, :lo12:__stack_chk_guard]
++; CHECK-DAG: str [[VAL]], {{\[}}[[ADDR]]]
++; CHECK-DAG: addvl [[ADDR2:x[0-9]+]], x29, #-12
++; CHECK-DAG: st1w { z0.s }, p0, {{\[}}[[ADDR2]], #-8, mul vl]
++define void @callee_save_strong(<vscale x 4 x float> %x) #1 {
++entry:
++  %x.addr = alloca <vscale x 4 x float>, align 16
++  store <vscale x 4 x float> %x, <vscale x 4 x float>* %x.addr, align 16
++  call void @ptr_fn(<vscale x 4 x float>* %x.addr)
++  ret void
++}
++
++; Check that local stack allocation works correctly both when we have a stack
++; guard but no vulnerable SVE objects, and when we do have such objects.
++
++; CHECK-LABEL: local_stack_alloc:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-2
++; CHECK: sub sp, sp, #16, lsl #12
++; CHECK: sub sp, sp, #16
++
++; Stack guard is placed below the SVE stack area
++; CHECK-DAG: ldr [[STACK_GUARD:x[0-9]+]], [{{x[0-9]+}}, :lo12:__stack_chk_guard]
++; CHECK-DAG: addvl [[STACK_GUARD_POS:x[0-9]+]], x29, #-2
++; CHECK-DAG: stur [[STACK_GUARD]], {{\[}}[[STACK_GUARD_POS]], #-8]
++
++; char_arr is below the stack guard
++; CHECK-DAG: sub [[CHAR_ARR_1:x[0-9]+]], x29, #16
++; CHECK-DAG: addvl [[CHAR_ARR_2:x[0-9]+]], [[CHAR_ARR_1]], #-2
++; CHECK-DAG: strb wzr, {{\[}}[[CHAR_ARR_2]]]
++
++; large1 is accessed via a virtual base register
++; CHECK-DAG: add [[LARGE1:x[0-9]+]], sp, #8, lsl #12
++; CHECK-DAG: stp x0, x0, {{\[}}[[LARGE1]]]
++
++; large2 is at the bottom of the stack
++; CHECK-DAG: stp x0, x0, [sp]
++
++; vec1 and vec2 are in the SVE stack immediately below fp
++; CHECK-DAG: addvl x0, x29, #-1
++; CHECK-DAG: bl ptr_fn
++; CHECK-DAG: addvl x0, x29, #-2
++; CHECK-DAG: bl ptr_fn
++define void @local_stack_alloc(i64 %val) #0 {
++entry:
++  %char_arr = alloca [8 x i8], align 4
++  %gep0 = getelementptr [8 x i8], [8 x i8]* %char_arr, i64 0, i64 0
++  store i8 0, i8* %gep0, align 8
++  %large1 = alloca [4096 x i64], align 8
++  %large2 = alloca [4096 x i64], align 8
++  %vec_1 = alloca <vscale x 4 x float>, align 16
++  %vec_2 = alloca <vscale x 4 x float>, align 16
++  %gep1 = getelementptr [4096 x i64], [4096 x i64]* %large1, i64 0, i64 0
++  %gep2 = getelementptr [4096 x i64], [4096 x i64]* %large1, i64 0, i64 1
++  store i64 %val, i64* %gep1, align 8
++  store i64 %val, i64* %gep2, align 8
++  %gep3 = getelementptr [4096 x i64], [4096 x i64]* %large2, i64 0, i64 0
++  %gep4 = getelementptr [4096 x i64], [4096 x i64]* %large2, i64 0, i64 1
++  store i64 %val, i64* %gep3, align 8
++  store i64 %val, i64* %gep4, align 8
++  call void @ptr_fn(<vscale x 4 x float>* %vec_1)
++  call void @ptr_fn(<vscale x 4 x float>* %vec_2)
++  ret void
++}
++
++; CHECK-LABEL: local_stack_alloc_strong:
++; CHECK: mov x29, sp
++; CHECK: addvl sp, sp, #-3
++; CHECK: sub sp, sp, #16, lsl #12
++; CHECK: sub sp, sp, #16
++
++; Stack guard is placed at the top of the SVE stack area
++; CHECK-DAG: ldr [[STACK_GUARD:x[0-9]+]], [{{x[0-9]+}}, :lo12:__stack_chk_guard]
++; CHECK-DAG: addvl [[STACK_GUARD_POS:x[0-9]+]], x29, #-1
++; CHECK-DAG: str [[STACK_GUARD]], {{\[}}[[STACK_GUARD_POS]]]
++
++; char_arr is below the SVE stack area
++; CHECK-DAG: addvl [[CHAR_ARR:x[0-9]+]], x29, #-3
++; CHECK-DAG: sturb wzr, {{\[}}[[CHAR_ARR]], #-8]
++
++; large1 is accessed via a virtual base register
++; CHECK-DAG: add [[LARGE1:x[0-9]+]], sp, #8, lsl #12
++; CHECK-DAG: stp x0, x0, {{\[}}[[LARGE1]], #8]
++
++; large2 is at the bottom of the stack
++; CHECK-DAG: stp x0, x0, [sp, #8]
++
++; vec1 and vec2 are in the SVE stack area below the stack guard
++; CHECK-DAG: addvl x0, x29, #-2
++; CHECK-DAG: bl ptr_fn
++; CHECK-DAG: addvl x0, x29, #-3
++; CHECK-DAG: bl ptr_fn
++define void @local_stack_alloc_strong(i64 %val) #1 {
++entry:
++  %char_arr = alloca [8 x i8], align 4
++  %gep0 = getelementptr [8 x i8], [8 x i8]* %char_arr, i64 0, i64 0
++  store i8 0, i8* %gep0, align 8
++  %large1 = alloca [4096 x i64], align 8
++  %large2 = alloca [4096 x i64], align 8
++  %vec_1 = alloca <vscale x 4 x float>, align 16
++  %vec_2 = alloca <vscale x 4 x float>, align 16
++  %gep1 = getelementptr [4096 x i64], [4096 x i64]* %large1, i64 0, i64 0
++  %gep2 = getelementptr [4096 x i64], [4096 x i64]* %large1, i64 0, i64 1
++  store i64 %val, i64* %gep1, align 8
++  store i64 %val, i64* %gep2, align 8
++  %gep3 = getelementptr [4096 x i64], [4096 x i64]* %large2, i64 0, i64 0
++  %gep4 = getelementptr [4096 x i64], [4096 x i64]* %large2, i64 0, i64 1
++  store i64 %val, i64* %gep3, align 8
++  store i64 %val, i64* %gep4, align 8
++  call void @ptr_fn(<vscale x 4 x float>* %vec_1)
++  call void @ptr_fn(<vscale x 4 x float>* %vec_2)
++  ret void
++}
++
++; A GEP addressing into a vector of <vscale x 4 x float> is in-bounds for
++; offsets up to 3, but out-of-bounds (and so triggers stack protection with
++; sspstrong) after that.
++
++; CHECK-LABEL: vector_gep_3:
++; CHECK-NOT: __stack_chk_guard
++define void @vector_gep_3() #0 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 3
++  store float 0.0, float* %gep, align 4
++  ret void
++}
++
++; CHECK-LABEL: vector_gep_4:
++; CHECK-NOT: __stack_chk_guard
++define void @vector_gep_4() #0 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 4
++  store float 0.0, float* %gep, align 4
++  ret void
++}
++
++; CHECK-LABEL: vector_gep_twice:
++; CHECK-NOT: __stack_chk_guard
++define void @vector_gep_twice() #0 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep1 = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 3
++  store float 0.0, float* %gep1, align 4
++  %gep2 = getelementptr float, float* %gep1, i64 1
++  store float 0.0, float* %gep2, align 4
++  ret void
++}
++
++; CHECK-LABEL: vector_gep_n:
++; CHECK-NOT: __stack_chk_guard
++define void @vector_gep_n(i64 %n) #0 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 %n
++  store float 0.0, float* %gep, align 4
++  ret void
++}
++
++; CHECK-LABEL: vector_gep_3_strong:
++; CHECK-NOT: __stack_chk_guard
++define void @vector_gep_3_strong() #1 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 3
++  store float 0.0, float* %gep, align 4
++  ret void
++}
++
++; CHECK-LABEL: vector_gep_4_strong:
++; CHECK: __stack_chk_guard
++define void @vector_gep_4_strong(i64 %val) #1 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 4
++  store float 0.0, float* %gep, align 4
++  ret void
++}
++
++
++; CHECK-LABEL: vector_gep_twice_strong:
++; CHECK: __stack_chk_guard
++define void @vector_gep_twice_strong() #1 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep1 = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 3
++  store float 0.0, float* %gep1, align 4
++  %gep2 = getelementptr float, float* %gep1, i64 1
++  store float 0.0, float* %gep2, align 4
++  ret void
++}
++
++; CHECK-LABEL: vector_gep_n_strong:
++; CHECK: __stack_chk_guard
++define void @vector_gep_n_strong(i64 %n) #1 {
++entry:
++  %vec = alloca <vscale x 4 x float>, align 16
++  %gep = getelementptr <vscale x 4 x float>, <vscale x 4 x float>* %vec, i64 0, i64 %n
++  store float 0.0, float* %gep, align 4
++  ret void
++}
++
++attributes #0 = { ssp "frame-pointer"="non-leaf" }
++attributes #1 = { sspstrong "frame-pointer"="non-leaf" }
+-- 
+2.34.1.703.g22d0c6ccf7-goog
+
