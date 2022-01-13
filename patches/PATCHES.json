@@ -148,6 +148,18 @@
         "start_version": 441431
     },
     {
+        "end_version": 444277,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] compiler-rt: Use FreeBSD's elf_aux_info to detect AArch64 HW features"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7dbbb5d3a46e1526cfa126ae02a5856d7ce0fda9.patch",
+        "start_version": 437112
+    },
+    {
         "end_version": 444461,
         "metadata": {
             "info": [],
@@ -169,6 +181,18 @@
             "android"
         ],
         "rel_patch_path": "cherry/da66263b6e505a4c605efbe8d68c3b09ad3606a4.patch",
+        "start_version": 437112
+    },
+    {
+        "end_version": 446420,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [compiler-rt][AArch64] Add a workaround for Exynos 9810"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/cce4a7258b81159e57a411896011ee2742f17def.patch",
         "start_version": 437112
     },
     {

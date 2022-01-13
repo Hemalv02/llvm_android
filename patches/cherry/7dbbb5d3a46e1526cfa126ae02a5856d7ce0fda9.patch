@@ -1,0 +1,38 @@
+From 7dbbb5d3a46e1526cfa126ae02a5856d7ce0fda9 Mon Sep 17 00:00:00 2001
+From: Dimitry Andric <dimitry@andric.com>
+Date: Sat, 20 Nov 2021 12:10:06 +0100
+Subject: [PATCH] compiler-rt: Use FreeBSD's elf_aux_info to detect AArch64 HW
+ features
+
+Using the out-of-line LSE atomics helpers for AArch64 on FreeBSD also
+requires adding support for initializing __aarch64_have_lse_atomics
+correctly. On Linux this is done with getauxval(3), on FreeBSD with
+elf_aux_info(3), which has a slightly different interface.
+
+Differential Revision: https://reviews.llvm.org/D109330
+---
+ compiler-rt/lib/builtins/cpu_model.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/compiler-rt/lib/builtins/cpu_model.c b/compiler-rt/lib/builtins/cpu_model.c
+index b8d807ed651c..53e2d89708dc 100644
+--- a/compiler-rt/lib/builtins/cpu_model.c
++++ b/compiler-rt/lib/builtins/cpu_model.c
+@@ -799,8 +799,14 @@ _Bool __aarch64_have_lse_atomics
+ #define HWCAP_ATOMICS (1 << 8)
+ #endif
+ static void CONSTRUCTOR_ATTRIBUTE init_have_lse_atomics(void) {
++#if defined(__FreeBSD__)
++  unsigned long hwcap;
++  int result = elf_aux_info(AT_HWCAP, &hwcap, sizeof hwcap);
++  __aarch64_have_lse_atomics = result == 0 && (hwcap & HWCAP_ATOMICS) != 0;
++#else
+   unsigned long hwcap = getauxval(AT_HWCAP);
+   __aarch64_have_lse_atomics = (hwcap & HWCAP_ATOMICS) != 0;
++#endif
+ }
+ #endif // defined(__has_include)
+ #endif // __has_include(<sys/auxv.h>)
+-- 
+2.34.1.703.g22d0c6ccf7-goog
+

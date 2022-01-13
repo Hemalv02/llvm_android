@@ -1,0 +1,66 @@
+From cce4a7258b81159e57a411896011ee2742f17def Mon Sep 17 00:00:00 2001
+From: Stephen Hines <srhines@google.com>
+Date: Tue, 14 Dec 2021 17:20:06 -0800
+Subject: [PATCH] [compiler-rt][AArch64] Add a workaround for Exynos 9810
+
+Big.LITTLE Heterogeneous architectures, as described by ARM [1],
+require that the instruction set architecture of the big and little
+cores be compatible. However, the Samsung Exynos 9810 is known to
+have different ISAs in its core.
+According to [2], some cores are ARMv8.2 and others are ARMv8.0.
+
+Since LSE is for ARMv8.1 and later, it should be disabled
+for this broken CPU.
+
+[1] https://developer.arm.com/documentation/den0024/a/big-LITTLE-Technology
+[2] https://github.com/golang/go/issues/28431
+
+Patch by: Byoungchan Lee (byoungchan.lee@gmx.com)
+Reviewed By: srhines
+
+Differential Revision: https://reviews.llvm.org/D114523
+---
+ compiler-rt/lib/builtins/cpu_model.c | 20 ++++++++++++++++++--
+ 1 file changed, 18 insertions(+), 2 deletions(-)
+
+diff --git a/compiler-rt/lib/builtins/cpu_model.c b/compiler-rt/lib/builtins/cpu_model.c
+index 53e2d89708dc..cf12aa021d3d 100644
+--- a/compiler-rt/lib/builtins/cpu_model.c
++++ b/compiler-rt/lib/builtins/cpu_model.c
+@@ -798,6 +798,10 @@ _Bool __aarch64_have_lse_atomics
+ #ifndef HWCAP_ATOMICS
+ #define HWCAP_ATOMICS (1 << 8)
+ #endif
++#if defined(__ANDROID__)
++#include <string.h>
++#include <sys/system_properties.h>
++#endif
+ static void CONSTRUCTOR_ATTRIBUTE init_have_lse_atomics(void) {
+ #if defined(__FreeBSD__)
+   unsigned long hwcap;
+@@ -805,8 +809,20 @@ static void CONSTRUCTOR_ATTRIBUTE init_have_lse_atomics(void) {
+   __aarch64_have_lse_atomics = result == 0 && (hwcap & HWCAP_ATOMICS) != 0;
+ #else
+   unsigned long hwcap = getauxval(AT_HWCAP);
+-  __aarch64_have_lse_atomics = (hwcap & HWCAP_ATOMICS) != 0;
+-#endif
++  _Bool result = (hwcap & HWCAP_ATOMICS) != 0;
++#if defined(__ANDROID__)
++  if (result) {
++    char arch[PROP_VALUE_MAX];
++    if (__system_property_get("ro.arch", arch) > 0 &&
++        strncmp(arch, "exynos9810", sizeof("exynos9810") - 1) == 0) {
++      // Some cores of Exynos 9810 are ARMv8.2 and others are ARMv8.0,
++      // so disable the lse atomics completely.
++      result = false;
++    }
++  }
++#endif // defined(__ANDROID__)
++  __aarch64_have_lse_atomics = result;
++#endif // defined(__FreeBSD__)
+ }
+ #endif // defined(__has_include)
+ #endif // __has_include(<sys/auxv.h>)
+-- 
+2.34.1.703.g22d0c6ccf7-goog
+
