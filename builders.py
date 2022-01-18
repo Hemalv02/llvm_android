@@ -647,7 +647,7 @@ class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
         # supports this common malformed input.
         # See LIBTOOL(1).
         if self._config.target_os.is_darwin:
-            defines.pop("CMAKE_RANLIB")
+            defines['CMAKE_RANLIB'] = '/usr/bin/ranlib'
         return defines
 
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
