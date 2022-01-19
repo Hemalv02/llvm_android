@@ -1,0 +1,30 @@
+From: ZijunZhao <zijunzhao@google.com>
+Subject: [PATCH] Fix undefined symbols on Android side issues
+
+---
+ compiler-rt/cmake/config-ix.cmake | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/compiler-rt/cmake/config-ix.cmake
+b/compiler-rt/cmake/config-ix.cmake
+--- a/compiler-rt/cmake/config-ix.cmake
++++ b/compiler-rt/cmake/config-ix.cmake
+@@ -749,9 +749,14 @@
+   set(COMPILER_RT_HAS_PROFILE FALSE)
+ endif()
+
+-if (COMPILER_RT_HAS_SANITIZER_COMMON AND TSAN_SUPPORTED_ARCH AND
+-    OS_NAME MATCHES "Darwin|Linux|FreeBSD|Android|NetBSD")
+-  set(COMPILER_RT_HAS_TSAN TRUE)
++if (COMPILER_RT_HAS_SANITIZER_COMMON AND TSAN_SUPPORTED_ARCH)
++    if (OS_NAME MATCHES "Linux|Darwin|FreeBSD|NetBSD")
++      set(COMPILER_RT_HAS_TSAN TRUE)
++    elseif (OS_NAME MATCHES "Android" AND ANDROID_PLATFORM_LEVEL GREATER 23)
++      set(COMPILER_RT_HAS_TSAN TRUE)
++    else()
++      set(COMPILER_RT_HAS_TSAN FALSE)
++    endif()
+ else()
+   set(COMPILER_RT_HAS_TSAN FALSE)
+ endif()
+
