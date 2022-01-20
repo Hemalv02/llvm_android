@@ -208,6 +208,18 @@
         "start_version": 437112
     },
     {
+        "end_version": 446382,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [clang] diagnose_as_builtin attribute for Fortify diagnosing like builtins."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/bc5f2d12cadce765620efc56a1ca815221db47af.patch",
+        "start_version": 445002
+    },
+    {
         "end_version": 446420,
         "metadata": {
             "info": [],

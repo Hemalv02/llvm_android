@@ -1,0 +1,492 @@
+From bc5f2d12cadce765620efc56a1ca815221db47af Mon Sep 17 00:00:00 2001
+From: Michael Benfield <mbenfield@google.com>
+Date: Tue, 14 Sep 2021 18:36:58 +0000
+Subject: [PATCH] [clang] diagnose_as_builtin attribute for Fortify diagnosing
+ like builtins.
+
+Differential Revision: https://reviews.llvm.org/D112024
+---
+ clang/include/clang/Basic/Attr.td             |   8 ++
+ clang/include/clang/Basic/AttrDocs.td         |  44 +++++++
+ .../clang/Basic/DiagnosticSemaKinds.td        |  13 +-
+ clang/include/clang/Sema/ParsedAttr.h         |   1 +
+ clang/lib/Sema/SemaChecking.cpp               |  64 ++++++++--
+ clang/lib/Sema/SemaDeclAttr.cpp               |  81 ++++++++++++
+ ...a-attribute-supported-attributes-list.test |   1 +
+ clang/test/Sema/attr-diagnose-as-builtin.c    | 118 ++++++++++++++++++
+ 8 files changed, 319 insertions(+), 11 deletions(-)
+ create mode 100644 clang/test/Sema/attr-diagnose-as-builtin.c
+
+diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.td
+index fab3f3edfb83..10c5c7f1b879 100644
+--- a/clang/include/clang/Basic/Attr.td
++++ b/clang/include/clang/Basic/Attr.td
+@@ -3865,6 +3865,14 @@ def ReleaseHandle : InheritableParamAttr {
+   let Documentation = [ReleaseHandleDocs];
+ }
+ 
++def DiagnoseAsBuiltin : InheritableAttr {
++  let Spellings = [Clang<"diagnose_as_builtin">];
++  let Args = [DeclArgument<Function, "Function">,
++              VariadicUnsignedArgument<"ArgIndices">];
++  let Subjects = SubjectList<[Function]>;
++  let Documentation = [DiagnoseAsBuiltinDocs];
++}
++
+ def Builtin : InheritableAttr {
+   let Spellings = [];
+   let Args = [UnsignedArgument<"ID">];
+diff --git a/clang/include/clang/Basic/AttrDocs.td b/clang/include/clang/Basic/AttrDocs.td
+index b005284eb492..8a7424a88c9f 100644
+--- a/clang/include/clang/Basic/AttrDocs.td
++++ b/clang/include/clang/Basic/AttrDocs.td
+@@ -5984,6 +5984,50 @@ attribute requires a string literal argument to identify the handle being releas
+   }];
+ }
+ 
++def DiagnoseAsBuiltinDocs : Documentation {
++  let Category = DocCatFunction;
++  let Content = [{
++The ``diagnose_as_builtin` attribute indicates that Fortify diagnostics are to
++be applied to the declared function as if it were the function specified by the
++attribute. The builtin function whose diagnostics are to be mimicked should be
++given. In addition, the order in which arguments should be applied must also
++be given.
++
++For example, the attribute can be used as follows.
++
++  .. code-block:: c
++
++    __attribute__((diagnose_as_builtin(__builtin_memset, 3, 2, 1)))
++    void *mymemset(int n, int c, void *s) {
++      // ...
++    }
++
++This indicates that calls to ``mymemset`` should be diagnosed as if they were
++calls to ``__builtin_memset``. The arguments ``3, 2, 1`` indicate by index the
++order in which arguments of ``mymemset`` should be applied to
++``__builtin_memset``. The third argument should be applied first, then the
++second, and then the first. Thus (when Fortify warnings are enabled) the call
++``mymemset(n, c, s)`` will diagnose overflows as if it were the call
++``__builtin_memset(s, c, n)``.
++
++For variadic functions, the variadic arguments must come in the same order as
++they would to the builtin function, after all normal arguments. For instance,
++to diagnose a new function as if it were `sscanf`, we can use the attribute as
++follows.
++
++  .. code-block:: c
++  __attribute__((diagnose_as_builtin(sscanf, 1, 2)))
++  int mysscanf(const char *str, const char *format, ...)  {
++    // ...
++  }
++
++Then the call `mysscanf("abc def", "%4s %4s", buf1, buf2)` will be diagnosed as
++if it were the call `sscanf("abc def", "%4s %4s", buf1, buf2)`.
++
++This attribute cannot be applied to non-static member functions.
++}];
++}
++
+ def ArmSveVectorBitsDocs : Documentation {
+   let Category = DocCatType;
+   let Content = [{
+diff --git a/clang/include/clang/Basic/DiagnosticSemaKinds.td b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+index 29d389ee0b0d..038067521559 100644
+--- a/clang/include/clang/Basic/DiagnosticSemaKinds.td
++++ b/clang/include/clang/Basic/DiagnosticSemaKinds.td
+@@ -2956,6 +2956,17 @@ def err_attribute_invalid_argument : Error<
+ def err_attribute_wrong_number_arguments : Error<
+   "%0 attribute %plural{0:takes no arguments|1:takes one argument|"
+   ":requires exactly %1 arguments}1">;
++def err_attribute_wrong_number_arguments_for : Error <
++  "%0 attribute references function %1, which %plural{0:takes no arguments|1:takes one argument|"
++  ":takes exactly %2 arguments}2">;
++def err_attribute_bounds_for_function : Error<
++  "%0 attribute references parameter %1, but the function %2 has only %3 parameters">;
++def err_attribute_no_member_function : Error<
++  "%0 attribute cannot be applied to non-static member functions">;
++def err_attribute_parameter_types : Error<
++  "%0 attribute parameter types do not match: parameter %1 of function %2 has type %3, "
++  "but parameter %4 of function %5 has type %6">;
++
+ def err_attribute_too_many_arguments : Error<
+   "%0 attribute takes no more than %1 argument%s1">;
+ def err_attribute_too_few_arguments : Error<
+@@ -3013,7 +3024,7 @@ def err_attribute_sizeless_type : Error<
+   "%0 attribute cannot be applied to sizeless type %1">;
+ def err_attribute_argument_n_type : Error<
+   "%0 attribute requires parameter %1 to be %select{int or bool|an integer "
+-  "constant|a string|an identifier|a constant expression}2">;
++  "constant|a string|an identifier|a constant expression|a builtin function}2">;
+ def err_attribute_argument_type : Error<
+   "%0 attribute requires %select{int or bool|an integer "
+   "constant|a string|an identifier}1">;
+diff --git a/clang/include/clang/Sema/ParsedAttr.h b/clang/include/clang/Sema/ParsedAttr.h
+index ff2303c84bd2..6403179cb327 100644
+--- a/clang/include/clang/Sema/ParsedAttr.h
++++ b/clang/include/clang/Sema/ParsedAttr.h
+@@ -1097,6 +1097,7 @@ enum AttributeArgumentNType {
+   AANT_ArgumentString,
+   AANT_ArgumentIdentifier,
+   AANT_ArgumentConstantExpr,
++  AANT_ArgumentBuiltinFunction,
+ };
+ 
+ /// These constants match the enumerated choices of
+diff --git a/clang/lib/Sema/SemaChecking.cpp b/clang/lib/Sema/SemaChecking.cpp
+index cd2dc5d9a1a9..956f7abce737 100644
+--- a/clang/lib/Sema/SemaChecking.cpp
++++ b/clang/lib/Sema/SemaChecking.cpp
+@@ -446,14 +446,14 @@ public:
+       break;
+     }
+ 
+-    auto OptionalFW = FS.getFieldWidth();
+-    if (OptionalFW.getHowSpecified() !=
++    analyze_format_string::OptionalAmount FW = FS.getFieldWidth();
++    if (FW.getHowSpecified() !=
+         analyze_format_string::OptionalAmount::HowSpecified::Constant)
+       return true;
+ 
+-    unsigned SourceSize = OptionalFW.getConstantAmount() + NulByte;
++    unsigned SourceSize = FW.getConstantAmount() + NulByte;
+ 
+-    auto DestSizeAPS = ComputeSizeArgument(FS.getArgIndex());
++    Optional<llvm::APSInt> DestSizeAPS = ComputeSizeArgument(FS.getArgIndex());
+     if (!DestSizeAPS)
+       return true;
+ 
+@@ -652,20 +652,53 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
+       isConstantEvaluated())
+     return;
+ 
+-  unsigned BuiltinID = FD->getBuiltinID(/*ConsiderWrappers=*/true);
++  bool UseDABAttr = false;
++  const FunctionDecl *UseDecl = FD;
++
++  const auto *DABAttr = FD->getAttr<DiagnoseAsBuiltinAttr>();
++  if (DABAttr) {
++    UseDecl = DABAttr->getFunction();
++    assert(UseDecl && "Missing FunctionDecl in DiagnoseAsBuiltin attribute!");
++    UseDABAttr = true;
++  }
++
++  unsigned BuiltinID = UseDecl->getBuiltinID(/*ConsiderWrappers=*/true);
++
+   if (!BuiltinID)
+     return;
+ 
+   const TargetInfo &TI = getASTContext().getTargetInfo();
+   unsigned SizeTypeWidth = TI.getTypeWidth(TI.getSizeType());
+ 
++  auto TranslateIndex = [&](unsigned Index) -> Optional<unsigned> {
++    // If we refer to a diagnose_as_builtin attribute, we need to change the
++    // argument index to refer to the arguments of the called function. Unless
++    // the index is out of bounds, which presumably means it's a variadic
++    // function.
++    if (!UseDABAttr)
++      return Index;
++    unsigned DABIndices = DABAttr->argIndices_size();
++    unsigned NewIndex = Index < DABIndices
++                            ? DABAttr->argIndices_begin()[Index]
++                            : Index - DABIndices + FD->getNumParams();
++    if (NewIndex >= TheCall->getNumArgs())
++      return llvm::None;
++    return NewIndex;
++  };
++
+   auto ComputeExplicitObjectSizeArgument =
+       [&](unsigned Index) -> Optional<llvm::APSInt> {
++    Optional<unsigned> IndexOptional = TranslateIndex(Index);
++    if (!IndexOptional)
++      return llvm::None;
++    unsigned NewIndex = IndexOptional.getValue();
+     Expr::EvalResult Result;
+-    Expr *SizeArg = TheCall->getArg(Index);
++    Expr *SizeArg = TheCall->getArg(NewIndex);
+     if (!SizeArg->EvaluateAsInt(Result, getASTContext()))
+       return llvm::None;
+-    return Result.Val.getInt();
++    llvm::APSInt Integer = Result.Val.getInt();
++    Integer.setIsUnsigned(true);
++    return Integer;
+   };
+ 
+   auto ComputeSizeArgument = [&](unsigned Index) -> Optional<llvm::APSInt> {
+@@ -680,7 +713,12 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
+         BOSType = POS->getType();
+     }
+ 
+-    const Expr *ObjArg = TheCall->getArg(Index);
++    Optional<unsigned> IndexOptional = TranslateIndex(Index);
++    if (!IndexOptional)
++      return llvm::None;
++    unsigned NewIndex = IndexOptional.getValue();
++
++    const Expr *ObjArg = TheCall->getArg(NewIndex);
+     uint64_t Result;
+     if (!ObjArg->tryEvaluateObjectSize(Result, getASTContext(), BOSType))
+       return llvm::None;
+@@ -690,7 +728,12 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
+   };
+ 
+   auto ComputeStrLenArgument = [&](unsigned Index) -> Optional<llvm::APSInt> {
+-    Expr *ObjArg = TheCall->getArg(Index);
++    Optional<unsigned> IndexOptional = TranslateIndex(Index);
++    if (!IndexOptional)
++      return llvm::None;
++    unsigned NewIndex = IndexOptional.getValue();
++
++    const Expr *ObjArg = TheCall->getArg(NewIndex);
+     uint64_t Result;
+     if (!ObjArg->tryEvaluateStrLen(Result, getASTContext()))
+       return llvm::None;
+@@ -898,7 +941,8 @@ void Sema::checkFortifiedBuiltinMemoryFunction(FunctionDecl *FD,
+   }
+ 
+   if (!SourceSize || !DestinationSize ||
+-      SourceSize.getValue().ule(DestinationSize.getValue()))
++      llvm::APSInt::compareValues(SourceSize.getValue(),
++                                  DestinationSize.getValue()) <= 0)
+     return;
+ 
+   StringRef FunctionName = GetFunctionName();
+diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
+index ba22c1667b40..b6bd2e69629d 100644
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -1001,6 +1001,84 @@ public:
+ };
+ }
+ 
++static void handleDiagnoseAsBuiltinAttr(Sema &S, Decl *D,
++                                        const ParsedAttr &AL) {
++  const auto *DeclFD = cast<FunctionDecl>(D);
++
++  if (const auto *MethodDecl = dyn_cast<CXXMethodDecl>(DeclFD))
++    if (!MethodDecl->isStatic()) {
++      S.Diag(AL.getLoc(), diag::err_attribute_no_member_function) << AL;
++      return;
++    }
++
++  auto DiagnoseType = [&](unsigned Index, AttributeArgumentNType T) {
++    SourceLocation Loc = [&]() {
++      auto Union = AL.getArg(Index - 1);
++      if (Union.is<Expr *>())
++        return Union.get<Expr *>()->getBeginLoc();
++      return Union.get<IdentifierLoc *>()->Loc;
++    }();
++
++    S.Diag(Loc, diag::err_attribute_argument_n_type) << AL << Index << T;
++  };
++
++  FunctionDecl *AttrFD = [&]() -> FunctionDecl * {
++    if (!AL.isArgExpr(0))
++      return nullptr;
++    auto *F = dyn_cast_or_null<DeclRefExpr>(AL.getArgAsExpr(0));
++    if (!F)
++      return nullptr;
++    return dyn_cast_or_null<FunctionDecl>(F->getFoundDecl());
++  }();
++
++  if (!AttrFD || !AttrFD->getBuiltinID(true)) {
++    DiagnoseType(1, AANT_ArgumentBuiltinFunction);
++    return;
++  }
++
++  if (AttrFD->getNumParams() != AL.getNumArgs() - 1) {
++    S.Diag(AL.getLoc(), diag::err_attribute_wrong_number_arguments_for)
++        << AL << AttrFD << AttrFD->getNumParams();
++    return;
++  }
++
++  SmallVector<unsigned, 8> Indices;
++
++  for (unsigned I = 1; I < AL.getNumArgs(); ++I) {
++    if (!AL.isArgExpr(I)) {
++      DiagnoseType(I + 1, AANT_ArgumentIntegerConstant);
++      return;
++    }
++
++    const Expr *IndexExpr = AL.getArgAsExpr(I);
++    uint32_t Index;
++
++    if (!checkUInt32Argument(S, AL, IndexExpr, Index, I + 1, false))
++      return;
++
++    if (Index > DeclFD->getNumParams()) {
++      S.Diag(AL.getLoc(), diag::err_attribute_bounds_for_function)
++          << AL << Index << DeclFD << DeclFD->getNumParams();
++      return;
++    }
++
++    QualType T1 = AttrFD->getParamDecl(I - 1)->getType();
++    QualType T2 = DeclFD->getParamDecl(Index - 1)->getType();
++
++    if (T1.getCanonicalType().getUnqualifiedType() !=
++        T2.getCanonicalType().getUnqualifiedType()) {
++      S.Diag(IndexExpr->getBeginLoc(), diag::err_attribute_parameter_types)
++          << AL << Index << DeclFD << T2 << I << AttrFD << T1;
++      return;
++    }
++
++    Indices.push_back(Index - 1);
++  }
++
++  D->addAttr(::new (S.Context) DiagnoseAsBuiltinAttr(
++      S.Context, AL, AttrFD, Indices.data(), Indices.size()));
++}
++
+ static void handleDiagnoseIfAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+   S.Diag(AL.getLoc(), diag::ext_clang_diagnose_if);
+ 
+@@ -8159,6 +8237,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
+   case ParsedAttr::AT_DiagnoseIf:
+     handleDiagnoseIfAttr(S, D, AL);
+     break;
++  case ParsedAttr::AT_DiagnoseAsBuiltin:
++    handleDiagnoseAsBuiltinAttr(S, D, AL);
++    break;
+   case ParsedAttr::AT_NoBuiltin:
+     handleNoBuiltinAttr(S, D, AL);
+     break;
+diff --git a/clang/test/Misc/pragma-attribute-supported-attributes-list.test b/clang/test/Misc/pragma-attribute-supported-attributes-list.test
+index a3b1ce0adca7..82d3c446c011 100644
+--- a/clang/test/Misc/pragma-attribute-supported-attributes-list.test
++++ b/clang/test/Misc/pragma-attribute-supported-attributes-list.test
+@@ -57,6 +57,7 @@
+ // CHECK-NEXT: DLLExport (SubjectMatchRule_function, SubjectMatchRule_variable, SubjectMatchRule_record, SubjectMatchRule_objc_interface)
+ // CHECK-NEXT: DLLImport (SubjectMatchRule_function, SubjectMatchRule_variable, SubjectMatchRule_record, SubjectMatchRule_objc_interface)
+ // CHECK-NEXT: Destructor (SubjectMatchRule_function)
++// CHECK-NEXT: DiagnoseAsBuiltin (SubjectMatchRule_function)
+ // CHECK-NEXT: DisableSanitizerInstrumentation (SubjectMatchRule_function, SubjectMatchRule_objc_method, SubjectMatchRule_variable_is_global)
+ // CHECK-NEXT: DisableTailCalls (SubjectMatchRule_function, SubjectMatchRule_objc_method)
+ // CHECK-NEXT: EnableIf (SubjectMatchRule_function)
+diff --git a/clang/test/Sema/attr-diagnose-as-builtin.c b/clang/test/Sema/attr-diagnose-as-builtin.c
+new file mode 100644
+index 000000000000..b972beaf2a2f
+--- /dev/null
++++ b/clang/test/Sema/attr-diagnose-as-builtin.c
+@@ -0,0 +1,118 @@
++// RUN: %clang_cc1 -Wfortify-source -triple x86_64-apple-macosx10.14.0 %s -verify
++// RUN: %clang_cc1 -Wfortify-source -xc++ -triple x86_64-apple-macosx10.14.0 %s -verify
++
++typedef unsigned long size_t;
++
++__attribute__((diagnose_as_builtin(__builtin_memcpy, 3, 1, 2))) int x; // expected-warning {{'diagnose_as_builtin' attribute only applies to functions}}
++
++void *test_memcpy(const void *src, size_t c, void *dst) __attribute__((diagnose_as_builtin(__builtin_memcpy, 3, 1, 2))) {
++  return __builtin_memcpy(dst, src, c);
++}
++
++void call_test_memcpy() {
++  char bufferA[10];
++  char bufferB[11];
++  test_memcpy(bufferB, 10, bufferA);
++  test_memcpy(bufferB, 11, bufferA); // expected-warning {{'memcpy' will always overflow; destination buffer has size 10, but size argument is 11}}
++}
++
++void failure_function_doesnt_exist() __attribute__((diagnose_as_builtin(__function_that_doesnt_exist))) {} // expected-error {{use of undeclared identifier '__function_that_doesnt_exist'}}
++
++void not_a_builtin() {}
++
++void failure_not_a_builtin() __attribute__((diagnose_as_builtin(not_a_builtin))) {} // expected-error {{'diagnose_as_builtin' attribute requires parameter 1 to be a builtin function}}
++
++void failure_too_many_parameters(void *dst, const void *src, size_t count, size_t nothing) __attribute__((diagnose_as_builtin(__builtin_memcpy, 1, 2, 3, 4))) {} // expected-error {{'diagnose_as_builtin' attribute references function '__builtin_memcpy', which takes exactly 3 arguments}}
++
++void failure_too_few_parameters(void *dst, const void *src) __attribute__((diagnose_as_builtin(__builtin_memcpy, 1, 2))) {} // expected-error{{'diagnose_as_builtin' attribute references function '__builtin_memcpy', which takes exactly 3 arguments}}
++
++void failure_not_an_integer(void *dst, const void *src, size_t count) __attribute__((diagnose_as_builtin(__builtin_memcpy, "abc", 2, 3))) {} // expected-error{{'diagnose_as_builtin' attribute requires parameter 2 to be an integer constant}}
++
++void failure_not_a_builtin2() __attribute__((diagnose_as_builtin("abc"))) {} // expected-error{{'diagnose_as_builtin' attribute requires parameter 1 to be a builtin function}}
++
++void failure_parameter_index_bounds(void *dst, const void *src) __attribute__((diagnose_as_builtin(__builtin_memcpy, 1, 2, 3))) {} // expected-error{{'diagnose_as_builtin' attribute references parameter 3, but the function 'failure_parameter_index_bounds' has only 2 parameters}}
++
++void failure_parameter_types(double dst, const void *src, size_t count) __attribute__((diagnose_as_builtin(__builtin_memcpy, 1, 2, 3))) {} // expected-error{{'diagnose_as_builtin' attribute parameter types do not match: parameter 1 of function 'failure_parameter_types' has type 'double', but parameter 1 of function '__builtin_memcpy' has type 'void *'}}
++
++void to_redeclare(void *dst, const void *src, size_t count);
++
++void use_to_redeclare() {
++  char src[10];
++  char dst[9];
++  // We shouldn't get an error yet.
++  to_redeclare(dst, src, 10);
++}
++
++void to_redeclare(void *dst, const void *src, size_t count) __attribute((diagnose_as_builtin(__builtin_memcpy, 1, 2, 3)));
++
++void error_to_redeclare() {
++  char src[10];
++  char dst[9];
++  // Now we get an error.
++  to_redeclare(dst, src, 10); // expected-warning {{'memcpy' will always overflow; destination buffer has size 9, but size argument is 10}}
++}
++
++// Make sure this works even with extra qualifiers and the pass_object_size attribute.
++void *memcpy2(void *const dst __attribute__((pass_object_size(0))), const void *src, size_t copy_amount) __attribute((diagnose_as_builtin(__builtin_memcpy, 1, 2, 3)));
++
++void call_memcpy2() {
++  char buf1[10];
++  char buf2[11];
++  memcpy2(buf1, buf2, 11); // expected-warning {{'memcpy' will always overflow; destination buffer has size 10, but size argument is 11}}
++}
++
++// We require the types to be identical, modulo canonicalization and qualifiers.
++// Maybe this could be relaxed if it proves too restrictive.
++void failure_type(void *dest, char val, size_t n) __attribute__((diagnose_as_builtin(__builtin_memset, 1, 2, 3))) {} // expected-error {{'diagnose_as_builtin' attribute parameter types do not match: parameter 2 of function 'failure_type' has type 'char', but parameter 2 of function '__builtin_memset' has type 'int'}}
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++extern int sscanf(const char *input, const char *format, ...);
++
++#ifdef __cplusplus
++}
++#endif
++
++// Variadics should work.
++int mysscanf(const char *str, const char *format, ...) __attribute__((diagnose_as_builtin(sscanf, 1, 2)));
++
++void warn_mysccanf() {
++  char buf[10];
++  mysscanf("", "%10s", buf); // expected-warning{{'sscanf' may overflow; destination buffer in argument 3 has size 10, but the corresponding specifier may require size 11}}
++}
++
++#ifdef __cplusplus
++
++template <class T>
++void some_templated_function(int x) {
++  return;
++}
++
++void failure_template(int x) __attribute__((diagnose_as_builtin(some_templated_function, 1))) {} // expected-error{{'diagnose_as_builtin' attribute requires parameter 1 to be a builtin function}}
++
++void failure_template_instantiation(int x) __attribute__((diagnose_as_builtin(some_templated_function<int>, 1))) {} // expected-error{{'diagnose_as_builtin' attribute requires parameter 1 to be a builtin function}}
++
++void overloaded_function(unsigned);
++
++void overloaded_function(int);
++
++void failure_overloaded_function(int) __attribute__((diagnose_as_builtin(overloaded_function, 1))) {} // expected-error{{'diagnose_as_builtin' attribute requires parameter 1 to be a builtin function}}
++
++struct S {
++  __attribute__((diagnose_as_builtin(__builtin_memset))) void f(); // expected-error{{'diagnose_as_builtin' attribute cannot be applied to non-static member functions}}
++
++  __attribute__((diagnose_as_builtin(__builtin_memcpy, 3, 1, 2))) static void *test_memcpy(const void *src, size_t c, void *dst) {
++    return __builtin_memcpy(dst, src, c);
++  }
++};
++
++void call_static_test_memcpy() {
++  char bufferA[10];
++  char bufferB[11];
++  S::test_memcpy(bufferB, 10, bufferA);
++  S::test_memcpy(bufferB, 11, bufferA); // expected-warning {{'memcpy' will always overflow; destination buffer has size 10, but size argument is 11}}
++}
++
++#endif
+-- 
+2.35.0.rc0.227.g00780c9af4-goog
+
