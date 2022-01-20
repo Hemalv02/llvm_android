@@ -24,6 +24,7 @@ import shutil
 import textwrap
 import timer
 
+import android_version
 import base_builders
 import configs
 import constants
@@ -502,8 +503,13 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
 
     def install_config(self) -> None:
         # We need to install libunwind manually.
-        src_path = self.output_dir / 'lib64' / 'libunwind.a'
         arch = self._config.target_arch
+        if android_version.get_svn_revision() == 'r445002':
+            if not android_version.is_llvm_next():
+                raise RuntimeError('remove this version check')
+            src_path = self.output_dir / 'lib' / 'libunwind.a'
+        else:
+            src_path = self.output_dir / 'lib64' / 'libunwind.a'
         out_res_dir = self.output_toolchain.resource_dir / arch.value
         out_res_dir.mkdir(parents=True, exist_ok=True)
 
@@ -884,7 +890,12 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
         install_dir = self._config.sysroot / 'usr' / lib_name
 
         if self._is_64bit():
-            src_path = self.output_dir / 'lib64' / 'libc++abi.a'
+            if android_version.get_svn_revision() == 'r445002':
+                if not android_version.is_llvm_next():
+                    raise RuntimeError('remove this version check')
+                src_path = self.output_dir / 'lib' / 'libc++abi.a'
+            else:
+                src_path = self.output_dir / 'lib64' / 'libc++abi.a'
             shutil.copy2(src_path, install_dir / 'libc++abi.a')
         else:
             with (install_dir / 'libc++abi.so').open('w') as f:
@@ -968,6 +979,8 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         if self.build_lldb:
             defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
             defines['LLDB_PYTHON_RELATIVE_PATH'] = f'lib/python{paths._PYTHON_VER}/site-packages'
+            defines['LLDB_PYTHON_EXE_RELATIVE_PATH'] = f'python3'
+            defines['LLDB_PYTHON_EXT_SUFFIX'] = '.exe'
         defines['LLVM_ENABLE_PLUGINS'] = 'ON'
 
         defines['CMAKE_CXX_STANDARD'] = '17'

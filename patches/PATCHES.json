@@ -220,6 +220,18 @@
         "start_version": 437112
     },
     {
+        "end_version": 449463,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [libc++] Fix GDB pretty printers when GDB uses Python 2.7"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/89103bd2f06dea6dc89276cd12dd78c72476b03f.patch",
+        "start_version": 445002
+    },
+    {
         "end_version": null,
         "metadata": {
             "info": [],
@@ -244,7 +256,7 @@
         "start_version": 370808
     },
     {
-        "end_version": null,
+        "end_version": 445002,
         "metadata": {
             "info": [
                 "b/197147102, bionic/tests/clang_fortify_tests.cpp"
@@ -280,5 +292,17 @@
         ],
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
         "start_version": 412851
+    },
+    {
+        "end_version": null,
+        "metadata": {
+            "info": [],
+            "title": "Fix undefined symbols on Android side issues"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "TSAN-Fix-undefined-symbols-on-Android-side-issues.patch",
+        "start_version": 443803
     }
 ]

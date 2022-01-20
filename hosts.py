@@ -26,6 +26,11 @@ class Host(enum.Enum):
     Android = 'android'
 
     @property
+    def is_android(self) -> bool:
+        """Returns True if the given host is Android."""
+        return self == Host.Android
+
+    @property
     def is_windows(self) -> bool:
         """Returns True if the given host is Windows."""
         return self == Host.Windows
