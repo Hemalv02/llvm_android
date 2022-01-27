@@ -466,6 +466,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                            'cherry-picks, see clang_source_info.md')
     shutil.copy2(paths.OUT_DIR / 'clang_source_info.md', install_dir)
 
+
+    # Remove optrecord.py to avoid auto-filed bugs about call to yaml.load_all
+    os.remove(install_dir / 'share/opt-viewer/optrecord.py')
+
     if host.is_linux:
 
         # Add BUILD.bazel file.
