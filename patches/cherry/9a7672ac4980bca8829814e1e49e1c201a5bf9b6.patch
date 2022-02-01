@@ -1,0 +1,97 @@
+From 9a7672ac4980bca8829814e1e49e1c201a5bf9b6 Mon Sep 17 00:00:00 2001
+From: David Spickett <david.spickett@linaro.org>
+Date: Mon, 18 Jan 2021 15:36:16 +0000
+Subject: [PATCH] [lldb] Fix crash in "help memory read"
+
+When a command option does not have a short version
+(e.g. -f for --file), we use an arbitrary value in the
+short_option field to mark it as invalid.
+(though this value is unqiue to be used later for other
+things)
+
+We check that this short option is valid to print using
+llvm::isPrint. This implicitly casts our int to char,
+meaning we check the last char of any short_option value.
+
+Since the arbitrary value we chose for these options is
+some shortened hex version of the name, this returned true
+even for invalid values.
+
+Since llvm::isPrint returns true we later call std::islower
+and/or std::isupper on the short_option value. (the int)
+
+Calling these functions with something that cannot be validly
+converted to unsigned char is undefined. Somehow we got/get
+away with this but for me compiling with g++-9 I got a crash
+for "help memory read".
+
+The other command that uses this is "target variable" but that
+didn't crash for unknown reasons.
+
+Checking that short_option can fit into an unsigned char before
+we call llvm::isPrint means we will not attempt to call islower/upper
+on these options since we have no reason to print them.
+
+This also fixes bogus short options being shown for "memory read"
+and target variable.
+
+For "target variable", before:
+       -e <filename> ( --file <filename> )
+       -b <filename> ( --shlib <filename> )
+After:
+       --file <filename>
+       --shlib <filename>
+
+(note that the bogus short options are just the bottom byte of our
+arbitrary short_option value)
+
+Reviewed By: labath
+
+Differential Revision: https://reviews.llvm.org/D94917
+---
+ lldb/include/lldb/Utility/OptionDefinition.h | 5 ++++-
+ lldb/test/API/commands/help/TestHelp.py      | 5 +++++
+ 2 files changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/lldb/include/lldb/Utility/OptionDefinition.h b/lldb/include/lldb/Utility/OptionDefinition.h
+index 725e0904f159..082f0f0aa3fa 100644
+--- a/lldb/include/lldb/Utility/OptionDefinition.h
++++ b/lldb/include/lldb/Utility/OptionDefinition.h
+@@ -12,6 +12,8 @@
+ #include "lldb/lldb-enumerations.h"
+ #include "lldb/lldb-private-types.h"
+ #include "llvm/ADT/StringExtras.h"
++#include "llvm/Support/MathExtras.h"
++#include <climits>
+ #include <cstdint>
+ 
+ namespace lldb_private {
+@@ -47,7 +49,8 @@ struct OptionDefinition {
+   /// Whether this has a short option character.
+   bool HasShortOption() const {
+     // See the short_option documentation for more.
+-    return llvm::isPrint(short_option);
++    return llvm::isUInt<CHAR_BIT>(short_option) &&
++           llvm::isPrint(short_option);
+   }
+ };
+ } // namespace lldb_private
+diff --git a/lldb/test/API/commands/help/TestHelp.py b/lldb/test/API/commands/help/TestHelp.py
+index 2e849fb768a7..c6af3b1877e1 100644
+--- a/lldb/test/API/commands/help/TestHelp.py
++++ b/lldb/test/API/commands/help/TestHelp.py
+@@ -56,6 +56,11 @@ class HelpCommandTestCase(TestBase):
+         self.runCmd("help disasm", check=False)
+         self.runCmd("help unsigned-integer")
+ 
++    @no_debug_info_test
++    def test_help_memory_read_should_not_crash_lldb(self):
++        """Command 'help memory read' should not crash lldb."""
++        self.runCmd("help memory read", check=False)
++
+     @no_debug_info_test
+     def test_help_should_not_hang_emacsshell(self):
+         """Command 'settings set term-width 0' should not hang the help command."""
+-- 
+2.35.0.rc2.247.g8bbb082509-goog
+
