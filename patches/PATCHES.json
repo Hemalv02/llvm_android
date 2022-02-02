@@ -316,5 +316,57 @@
         ],
         "rel_patch_path": "TSAN-Fix-undefined-symbols-on-Android-side-issues.patch",
         "start_version": 443803
+    },
+    {
+        "end_version": 445113,
+        "metadata": {
+            "info": [],
+            "title": "Revert \"tsan: new runtime (v3)\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/09859113ed23ea11ce5726f0d19bc57e93ecbaab.patch",
+        "start_version": 444647
+    },
+    {
+        "end_version": 445145,
+        "metadata": {
+            "info": [],
+            "title": "[Analyzer][solver] Simplification: Do a fixpoint iteration before the eq class merge"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/20f8733d4b8d5bdb93080b8824de57b7fae31785.patch",
+        "start_version": 444923
+    },
+    {
+        "end_version": 446091,
+        "metadata": {
+            "info": [],
+            "title": "Revert \"X86InstrInfo: Support immediates that are +1/-1 different in optimizeCompareInstr\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/ea81cea8163a1a0e54df42103ee1c657bbf03791.patch",
+        "start_version": 442651
+    },
+    {
+        "end_version": 448047,
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[AArch64] Emit .cfi_negate_ra_state for PAC-auth instructions.\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/131c06e6da79c5f3ca6761676d084f46252436eb.patch",
+        "start_version": 441265
     }
 ]
