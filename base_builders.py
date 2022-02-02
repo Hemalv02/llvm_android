@@ -147,6 +147,9 @@ class Builder:  # pylint: disable=too-few-public-methods
     def _is_cross_compiling(self) -> bool:
         return self._config.target_os != hosts.build_host()
 
+    def _is_64bit(self) -> bool:
+        return self._config.target_arch in (hosts.Arch.AARCH64, hosts.Arch.X86_64)
+
     @property
     def _cc(self) -> Path:
         return self._config.get_c_compiler(self.toolchain)

@@ -287,6 +287,7 @@ class AndroidConfig(_BaseConfig):
     static: bool = False
     platform: bool = False
     suppress_libcxx_headers: bool = False
+    override_api_level: Optional[int] = None
 
     @property
     def base_llvm_triple(self) -> str:
@@ -370,6 +371,8 @@ class AndroidConfig(_BaseConfig):
 
     @property
     def api_level(self) -> int:
+        if self.override_api_level:
+            return self.override_api_level
         if self.static or self.platform:
             # Set API level for platform to to 29 since these runtimes can be
             # used for apexes targeting that API level.
@@ -465,5 +468,17 @@ def android_configs(platform: bool=True,
         config.platform = platform
         config.suppress_libcxx_headers = suppress_libcxx_headers
         config.extra_config = extra_config
+    # List is not covariant. Explicit convert is required to make it List[Config].
+    return list(configs)
+
+
+def android_ndk_tsan_configs() -> List[Config]:
+    """Returns a list of configs for android builds."""
+    configs = [
+        AndroidAArch64Config(),
+        AndroidX64Config(),
+    ]
+    for config in configs:
+        config.override_api_level = 24
     # List is not covariant. Explicit convert is required to make it List[Config].
     return list(configs)

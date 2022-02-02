@@ -33,32 +33,27 @@ import mapfile
 import paths
 import utils
 
-class AsanMapFileBuilder(base_builders.Builder):
-    name: str = 'asan-mapfile'
+class SanitizerMapFileBuilder(base_builders.Builder):
+    name: str = 'sanitizer-mapfile'
     config_list: List[configs.Config] = configs.android_configs()
 
     def _build_config(self) -> None:
         arch = self._config.target_arch
-        # We can not build asan_test using current CMake building system. Since
-        # those files are not used to build AOSP, we just simply touch them so that
-        # we can pass the build checks.
-        asan_test_path = self.output_toolchain.path / 'test' / arch.llvm_arch / 'bin'
-        asan_test_path.mkdir(parents=True, exist_ok=True)
-        asan_test_bin_path = asan_test_path / 'asan_test'
-        asan_test_bin_path.touch(exist_ok=True)
 
         lib_dir = self.output_toolchain.resource_dir
-        self._build_sanitizer_map_file('asan', arch, lib_dir)
-        self._build_sanitizer_map_file('ubsan_standalone', arch, lib_dir)
+        self._build_sanitizer_map_file('asan', arch, lib_dir, 'ASAN')
+        self._build_sanitizer_map_file('ubsan_standalone', arch, lib_dir, 'ASAN')
+        if super()._is_64bit():
+           self._build_sanitizer_map_file('tsan', arch, lib_dir, 'TSAN')
 
         if arch == hosts.Arch.AARCH64:
-            self._build_sanitizer_map_file('hwasan', arch, lib_dir)
+            self._build_sanitizer_map_file('hwasan', arch, lib_dir, 'ASAN')
 
     @staticmethod
-    def _build_sanitizer_map_file(san: str, arch: hosts.Arch, lib_dir: Path) -> None:
+    def _build_sanitizer_map_file(san: str, arch: hosts.Arch, lib_dir: Path, section_name: str) -> None:
         lib_file = lib_dir / f'libclang_rt.{san}-{arch.llvm_arch}-android.so'
         map_file = lib_dir / f'libclang_rt.{san}-{arch.llvm_arch}-android.map.txt'
-        mapfile.create_map_file(lib_file, map_file)
+        mapfile.create_map_file(lib_file, map_file, section_name)
 
 
 class Stage1Builder(base_builders.LLVMBuilder):
@@ -335,7 +330,6 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-        arch = self._config.target_arch
         defines['COMPILER_RT_BUILD_BUILTINS'] = 'OFF'
         defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
         # FIXME: Disable WError build until upstream fixed the compiler-rt
@@ -866,11 +860,8 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         return defines
 
-    def _is_64bit(self) -> bool:
-        return self._config.target_arch in (hosts.Arch.AARCH64, hosts.Arch.X86_64)
-
     def _build_config(self) -> None:
-        if self._is_64bit():
+        if super()._is_64bit():
             # For arm64 and x86_64, build static cxxabi library from
             # toolchain/libcxxabi and use it when building runtimes.  This
             # should affect all compiler-rt runtimes that use libcxxabi
@@ -884,7 +875,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
         lib_name = 'lib64' if arch == hosts.Arch.X86_64 else 'lib'
         install_dir = self._config.sysroot / 'usr' / lib_name
 
-        if self._is_64bit():
+        if super()._is_64bit():
             src_path = self.output_dir / 'lib' / 'libc++abi.a'
             shutil.copy2(src_path, install_dir / 'libc++abi.a')
         else:
@@ -1037,3 +1028,54 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
             %~dp0lldb.exe %*
             EXIT /B %ERRORLEVEL%
         """))
+
+
+class TsanBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'tsan'
+    src_dir: Path = paths.LLVM_PATH / 'compiler-rt'
+    config_list: List[configs.Config] = configs.android_ndk_tsan_configs()
+
+    @property
+    def install_dir(self) -> Path:
+        # Installs to a temporary dir and copies to runtimes_ndk_cxx manually.
+        output_dir = self.output_dir
+        return output_dir.parent / (output_dir.name + '-install')
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['COMPILER_RT_BUILD_BUILTINS'] = 'OFF'
+        defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
+        defines['COMPILER_RT_SANITIZERS_TO_BUILD'] = 'tsan'
+        defines['COMPILER_RT_TEST_COMPILER_CFLAGS'] = defines['CMAKE_C_FLAGS']
+        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = self._config.llvm_triple
+        defines['COMPILER_RT_INCLUDE_TESTS'] = 'OFF'
+        defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
+        # With CMAKE_SYSTEM_NAME='Android', compiler-rt will be installed to
+        # lib/android instead of lib/linux.
+        del defines['CMAKE_SYSTEM_NAME']
+        libs: List[str] = []
+        # Currently, -rtlib=compiler-rt (even with -unwindlib=libunwind) does
+        # not automatically link libunwind.a on Android.
+        libs += ['-lunwind']
+        defines['SANITIZER_COMMON_LINK_LIBS'] = ' '.join(libs)
+        # compiler-rt's CMakeLists.txt file deletes -Wl,-z,defs from
+        # CMAKE_SHARED_LINKER_FLAGS when COMPILER_RT_USE_BUILTINS_LIBRARY is
+        # set. We want this flag on instead to catch unresolved references
+        # early.
+        defines['SANITIZER_COMMON_LINK_FLAGS'] = '-Wl,-z,defs'
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-funwind-tables')
+        return cflags
+
+    def install_config(self) -> None:
+        # Still run `ninja install`.
+        super().install_config()
+
+        lib_dir = self.install_dir / 'lib' / 'linux'
+        dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
+        shutil.copytree(lib_dir, dst_dir, dirs_exist_ok=True)
