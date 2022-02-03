@@ -178,6 +178,33 @@ class LinuxConfig(_GccConfig):
         ]
 
 
+class LinuxMuslConfig(LinuxConfig):
+    """Config for Musl sysroot bootstrapping"""
+    target_os: hosts.Host = hosts.Host.Linux
+
+    def __init__(self, is_32_bit: bool = False):
+        self.is_32_bit = is_32_bit
+
+    @property
+    def llvm_triple(self) -> str:
+        if self.is_32_bit:
+            return 'i686-linux-musl'
+        else:
+            return 'x86_64-linux-musl'
+
+    @property
+    def cflags(self) -> List[str]:
+        return super().cflags + [
+                f'--target={self.llvm_triple}',
+                '-D_LIBCPP_HAS_MUSL_LIBC',
+        ]
+
+    @property
+    def sysroot(self) -> Path:
+        suffix = '32' if self.is_32_bit else ''
+        return paths.BUILD_TOOLS_DIR / 'sysroots' / self.llvm_triple
+
+
 class MinGWConfig(_GccConfig):
     """Configuration for MinGW targets."""
 
