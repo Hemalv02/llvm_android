@@ -244,6 +244,18 @@
         "start_version": 445002
     },
     {
+        "end_version": 451237,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [hwasan] work around lifetime issue with setjmp."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/aefb2e134dd715c2c48a7b826d2d56db51ce63ac.patch",
+        "start_version": 445002
+    },
+    {
         "end_version": null,
         "metadata": {
             "info": [],
