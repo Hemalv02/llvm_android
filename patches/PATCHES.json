@@ -320,6 +320,30 @@
         "start_version": 445002
     },
     {
+        "end_version": 451402,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v0.patch",
+        "start_version": 445002
+    },
+    {
+        "end_version": 452121,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9.patch",
+        "start_version": 451402
+    },
+    {
         "end_version": null,
         "metadata": {
             "info": [],
