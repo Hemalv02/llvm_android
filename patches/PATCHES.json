@@ -308,6 +308,18 @@
         "start_version": 445002
     },
     {
+        "end_version": 449689,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] add tsan shared library"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/c0f9592daae3be17e5fd1528a8f6067cb0c3bd91.patch",
+        "start_version": 445002
+    },
+    {
         "end_version": 451237,
         "metadata": {
             "info": [],
@@ -404,17 +416,5 @@
         ],
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
         "start_version": 412851
-    },
-    {
-        "end_version": null,
-        "metadata": {
-            "info": [],
-            "title": "Fix undefined symbols on Android side issues"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "TSAN-Fix-undefined-symbols-on-Android-side-issues.patch",
-        "start_version": 443803
     }
 ]
