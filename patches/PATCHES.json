@@ -222,6 +222,30 @@
         "start_version": 444923
     },
     {
+        "end_version": 445406,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [clang][ARM] relax -mtp=cp15 for non-thumb cases"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9f95bc7dc18390199553cf2ea3bfcdc6a95717ef.patch",
+        "start_version": 445002
+    },
+    {
+        "end_version": 445576,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [clang][ARM] only check -mtp=cp15 for non-asm sources"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/73ee4e1cbd643028d63200f05199a128609aba5f.patch",
+        "start_version": 445002
+    },
+    {
         "end_version": 445729,
         "metadata": {
             "info": [],
@@ -281,6 +305,18 @@
         ],
         "rel_patch_path": "cherry/cce4a7258b81159e57a411896011ee2742f17def.patch",
         "start_version": 437112
+    },
+    {
+        "end_version": 447356,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [clang][ARM] re-use arm::isHardTPSupported for hardware TLS check"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/cd284b7ac0615afc6e0f1a30da2777e361de27a3.patch",
+        "start_version": 445002
     },
     {
         "end_version": 448047,
