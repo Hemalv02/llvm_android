@@ -15,7 +15,7 @@
   {
     "pattern": "prebuilts/(.*)",
     "vname": {
-      "root": "prebults",
+      "root": "prebuilts",
       "path": "@1@"
     }
   }
