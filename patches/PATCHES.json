@@ -392,6 +392,19 @@
         "start_version": 451402
     },
     {
+        "end_version": 452761,
+        "metadata": {
+            "info": [],
+            "title": "[sanitizer] Check if directory exists before trying to create"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/634da7a1c61ee8c173e90a841eb1f4ea03caa20b.patch",
+        "start_version": 438528
+    },
+    {
         "end_version": null,
         "metadata": {
             "info": [],
