@@ -1,0 +1,60 @@
+From 51e242488bc5c4060add0908f9b6c9dd1821984a Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Mon, 21 Feb 2022 01:43:02 +0800
+Subject: [PATCH] Revert "[ELF] Move
+ excludeLibs/redirectSymbols/replaceCommonSymbols adjacent"
+
+This reverts commit abc388ed3cf0ef7e617ebe243d3b0b32d29e69a5.
+---
+ lld/ELF/Driver.cpp | 18 +++++++++---------
+ 1 file changed, 9 insertions(+), 9 deletions(-)
+
+diff --git a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+index 4f5f58dadbd0..db0d5bbe353a 100644
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -2395,6 +2395,12 @@ void LinkerDriver::link(opt::InputArgList &args) {
+   // except a few linker-synthesized ones will be added to the symbol table.
+   invokeELFT(compileBitcodeFiles, skipLinkedOutput);
+ 
++  // Handle --exclude-libs again because lto.tmp may reference additional
++  // libcalls symbols defined in an excluded archive. This may override
++  // versionId set by scanVersionScript().
++  if (args.hasArg(OPT_exclude_libs))
++    excludeLibs(args);
++
+   // Symbol resolution finished. Report backward reference problems.
+   reportBackrefs();
+   if (errorCount())
+@@ -2404,18 +2410,9 @@ void LinkerDriver::link(opt::InputArgList &args) {
+   if (skipLinkedOutput)
+     return;
+ 
+-  // Handle --exclude-libs again because lto.tmp may reference additional
+-  // libcalls symbols defined in an excluded archive. This may override
+-  // versionId set by scanVersionScript().
+-  if (args.hasArg(OPT_exclude_libs))
+-    excludeLibs(args);
+-
+   // Apply symbol renames for --wrap and combine foo@v1 and foo@@v1.
+   redirectSymbols(wrapped);
+ 
+-  // Replace common symbols with regular symbols.
+-  replaceCommonSymbols();
+-
+   {
+     llvm::TimeTraceScope timeScope("Aggregate sections");
+     // Now that we have a complete list of input files.
+@@ -2500,6 +2497,9 @@ void LinkerDriver::link(opt::InputArgList &args) {
+   if (!config->relocatable)
+     inputSections.push_back(createCommentSection());
+ 
++  // Replace common symbols with regular symbols.
++  replaceCommonSymbols();
++
+   // Split SHF_MERGE and .eh_frame sections into pieces in preparation for garbage collection.
+   invokeELFT(splitSections);
+ 
+-- 
+2.35.1.473.g83b2b277ed-goog
+
