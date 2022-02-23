@@ -27,5 +27,4 @@ var llvmNextFlags = []string{
 }
 
 var llvmNextPostFlags = []string{
-	"-fno-sanitize=unsigned-shift-base", // http://b/171275751
 }
