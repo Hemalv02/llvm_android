@@ -368,16 +368,16 @@
         "start_version": 445002
     },
     {
-        "end_version": 451402,
+        "end_version": 450807,
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
+            "title": "[UPSTREAM] Revert \"Add BITINT_MAXWIDTH support\""
         },
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v1.patch",
-        "start_version": 449857
+        "rel_patch_path": "cherry/fad7e491a0770ac4336934030ac67d77e7af5520.patch",
+        "start_version": 450784
     },
     {
         "end_version": 451016,
@@ -402,6 +402,18 @@
         ],
         "rel_patch_path": "cherry/aefb2e134dd715c2c48a7b826d2d56db51ce63ac.patch",
         "start_version": 445002
+    },
+    {
+        "end_version": 451402,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v1.patch",
+        "start_version": 449857
     },
     {
         "end_version": 452121,
