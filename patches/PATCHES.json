@@ -356,15 +356,15 @@
         "start_version": 445002
     },
     {
-        "end_version": 451237,
+        "end_version": 449857,
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] [hwasan] work around lifetime issue with setjmp."
+            "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
         },
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/aefb2e134dd715c2c48a7b826d2d56db51ce63ac.patch",
+        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v0.patch",
         "start_version": 445002
     },
     {
@@ -376,7 +376,31 @@
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v0.patch",
+        "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v1.patch",
+        "start_version": 449857
+    },
+    {
+        "end_version": 451016,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Bail out for float operands in SetCC optimization."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/23091f7d504afde4bba3fc885718a1633746e063.patch",
+        "start_version": 450784
+    },
+    {
+        "end_version": 451237,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [hwasan] work around lifetime issue with setjmp."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/aefb2e134dd715c2c48a7b826d2d56db51ce63ac.patch",
         "start_version": 445002
     },
     {
@@ -405,7 +429,7 @@
         "start_version": 438528
     },
     {
-        "end_version": null,
+        "end_version": 448965,
         "metadata": {
             "info": [],
             "title": "Revert two changes that break Android builds."
@@ -415,6 +439,30 @@
         ],
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
         "start_version": 428724
+    },
+    {
+        "end_version": null,
+        "metadata": {
+            "info": [],
+            "title": "Revert two changes that break Android builds."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v7.patch",
+        "start_version": 448965
+    },
+    {
+        "end_version": null,
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[ELF] Move excludeLibs/redirectSymbols/replaceCommonSymbols adjacent\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-ELF-Move-excludeLibs-redirectSymbols-replaceCommonSymbols-adjacent.patch",
+        "start_version": 448965
     },
     {
         "end_version": null,

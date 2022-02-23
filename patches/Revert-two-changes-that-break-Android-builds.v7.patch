@@ -1,0 +1,121 @@
+From 3f1982bf992a9d19ebd6c203d324e2805859bceb Mon Sep 17 00:00:00 2001
+From: Yabin Cui <yabinc@google.com>
+Date: Thu, 10 Jun 2021 12:21:26 -0700
+Subject: [PATCH] Revert two changes that break Android builds.
+
+* Earlier versions of lld were able to replace Android's
+  lld.gold and link most files.
+* With two recent lld changes, debuggerd_test64 and some other files
+  failed to link because libunwindstack.a is linked like --whole-archive.
+  We need to revert the following two changes:
+  * "Put undefined symbols from shared libraries in the symbol table."
+     lld/trunk@326242
+  * "Make undefined symbol in DSO to pull out object files from archive files."
+     lld/trunk@325849
+
+Bug: 74755833
+Change-Id: Idf05ca82d8dc5d8f1593e6f6a64c609d3fa10c14
+---
+ lld/ELF/InputFiles.cpp  |  7 +------
+ lld/ELF/InputFiles.h    |  8 ++++++++
+ lld/ELF/SymbolTable.cpp | 23 +++++++++++++++++++++++
+ lld/ELF/SymbolTable.h   |  1 +
+ 4 files changed, 33 insertions(+), 6 deletions(-)
+
+diff --git a/lld/ELF/InputFiles.cpp b/lld/ELF/InputFiles.cpp
+index 04fa48f63c03..25eaf30df0b5 100644
+--- a/lld/ELF/InputFiles.cpp
++++ b/lld/ELF/InputFiles.cpp
+@@ -1529,12 +1529,7 @@ template <class ELFT> void SharedFile::parse() {
+         name =
+             saver.save((name + "@" + verName).toStringRef(versionedNameBuffer));
+       }
+-      Symbol *s = symtab.addSymbol(
+-          Undefined{this, name, sym.getBinding(), sym.st_other, sym.getType()});
+-      s->exportDynamic = true;
+-      if (s->isUndefined() && sym.getBinding() != STB_WEAK &&
+-          config->unresolvedSymbolsInShlib != UnresolvedPolicy::Ignore)
+-        requiredSymbols.push_back(s);
++      this->Undefs.insert(name);
+       continue;
+     }
+ 
+diff --git a/lld/ELF/InputFiles.h b/lld/ELF/InputFiles.h
+index 1084cf94313b..19720b943d38 100644
+--- a/lld/ELF/InputFiles.h
++++ b/lld/ELF/InputFiles.h
+@@ -61,6 +61,7 @@ private:
+ 
+ protected:
+   SmallVector<InputSectionBase *, 0> sections;
++  llvm::DenseSet<StringRef> Undefs;
+ 
+ public:
+   enum Kind : uint8_t {
+@@ -96,6 +97,13 @@ public:
+     return symbols;
+   }
+ 
++  // Returns undefined symbols of a shared library.
++  // It is a runtime error to call this function on files of other types.
++  const llvm::DenseSet<StringRef> &getUndefinedSymbols() {
++    assert(fileKind == SharedKind);
++    return Undefs;
++  }
++
+   // Get filename to use for linker script processing.
+   StringRef getNameForScript() const;
+ 
+diff --git a/lld/ELF/SymbolTable.cpp b/lld/ELF/SymbolTable.cpp
+index ec425cd7e1d1..4604fe66ef95 100644
+--- a/lld/ELF/SymbolTable.cpp
++++ b/lld/ELF/SymbolTable.cpp
+@@ -114,6 +114,24 @@ Symbol *SymbolTable::find(StringRef name) {
+   return symVector[it->second];
+ }
+ 
++// This function takes care of the case in which shared libraries depend on
++// the user program (not the other way, which is usual). Shared libraries
++// may have undefined symbols, expecting that the user program provides
++// the definitions for them. An example is BSD's __progname symbol.
++// We need to put such symbols to the main program's .dynsym so that
++// shared libraries can find them.
++// Except this, we ignore undefined symbols in DSOs.
++template <class ELFT> void SymbolTable::scanShlibUndefined() {
++  for (InputFile *F : sharedFiles) {
++    for (StringRef U : F->getUndefinedSymbols()) {
++      Symbol *Sym = find(U);
++      if (!Sym || !Sym->isDefined())
++        continue;
++      Sym->exportDynamic = true;
++    }
++  }
++}
++
+ // A version script/dynamic list is only meaningful for a Defined symbol.
+ // A CommonSymbol will be converted to a Defined in replaceCommonSymbols().
+ // A lazy symbol may be made Defined if an LTO libcall extracts it.
+@@ -330,3 +348,8 @@ void SymbolTable::scanVersionScript() {
+   // --dynamic-list.
+   handleDynamicList();
+ }
++
++template void SymbolTable::scanShlibUndefined<ELF32LE>();
++template void SymbolTable::scanShlibUndefined<ELF32BE>();
++template void SymbolTable::scanShlibUndefined<ELF64LE>();
++template void SymbolTable::scanShlibUndefined<ELF64BE>();
+diff --git a/lld/ELF/SymbolTable.h b/lld/ELF/SymbolTable.h
+index fd9fc0735fd5..282e1ca6a036 100644
+--- a/lld/ELF/SymbolTable.h
++++ b/lld/ELF/SymbolTable.h
+@@ -41,6 +41,7 @@ public:
+ 
+   Symbol *addSymbol(const Symbol &newSym);
+ 
++  template <class ELFT> void scanShlibUndefined();
+   void scanVersionScript();
+ 
+   Symbol *find(StringRef name);
+-- 
+2.35.1.265.g69c8d7142f-goog
+
