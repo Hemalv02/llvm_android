@@ -263,7 +263,7 @@ def evaluateConfig(retry_policy: str, build: str, tag: str, branch: str,
     if not (pending_row or completed_row):
         # No previously-scheduled run - We should schedule.
         return 'run'
-    if retry_policy == 'none':
+    if not retry_policy or retry_policy == 'none':
         # Previously scheduled run and no retry policy.  We should skip.
         return 'skip'
 

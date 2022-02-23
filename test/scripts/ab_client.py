@@ -146,15 +146,15 @@ class AndroidBuildClient():
             elif msg == 'atpTest':
                 work_type = 'TEST'
                 params = worknode['workParameters']['atpTestParameters']
-                if workOutput and 'testOutput' in workOutput:
-                    build_id = workOutput['testOutput']['buildId']
-                    ants_id = workOutput['testOutput']['antsInvocationId']
-                else:
-                    # 'testOutput' absent - test didn't run due to build
-                    # failure.
-                    build_id, ants_id = 'NA', 'NA'
+                build_id, ants_id, display_message = 'NA', 'NA', 'NA'
+                # workOutput may not be available if the test did not run due to
+                # build failure
+                if workOutput:
+                    if 'testOutput' in workOutput:
+                        build_id = workOutput['testOutput']['buildId']
+                        ants_id = workOutput['testOutput']['antsInvocationId']
+                    display_message = workOutput.get('displayMessage', 'NA')
                 test_name = params['testName']
-                display_message = workOutput['displayMessage']
             else:
                 raise RuntimeError(f'Unexpected workExecutorType {msg} with ' +
                                    f'worknode data:\n{worknode}')
@@ -193,6 +193,6 @@ class AndroidBuildClient():
             while not done:
                 status, done = downloader.next_chunk()
         except apiclient.errors.HttpError as e:
-            if e.resp.status == 404:
-                raise RuntimeError('Download failed')
+            logging.error(f'Download failed: {resource} for {buildId}:{target}')
+            return None
         return stream.getvalue()

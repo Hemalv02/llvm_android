@@ -63,12 +63,13 @@ def _process_log(log: str) -> List[Warning]:
         r'^(?P<file>.*?):(?P<line>.*?):.*\[(?P<flag>.*?)\]')
 
     results = set()
+    failed = 0
     for match in matches:
         try:
             report = json.loads(match[match.find('{'):])
         except Exception:
-            print(match)
-            raise
+            failed += 1
+            continue
         for warning in warning_re.finditer(report['stdout']):
             # TODO(pirama) Parse the text specific to this warning.  Currently,
             # report['stdout'] will have *all* the warnings for this invocation.
@@ -78,6 +79,8 @@ def _process_log(log: str) -> List[Warning]:
                     line=warning.group('line'),
                     warning=warning.group('flag'),
                     text=report['stdout']))
+    if failed:
+        logging.error(f'Failed to process {failed} records.')
     return results
 
 
@@ -92,6 +95,8 @@ def process_local_file(filename: str) -> None:
 def process_one_run(build, target):
     logging.info(f'processing {build}:{target}')
     log_bytes = BUILD_CLIENT.get_artifact(build, target, 'logs/verbose.log.gz')
+    if not log_bytes:
+        return list()
     log = str(
         gzip.decompress(log_bytes), encoding='utf-8', errors='backslashreplace')
     return _process_log(log)

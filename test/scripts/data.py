@@ -276,8 +276,10 @@ class TestResultsTable(CSVTable[TestResultRecord]):
 
     def addResult(self, record: TestResultRecord, writeBack=True) -> None:
         """Add test record and optionally write back."""
-        if self.get(lambda that: that.worknode_id == record.worknode_id):
-            raise RuntimeError(f'TestResultRecord exists for worknode {record}')
+        if recs := self.get(lambda that: that.worknode_id == record.worknode_id):
+            for rec in recs:
+                self.remove(rec, writeBack)
+                print(f'Removing record {record}.  Probably a retry')
         self.add(record, writeBack)
 
     def getResultsForWorkNode(self,
