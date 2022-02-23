@@ -5,7 +5,7 @@ git_master:
         groups: x86_64 smoke
         tests:
             - avd/avd_boot_health_check
-    aosp_crosshatch-userdebug:
+    aosp_bramble-userdebug:
         groups: arm64 smoke
         tests:
             - apct/bionic/native_test
@@ -14,6 +14,16 @@ git_master:
         groups: x86 coverage
         tests:
             - avd/avd_boot_health_check
+            - apct/rust/doh_coverage
+            - apct/rust/unicode-xid_coverage
+            - apct/neuralnetworks/native_test_x86_coverage
+    cf_x86_64_phone-userdebug_coverage:
+        groups: x86 coverage
+        tests:
+            - avd/avd_boot_health_check
+            - apct/rust/doh_coverage
+            - apct/rust/unicode-xid_coverage
+            - apct/neuralnetworks/native_test_x86_coverage
     coral-userdebug:
         groups: arm64
         tests:
@@ -43,7 +53,15 @@ git_master:
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check_extra
-    wembley-userdebug:
+    oriole-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+    raven-userdebug:
+        groups: arm64
+        tests:
+            - apct/bionic/native_test
+    wembley_2GB-userdebug:
         groups: arm64
     ndk_translation_all:
         tests:
@@ -58,7 +76,6 @@ RELEASE_BRANCH_3:
         groups: pgo
         tests:
             - apct/perf/pgo/apk-profile-collector
-            - apct/perf/pgo/profile-collector
 
 git_master-art-host:
     art-test:
@@ -82,14 +99,14 @@ aosp-master-throttled:
 # device_boot_health_check_extra fails in stage-aosp-master because of
 # unchecked selinux denials.  Use device_boot_health_check instead.
 git_stage-aosp-master:
-    aosp-arm64-eng:
+    aosp_arm64-eng:
         groups: arm64
-    aosp_blueline-userdebug:
+    aosp_raven-userdebug:
         groups: arm64
         tests:
             - apct/bionic/native_test
             - apct/device_boot_health_check
-    aosp_crosshatch-userdebug:
+    aosp_oriole-userdebug:
         groups: arm64 smoke
         tests:
             - apct/bionic/native_test

@@ -8,12 +8,12 @@ crosshatch:
     test_bench_gcl: apct/crosshatch.gcl
 cf_x86_phone:
     cluster: dockerized-tf-gke
-    run_target: TcpDevice
-    test_bench_gcl: cloud_tf/avd-cf-coverage.gcl
+    run_target: RemoteAvdIDevice
+    test_bench_gcl: cloud_tf/gce-cf-coverage.gcl
 cf_x86_64_phone:
     cluster: dockerized-tf-gke
-    run_target: TcpDevice
-    test_bench_gcl: cloud_tf/avd-cf.gcl
+    run_target: RemoteAvdIDevice
+    test_bench_gcl: cloud_tf/gce-cf.gcl
 coral:
     cluster: apct
     run_target: coral
@@ -42,6 +42,14 @@ sunfish:
     cluster: apct
     run_target: sunfish
     test_bench_gcl: apct/sunfish.gcl
+oriole:
+    cluster: apct
+    run_target: oriole
+    test_bench_gcl: apct/oriole.gcl
+raven:
+    cluster: apct
+    run_target: raven
+    test_bench_gcl: apct/raven.gcl
 ndk_translation_all:
     cluster: dockerized-tf-gke-presubmit
     run_target: NullDevice
