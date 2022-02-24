@@ -649,7 +649,7 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
     src_dir: Path = paths.LIBXML2_SRC_DIR
     config_list: List[configs.Config] = [configs.host_config()]
-    lib_version: str = '2.9.12'
+    lib_version: str = '2.9.13'
 
     @contextlib.contextmanager
     def _backup_file(self, file_to_backup: Path) -> Iterator[None]:
