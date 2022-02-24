@@ -428,6 +428,30 @@
         "start_version": 451402
     },
     {
+        "end_version": 452485,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CodeView] Avoid integer overflow while parsing long version strings"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/64037afe014e241e1c642952a703b6031d17d5a5.patch",
+        "start_version": 450784
+    },
+    {
+        "end_version": 452615,
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CodeView] Match any backend version in the new test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/82241148917b5beac5a6c6f47ab73b77eecc4a54.patch",
+        "start_version": 450784
+    },
+    {
         "end_version": 452761,
         "metadata": {
             "info": [],
