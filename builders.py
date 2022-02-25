@@ -1078,4 +1078,8 @@ class TsanBuilder(base_builders.LLVMRuntimeBuilder):
 
         lib_dir = self.install_dir / 'lib' / 'linux'
         dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
-        shutil.copytree(lib_dir, dst_dir, dirs_exist_ok=True)
+        # CMake builds other libraries (fuzzer, ubsan_standalone) etc.  Only
+        # install tsan libraries.
+        dst_dir.mkdir(exist_ok=True)
+        for tsan_lib in lib_dir.glob('*tsan*'):
+            shutil.copy(tsan_lib, dst_dir)
