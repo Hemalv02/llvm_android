@@ -141,7 +141,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
-                'clang-tools-extra', 'polly'}
+                'clang-tools-extra', 'polly', 'bolt'}
         if self.build_lldb:
             proj.add('lldb')
         return proj
