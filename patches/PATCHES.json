@@ -1,6 +1,5 @@
 [
     {
-        "end_version": 437145,
         "metadata": {
             "info": [
                 "check-llvm, combine-icmp-to-lhs-known-bits.mir"
@@ -11,10 +10,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/bd22a99c57b472774a8addcaeef503540abe7b57.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 437145
+        }
     },
     {
-        "end_version": 437168,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Revert [Coroutines] [Clang] Look up coroutine component in std namespace first"
@@ -23,10 +24,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/79f8b5f0d00fd10fee8aee3c3c58e17a8fea8946.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 437168
+        }
     },
     {
-        "end_version": 437297,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [OpenMP][libomptarget] Change device vector elements to unique_ptr type"
@@ -35,10 +38,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/c3aecf87d5b97c3d3580457164e7fe4a19c4221a.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 437297
+        }
     },
     {
-        "end_version": 437539,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] AArch64 SVE restore SVE registers after expression"
@@ -47,10 +52,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/8901f8beea3a70f92be8c0b80313260502f03727.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 437539
+        }
     },
     {
-        "end_version": 438499,
         "metadata": {
             "info": [
                 "idmap2_tests, SIGSEGV in idmap2/libidmap2/XmlParser.cpp"
@@ -61,10 +68,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/f2fa6ad0476b318fdba46f09a2d59187228431ee.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 438499
+        }
     },
     {
-        "end_version": 438570,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Don't fold (select C, (gep Ptr, Idx), Ptr) if C is vector but Idx is scalar"
@@ -73,10 +82,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/d0746f2e9bbf08f52196ae12f25d0ef7edcbbe4c.patch",
-        "start_version": 433403
+        "version_range": {
+            "from": 433403,
+            "until": 438570
+        }
     },
     {
-        "end_version": 439004,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [PATCH] Fix rendezvous for rebase_exec=true case"
@@ -85,10 +96,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/d5629b5d4d41ce71703105362f58dfcdbb6cc175.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 439004
+        }
     },
     {
-        "end_version": 439192,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] DebugInfo: Use sugared function type when emitting function declarations for call sites"
@@ -97,10 +110,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/85f612efeb352e759f120ee183bf31b1fd7e801a.patch",
-        "start_version": 433403
+        "version_range": {
+            "from": 433403,
+            "until": 439192
+        }
     },
     {
-        "end_version": 440947,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [compiler-rt/profile] Hide __llvm_profile_raw_version"
@@ -109,10 +124,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/69708477be258dbea2711f6a35c02685659b49d3.patch",
-        "start_version": 433403
+        "version_range": {
+            "from": 433403,
+            "until": 440947
+        }
     },
     {
-        "end_version": 441985,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [LowerTypeTests] Emit cfi_jt aliases regardless of function export"
@@ -121,10 +138,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/3ccd041af920125595a992becd0e1e4083ce562b.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 441985
+        }
     },
     {
-        "end_version": 442024,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [ARM] Use hardware TLS register in Thumb2 mode when -mtp=cp15 is passed"
@@ -133,10 +152,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/d7e089f2d6a5cd5f283a90ab29241d20d4fc3ed1.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 442024
+        }
     },
     {
-        "end_version": 442582,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [ARM][AsmParser] Don't emit \"deprecated instruction in IT block\" warning if requested"
@@ -145,10 +166,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/803d4f8a35ca8d6eeb5c172ae02705645e6dfe1f.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 442582
+        }
     },
     {
-        "end_version": 443921,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [compiler-rt/profile] Reland mark __llvm_profile_raw_version as hidden"
@@ -157,10 +180,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/078279ff017f799d9cb8fe515808fcc518fe0c41.patch",
-        "start_version": 441431
+        "version_range": {
+            "from": 441431,
+            "until": 443921
+        }
     },
     {
-        "end_version": 444277,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] compiler-rt: Use FreeBSD's elf_aux_info to detect AArch64 HW features"
@@ -169,10 +194,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/7dbbb5d3a46e1526cfa126ae02a5856d7ce0fda9.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 444277
+        }
     },
     {
-        "end_version": 444461,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [compiler-rt/profile] Include __llvm_profile_get_magic in module signature"
@@ -181,10 +208,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/1df7289af66c630480a676e2a5347dca5a3ede15.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 444461
+        }
     },
     {
-        "end_version": 444762,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [ARM] implement support for ALU/LDR PC-relative group relocations"
@@ -193,10 +222,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/da66263b6e505a4c605efbe8d68c3b09ad3606a4.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 444762
+        }
     },
     {
-        "end_version": 445113,
         "metadata": {
             "info": [],
             "title": "Revert \"tsan: new runtime (v3)\""
@@ -206,10 +237,12 @@
             "chromiumos"
         ],
         "rel_patch_path": "cherry/09859113ed23ea11ce5726f0d19bc57e93ecbaab.patch",
-        "start_version": 444647
+        "version_range": {
+            "from": 444647,
+            "until": 445113
+        }
     },
     {
-        "end_version": 445145,
         "metadata": {
             "info": [],
             "title": "[Analyzer][solver] Simplification: Do a fixpoint iteration before the eq class merge"
@@ -219,10 +252,12 @@
             "chromiumos"
         ],
         "rel_patch_path": "cherry/20f8733d4b8d5bdb93080b8824de57b7fae31785.patch",
-        "start_version": 444923
+        "version_range": {
+            "from": 444923,
+            "until": 445145
+        }
     },
     {
-        "end_version": 445406,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [clang][ARM] relax -mtp=cp15 for non-thumb cases"
@@ -231,10 +266,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/9f95bc7dc18390199553cf2ea3bfcdc6a95717ef.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 445406
+        }
     },
     {
-        "end_version": 445576,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [clang][ARM] only check -mtp=cp15 for non-asm sources"
@@ -243,10 +280,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/73ee4e1cbd643028d63200f05199a128609aba5f.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 445576
+        }
     },
     {
-        "end_version": 445729,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Revert \"Revert \"Use VersionTuple for parsing versions in Triple, fixing issues that caused the original change to be reverted. This makes it possible to distinguish between \"16\" and \"16.0\" after parsing, which previously was not possible.\"\""
@@ -255,10 +294,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/219672b8dd06c4765185fa3161c98437d49b4a1b.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 445729
+        }
     },
     {
-        "end_version": 446091,
         "metadata": {
             "info": [],
             "title": "Revert \"X86InstrInfo: Support immediates that are +1/-1 different in optimizeCompareInstr\""
@@ -268,10 +309,12 @@
             "chromiumos"
         ],
         "rel_patch_path": "cherry/ea81cea8163a1a0e54df42103ee1c657bbf03791.patch",
-        "start_version": 442651
+        "version_range": {
+            "from": 442651,
+            "until": 446091
+        }
     },
     {
-        "end_version": 446311,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [AArch64][SVE] Fix handling of stack protection with SVE"
@@ -280,10 +323,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/dc9f65be4555406262ff693c8bac5f1f0b960a97.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 446311
+        }
     },
     {
-        "end_version": 446382,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [clang] diagnose_as_builtin attribute for Fortify diagnosing like builtins."
@@ -292,10 +337,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/bc5f2d12cadce765620efc56a1ca815221db47af.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 446382
+        }
     },
     {
-        "end_version": 446420,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [compiler-rt][AArch64] Add a workaround for Exynos 9810"
@@ -304,10 +351,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/cce4a7258b81159e57a411896011ee2742f17def.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 446420
+        }
     },
     {
-        "end_version": 447356,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [clang][ARM] re-use arm::isHardTPSupported for hardware TLS check"
@@ -316,10 +365,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/cd284b7ac0615afc6e0f1a30da2777e361de27a3.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 447356
+        }
     },
     {
-        "end_version": 448047,
         "metadata": {
             "info": [],
             "title": "Revert \"[AArch64] Emit .cfi_negate_ra_state for PAC-auth instructions.\""
@@ -329,10 +380,12 @@
             "chromiumos"
         ],
         "rel_patch_path": "cherry/131c06e6da79c5f3ca6761676d084f46252436eb.patch",
-        "start_version": 441265
+        "version_range": {
+            "from": 441265,
+            "until": 448047
+        }
     },
     {
-        "end_version": 449463,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [libc++] Fix GDB pretty printers when GDB uses Python 2.7"
@@ -341,10 +394,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/89103bd2f06dea6dc89276cd12dd78c72476b03f.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 449463
+        }
     },
     {
-        "end_version": 449689,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] add tsan shared library"
@@ -353,10 +408,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/c0f9592daae3be17e5fd1528a8f6067cb0c3bd91.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 449689
+        }
     },
     {
-        "end_version": 449857,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
@@ -365,10 +422,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v0.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 449857
+        }
     },
     {
-        "end_version": 450807,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Revert \"Add BITINT_MAXWIDTH support\""
@@ -377,10 +436,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/fad7e491a0770ac4336934030ac67d77e7af5520.patch",
-        "start_version": 450784
+        "version_range": {
+            "from": 450784,
+            "until": 450807
+        }
     },
     {
-        "end_version": 451016,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [AArch64] Bail out for float operands in SetCC optimization."
@@ -389,10 +450,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/23091f7d504afde4bba3fc885718a1633746e063.patch",
-        "start_version": 450784
+        "version_range": {
+            "from": 450784,
+            "until": 451016
+        }
     },
     {
-        "end_version": 451237,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [hwasan] work around lifetime issue with setjmp."
@@ -401,10 +464,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/aefb2e134dd715c2c48a7b826d2d56db51ce63ac.patch",
-        "start_version": 445002
+        "version_range": {
+            "from": 445002,
+            "until": 451237
+        }
     },
     {
-        "end_version": 451402,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
@@ -413,10 +478,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9_v1.patch",
-        "start_version": 449857
+        "version_range": {
+            "from": 449857,
+            "until": 451402
+        }
     },
     {
-        "end_version": 452121,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
@@ -425,10 +492,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/9545976ff160e19805a84a06a7e59d446f9994d9.patch",
-        "start_version": 451402
+        "version_range": {
+            "from": 451402,
+            "until": 452121
+        }
     },
     {
-        "end_version": 452485,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [CodeView] Avoid integer overflow while parsing long version strings"
@@ -437,10 +506,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/64037afe014e241e1c642952a703b6031d17d5a5.patch",
-        "start_version": 450784
+        "version_range": {
+            "from": 450784,
+            "until": 452485
+        }
     },
     {
-        "end_version": 452615,
         "metadata": {
             "info": [],
             "title": "[UPSTREAM] [CodeView] Match any backend version in the new test"
@@ -449,10 +520,12 @@
             "android"
         ],
         "rel_patch_path": "cherry/82241148917b5beac5a6c6f47ab73b77eecc4a54.patch",
-        "start_version": 450784
+        "version_range": {
+            "from": 450784,
+            "until": 452615
+        }
     },
     {
-        "end_version": 452761,
         "metadata": {
             "info": [],
             "title": "[sanitizer] Check if directory exists before trying to create"
@@ -462,10 +535,12 @@
             "chromiumos"
         ],
         "rel_patch_path": "cherry/634da7a1c61ee8c173e90a841eb1f4ea03caa20b.patch",
-        "start_version": 438528
+        "version_range": {
+            "from": 438528,
+            "until": 452761
+        }
     },
     {
-        "end_version": 448965,
         "metadata": {
             "info": [],
             "title": "Revert two changes that break Android builds."
@@ -474,10 +549,12 @@
             "android"
         ],
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
-        "start_version": 428724
+        "version_range": {
+            "from": 428724,
+            "until": 448965
+        }
     },
     {
-        "end_version": null,
         "metadata": {
             "info": [],
             "title": "Revert two changes that break Android builds."
@@ -486,10 +563,12 @@
             "android"
         ],
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v7.patch",
-        "start_version": 448965
+        "version_range": {
+            "from": 448965,
+            "until": null
+        }
     },
     {
-        "end_version": null,
         "metadata": {
             "info": [],
             "title": "Revert \"[ELF] Move excludeLibs/redirectSymbols/replaceCommonSymbols adjacent\""
@@ -498,10 +577,12 @@
             "android"
         ],
         "rel_patch_path": "Revert-ELF-Move-excludeLibs-redirectSymbols-replaceCommonSymbols-adjacent.patch",
-        "start_version": 448965
+        "version_range": {
+            "from": 448965,
+            "until": null
+        }
     },
     {
-        "end_version": null,
         "metadata": {
             "info": [],
             "title": "Add stubs and headers for nl_types APIs."
@@ -510,10 +591,12 @@
             "android"
         ],
         "rel_patch_path": "Add-stubs-and-headers-for-nl_types-APIs.patch",
-        "start_version": 370808
+        "version_range": {
+            "from": 370808,
+            "until": null
+        }
     },
     {
-        "end_version": 445002,
         "metadata": {
             "info": [
                 "b/197147102, bionic/tests/clang_fortify_tests.cpp"
@@ -524,10 +607,12 @@
             "android"
         ],
         "rel_patch_path": "Revert-Sema-Introduce-BuiltinAttr-per-declaration-bu.v4.patch",
-        "start_version": 437112
+        "version_range": {
+            "from": 437112,
+            "until": 445002
+        }
     },
     {
-        "end_version": null,
         "metadata": {
             "info": [],
             "title": "Ensure that we use our toolchain's lipo, and not the system version"
@@ -536,10 +621,12 @@
             "android"
         ],
         "rel_patch_path": "Ensure-that-we-use-our-toolchain-s-lipo-and-not-the-.patch",
-        "start_version": 407598
+        "version_range": {
+            "from": 407598,
+            "until": null
+        }
     },
     {
-        "end_version": null,
         "metadata": {
             "info": [],
             "title": "Undef FS macro for Android x86_64"
@@ -548,6 +635,9 @@
             "android"
         ],
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
-        "start_version": 412851
+        "version_range": {
+            "from": 412851,
+            "until": null
+        }
     }
 ]

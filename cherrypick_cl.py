@@ -59,22 +59,22 @@ def parse_start_version(start_version: str) -> int:
 
 @dataclass
 class PatchItem:
-    end_version: Optional[int]
     metadata: Dict[str, Any]
         # info: Optional[List[str]]
         # title: str
     platforms: List[str]
     rel_patch_path: str
-    start_version: int
+    version_range: Dict[str, Optional[int]]
+        # from: Optional[int]
+        # until: Optional[int]
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> PatchItem:
         return PatchItem(
-            end_version=d['end_version'],
             metadata=d['metadata'],
             platforms=d['platforms'],
             rel_patch_path=d['rel_patch_path'],
-            start_version=d['start_version'])
+            version_range=d['version_range'])
 
     def to_dict(self) -> Dict[str, Any]:
         return dataclasses.asdict(self, dict_factory=collections.OrderedDict)
@@ -89,6 +89,14 @@ class PatchItem:
         assert m, self.rel_patch_path
         return m.group(1)
 
+    @property
+    def end_version(self) -> Optional[int]:
+        return self.version_range.get('until', None)
+
+    @property
+    def start_version(self) -> Optional[int]:
+        return self.version_range.get('from', None)
+
     def __lt__(self, other: PatchItem) -> bool:
         """ Used to sort patches in PatchList:
             1. Sort upstream patches by their end_version in increasing order.
@@ -99,6 +107,20 @@ class PatchItem:
             if not self.is_local_patch:
                 return True
             return False
+        if self.end_version is None:
+            if other.end_version is None:
+                # Both None end_versions, fall back to start_versions
+                if self.start_version is None:
+                    if other.start_version is None:
+                        # Both None start_versions, equal
+                        return False
+                    return True
+                if other.start_version is None:
+                    return False
+                return self.start_version < other.start_version
+            return False
+        if other.end_version is None:
+            return True
         return self.end_version < other.end_version
 
 
@@ -142,7 +164,11 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
         end_version = sha_to_revision(sha)
         metadata = { 'info': info, 'title': title }
         platforms = ['android']
-        result.append(PatchItem(end_version, metadata, platforms, rel_patch_path, start_version))
+        version_range: Dict[str, Optional[int]] = {
+            'from': start_version,
+            'until': end_version,
+        }
+        result.append(PatchItem(metadata, platforms, rel_patch_path, version_range))
     return result
 
 
