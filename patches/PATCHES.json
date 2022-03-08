@@ -543,6 +543,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Rename-disable-noundef-analysis-flag-to-no-enable-noundef-analysis.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 453474
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Revert two changes that break Android builds."
         },
         "platforms": [
