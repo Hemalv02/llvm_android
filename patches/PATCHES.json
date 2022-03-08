@@ -302,6 +302,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "[ThinLTO][MC] Use conditional assignments for promotion aliases"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/9a74c753fe3fb40afeb0660060538678dd77d060.patch",
+        "version_range": {
+            "from": 437112,
+            "until": 446080
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Revert \"X86InstrInfo: Support immediates that are +1/-1 different in optimizeCompareInstr\""
         },
         "platforms": [
@@ -486,6 +501,36 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"[x86] try harder to scalarize a vector load with extracted integer op uses\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/7b03725097872fbd3369a7213c1d98b372aa2d78.patch",
+        "version_range": {
+            "from": 450740,
+            "until": 451631
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[ELF] Support REL-format R_AARCH64_NONE relocation"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/f457863ae345d2635026501f5383e0e625869639.patch",
+        "version_range": {
+            "from": 445002,
+            "until": 451711
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
         },
         "platforms": [
@@ -538,6 +583,51 @@
         "version_range": {
             "from": 438528,
             "until": 452761
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[AArch64] Adds SUBS and ADDS instructions to the MIPeepholeOpt.\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/22eb1dae3fb20ca8ada865de1d95baab0e08a060.patch",
+        "version_range": {
+            "from": 452697,
+            "until": 452764
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[DAG] Ensure type is legal for bswap(shl(x,c)) -> zext(bswap(trunc(shl(x,c-bw/2)))) fold"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/fadd20f80d6968a5a8623e0d1f804337ce084dcb.patch",
+        "version_range": {
+            "from": 454067,
+            "until": 454267
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[DebugInfo][InstrRef] Accept register-reads after isel in any block"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/0e96d95d13d9f7b2a96bcaa569ce0a0181a6c7f3.patch",
+        "version_range": {
+            "from": 448639,
+            "until": 454831
         }
     },
     {
