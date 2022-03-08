@@ -81,7 +81,13 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
     def _get_subject(patch_file):
         with open(patch_file) as pf:
             contents = pf.read()
-        subject = re.search('Subject: (.*)\n', contents).groups()[0]
+        matches = re.search('Subject: (.*)\n', contents)
+        if not matches:
+            # Patch doesn't have a subject line.  Fallback to the file's
+            # basename.
+            return patch_file.name
+
+        subject = matches.groups()[0]
         trim_str = '[PATCH] '
         if subject.startswith(trim_str):
             subject = subject[len(trim_str):]
