@@ -280,16 +280,11 @@ def build_target(android_base: Path, clang_version: version.Version,
 
     modulesList = ' '.join(modules)
     print('Start building target %s and modules %s.' % (target, modulesList))
-    # TODO(pirama) http://b/217427398 Temporarily allow failures during build
-    # until we can support compiler fallback in RBE.
-    try:
-        subprocess.check_call(
-            ['/bin/bash', '-c', 'build/soong/soong_ui.bash --make-mode ' + jobs + \
-             ' ' + modulesList + ' -k'],
-            cwd=android_base,
-            env=env)
-    except subprocess.CalledProcessError as err:
-        print(f'target build failed: {err}')
+    subprocess.check_call(
+        ['/bin/bash', '-c', 'build/soong/soong_ui.bash --make-mode ' + jobs + \
+         ' ' + modulesList + ' -k'],
+        cwd=android_base,
+        env=env)
 
 
 def test_device(android_base: Path, clang_version: version.Version, device: List[str],
