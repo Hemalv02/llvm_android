@@ -516,6 +516,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [msan] Guard FP_XSTATE_MAGIC1 usage with SANITIZER_GLIBC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9d1857f69f4ef00d9fd1b21660c20e00b993d06f.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 451675
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[ELF] Support REL-format R_AARCH64_NONE relocation"
         },
         "platforms": [
@@ -568,6 +582,20 @@
         "version_range": {
             "from": 450784,
             "until": 452615
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [tsan] Make __fxstat code path glibc only"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/da2a16f702efe3307d407d5c6db6c8c18ef6bd9b.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 452683
         }
     },
     {
@@ -628,6 +656,34 @@
         "version_range": {
             "from": 448639,
             "until": 454831
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Pass through more LIBCXX_* variables  to libfuzzer's custom lib++"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/bcc65fb491ca6e83e1ea300f4462a2f56d0b5937.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 454839
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CompilerRT] Fix build of compiler-rt with musl"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/e75f1d3c07edaa223ac1a945af534eaec0c7aa66.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 455347
         }
     },
     {
