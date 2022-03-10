@@ -603,6 +603,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [ELF] Check COMMON symbols for PROVIDE and don't redefine COMMON symbols edata/end/etext"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/fc0aa8424ca98da29a9c7aa15b4427d47504ba87.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 453919
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[DAG] Ensure type is legal for bswap(shl(x,c)) -> zext(bswap(trunc(shl(x,c-bw/2)))) fold"
         },
         "platforms": [
@@ -667,20 +681,6 @@
             "android"
         ],
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v7.patch",
-        "version_range": {
-            "from": 448965,
-            "until": null
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert \"[ELF] Move excludeLibs/redirectSymbols/replaceCommonSymbols adjacent\""
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-ELF-Move-excludeLibs-redirectSymbols-replaceCommonSymbols-adjacent.patch",
         "version_range": {
             "from": 448965,
             "until": null
