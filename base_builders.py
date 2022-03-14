@@ -145,6 +145,8 @@ class Builder:  # pylint: disable=too-few-public-methods
         raise NotImplementedError()
 
     def _is_cross_compiling(self) -> bool:
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            return True
         return self._config.target_os != hosts.build_host()
 
     def _is_64bit(self) -> bool:

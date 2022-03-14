@@ -441,6 +441,59 @@ class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
         super()._build_config()
 
 
+class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
+    name: str = 'compiler-rt-linux-musl'
+    src_dir: Path = paths.LLVM_PATH / 'runtimes'
+
+    config_list: List[configs.Config] = [
+            configs.LinuxMuslConfig(),
+            configs.LinuxMuslConfig(is_32_bit=True),
+    ]
+
+    @property
+    def output_dir(self) -> Path:
+        suffix = '-32' if self._config.is_32_bit else ''
+        return Path(str(super().output_dir) + suffix)
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LLVM_ENABLE_RUNTIMES'] = 'compiler-rt;libunwind'
+
+        # compiler-rt CMake defines
+        # ORC JIT fails to build with MUSL.
+        defines['COMPILER_RT_BUILD_ORC'] = 'OFF'
+        # We don't have a libc++ for 32-bit musl.  It shouldn't be needed for
+        # compiler-rt, unless we're building tests.
+        del defines['LLVM_ENABLE_LIBCXX']
+
+        # libunwind CMake defines
+        del defines['LLVM_LIBDIR_SUFFIX']
+        if self.enable_assertions:
+            defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'TRUE'
+        else:
+            defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'FALSE'
+        defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
+        defines['LIBUNWIND_TARGET_TRIPLE'] = self._config.llvm_triple
+        defines['LIBUNWIND_HAS_DL_LIB'] = 'FALSE'
+        defines['LIBUNWIND_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['LIBCXX_HAS_RT_LIB'] = 'FALSE'
+        defines['LIBCXX_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['LIBCXXABI_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['COMPILER_RT_HAS_LIBSTDCXX'] = 'FALSE'
+        defines['COMPILER_RT_HAS_LIBCXX'] = 'TRUE'
+        defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
+        # TODO(b/215802826) Add this variable once we have libunwind included in
+        # libc_musl
+        # defines['COMPILER_RT_HAS_GCC_S_LIB'] = 'FALSE'
+        return defines
+
+
+    @property
+    def install_dir(self) -> Path:
+        return self.output_toolchain.resource_dir / self._config.llvm_triple
+
+
 class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'libunwind'
     src_dir: Path = paths.LLVM_PATH / 'runtimes'

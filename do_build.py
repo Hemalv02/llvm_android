@@ -116,9 +116,10 @@ def build_runtimes(build_lldb_server: bool):
     builders.PlatformLibcxxAbiBuilder().build()
     builders.CompilerRTBuilder().build()
     builders.TsanBuilder().build()
-    # 32-bit host crts are not needed for Darwin
+    # Build musl runtimes and 32-bit glibc for Linux
     if hosts.build_host().is_linux:
         builders.CompilerRTHostI386Builder().build()
+        builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
     if build_lldb_server:
         builders.LldbServerBuilder().build()
