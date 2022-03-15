@@ -487,6 +487,62 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[DAG] Extend SearchForAndLoads with any_extend handling\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/c89cfbd4ddfa4e01fea1eb87aba9cdcd0e31d3a8.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 451241
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[ASan] Not linking asan_static library for DSO.\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d7dd7ad827a0a78314f3c9b55f4778a6059840f3.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 451265
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"DebugInfo: Don't put types in type units if they reference internal linkage types\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f69f23396d32c95dacf3765bc63af02b23ccff3e.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 451266
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Test fixes for prior patch"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b6e048c6e516df5abc4be323349b5f7d15c08ede.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 451267
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"[Clang] Propagate guaranteed alignment for malloc and others\""
         },
         "platforms": [
