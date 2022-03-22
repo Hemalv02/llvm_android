@@ -74,7 +74,6 @@ def get_scripts_sha() -> str:
 
 
 def write_source_info(source_dir: str, patch_output: str) -> None:
-    lowercase_hexdigits = '0123456789abcdef'
     url_prefix = 'https://android.googlesource.com/toolchain/llvm_android/+/' +\
         get_scripts_sha()
 
@@ -95,7 +94,7 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
 
 
     def _format_patch_line(patch):
-        if all(c in lowercase_hexdigits for c in patch[:-len('.patch')]):
+        if re.match('([0-9a-f]+)(_v[0-9]+)?\.patch$', patch):
             url_suffix = '/patches/cherry/' + patch
             link_text = _get_subject(paths.SCRIPTS_DIR / 'patches' / 'cherry' / patch)
         else:
