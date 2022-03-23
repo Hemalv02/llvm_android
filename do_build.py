@@ -473,7 +473,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         version_file.write(f'based on {svn_revision}\n')
         version_file.write('for additional information on LLVM revision and '
                            'cherry-picks, see clang_source_info.md')
-    shutil.copy2(paths.OUT_DIR / 'clang_source_info.md', install_dir)
+
+    clang_source_info_file = paths.OUT_DIR / 'clang_source_info.md'
+    if clang_source_info_file.exists():
+        shutil.copy2(clang_source_info_file, install_dir)
 
 
     # Remove optrecord.py to avoid auto-filed bugs about call to yaml.load_all
@@ -606,6 +609,12 @@ def parse_args():
         no code has changed since previous build.')
 
     parser.add_argument(
+        '--skip-apply-patches',
+        action='store_true',
+        default=False,
+        help='Skip applying local patches. This allows building a vanilla upstream version.')
+
+    parser.add_argument(
         '--create-tar',
         action='store_true',
         default=False,
@@ -698,7 +707,7 @@ def main():
 
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:
-        source_manager.setup_sources(source_dir=paths.LLVM_PATH)
+        source_manager.setup_sources(source_dir=paths.LLVM_PATH, skip_apply_patches=args.skip_apply_patches)
 
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
