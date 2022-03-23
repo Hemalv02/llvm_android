@@ -1,4 +1,4 @@
-From 3f1982bf992a9d19ebd6c203d324e2805859bceb Mon Sep 17 00:00:00 2001
+From b7d8c86490f64ce836a1a6ba2738b1cae5464a00 Mon Sep 17 00:00:00 2001
 From: Yabin Cui <yabinc@google.com>
 Date: Thu, 10 Jun 2021 12:21:26 -0700
 Subject: [PATCH] Revert two changes that break Android builds.
@@ -16,17 +16,37 @@ Subject: [PATCH] Revert two changes that break Android builds.
 Bug: 74755833
 Change-Id: Idf05ca82d8dc5d8f1593e6f6a64c609d3fa10c14
 ---
- lld/ELF/InputFiles.cpp  |  7 +------
- lld/ELF/InputFiles.h    |  8 ++++++++
- lld/ELF/SymbolTable.cpp | 23 +++++++++++++++++++++++
- lld/ELF/SymbolTable.h   |  1 +
- 4 files changed, 33 insertions(+), 6 deletions(-)
+ lld/ELF/Driver.cpp                     |  4 ++++
+ lld/ELF/InputFiles.cpp                 |  7 +------
+ lld/ELF/InputFiles.h                   |  8 ++++++++
+ lld/ELF/LinkerScript.cpp               |  4 ++++
+ lld/ELF/SymbolTable.cpp                | 23 +++++++++++++++++++++++
+ lld/ELF/SymbolTable.h                  |  1 +
+ lld/test/ELF/shlib-undefined-archive.s | 19 -------------------
+ lld/test/ELF/trace-symbols.s           |  2 +-
+ 8 files changed, 42 insertions(+), 26 deletions(-)
+ delete mode 100644 lld/test/ELF/shlib-undefined-archive.s
 
+diff --git a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+index de26afddd28b..1cb4241d3da1 100644
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -2349,6 +2349,10 @@ template <class ELFT> void LinkerDriver::link(opt::InputArgList &args) {
+   // They also might be exported if referenced by DSOs.
+   script->declareSymbols();
+ 
++  if (!config->shared) {
++    symtab->scanShlibUndefined<ELFT>();
++  }
++
+   // Handle --exclude-libs. This is before scanVersionScript() due to a
+   // workaround for Android ndk: for a defined versioned symbol in an archive
+   // without a version node in the version script, Android does not expect a
 diff --git a/lld/ELF/InputFiles.cpp b/lld/ELF/InputFiles.cpp
-index 04fa48f63c03..25eaf30df0b5 100644
+index 4da371c619f4..3e0f5922cfea 100644
 --- a/lld/ELF/InputFiles.cpp
 +++ b/lld/ELF/InputFiles.cpp
-@@ -1529,12 +1529,7 @@ template <class ELFT> void SharedFile::parse() {
+@@ -1520,12 +1520,7 @@ template <class ELFT> void SharedFile::parse() {
          name =
              saver.save((name + "@" + verName).toStringRef(versionedNameBuffer));
        }
@@ -41,7 +61,7 @@ index 04fa48f63c03..25eaf30df0b5 100644
      }
  
 diff --git a/lld/ELF/InputFiles.h b/lld/ELF/InputFiles.h
-index 1084cf94313b..19720b943d38 100644
+index 6febea3f437d..26650aef96e2 100644
 --- a/lld/ELF/InputFiles.h
 +++ b/lld/ELF/InputFiles.h
 @@ -61,6 +61,7 @@ private:
@@ -65,6 +85,21 @@ index 1084cf94313b..19720b943d38 100644
 +
    // Get filename to use for linker script processing.
    StringRef getNameForScript() const;
+ 
+diff --git a/lld/ELF/LinkerScript.cpp b/lld/ELF/LinkerScript.cpp
+index bfb583453735..58b86b314f88 100644
+--- a/lld/ELF/LinkerScript.cpp
++++ b/lld/ELF/LinkerScript.cpp
+@@ -209,6 +209,10 @@ static bool shouldDefineSym(SymbolAssignment *cmd) {
+   Symbol *b = symtab->find(cmd->name);
+   if (b && !b->isDefined())
+     return true;
++  // It might also be referenced by a DSO.
++  for (InputFile *F : sharedFiles)
++    if (F->getUndefinedSymbols().count(cmd->name))
++      return true;
+   return false;
+ }
  
 diff --git a/lld/ELF/SymbolTable.cpp b/lld/ELF/SymbolTable.cpp
 index ec425cd7e1d1..4604fe66ef95 100644
@@ -105,7 +140,7 @@ index ec425cd7e1d1..4604fe66ef95 100644
 +template void SymbolTable::scanShlibUndefined<ELF64LE>();
 +template void SymbolTable::scanShlibUndefined<ELF64BE>();
 diff --git a/lld/ELF/SymbolTable.h b/lld/ELF/SymbolTable.h
-index fd9fc0735fd5..282e1ca6a036 100644
+index 04c81f642fe0..b30950ffb947 100644
 --- a/lld/ELF/SymbolTable.h
 +++ b/lld/ELF/SymbolTable.h
 @@ -41,6 +41,7 @@ public:
@@ -116,6 +151,44 @@ index fd9fc0735fd5..282e1ca6a036 100644
    void scanVersionScript();
  
    Symbol *find(StringRef name);
+diff --git a/lld/test/ELF/shlib-undefined-archive.s b/lld/test/ELF/shlib-undefined-archive.s
+deleted file mode 100644
+index 940d8d7bc0c5..000000000000
+--- a/lld/test/ELF/shlib-undefined-archive.s
++++ /dev/null
+@@ -1,19 +0,0 @@
+-# REQUIRES: x86
+-
+-# Undefined symbols in a DSO should pull out object files from archives
+-# to resolve them.
+-
+-# RUN: echo '.globl foo' | llvm-mc -filetype=obj -triple=x86_64-linux-gnu -o %t1.o -
+-# RUN: ld.lld -shared -o %t.so %t1.o
+-
+-# RUN: llvm-mc -filetype=obj -triple=x86_64-linux-gnu -o %t2.o %s
+-# RUN: rm -f %t.a
+-# RUN: llvm-ar cru %t.a %t2.o
+-# RUN: ld.lld -o %t.exe %t.so %t.a
+-# RUN: llvm-nm -D %t.exe | FileCheck %s
+-
+-# CHECK: T foo
+-
+-.globl foo
+-foo:
+-  ret
+diff --git a/lld/test/ELF/trace-symbols.s b/lld/test/ELF/trace-symbols.s
+index f5211b367eb4..4dfeced7b9f4 100644
+--- a/lld/test/ELF/trace-symbols.s
++++ b/lld/test/ELF/trace-symbols.s
+@@ -82,7 +82,7 @@
+ 
+ # RUN: ld.lld -y foo -y bar %t %t1.so %t2.so -o %t3 | \
+ # RUN:   FileCheck -check-prefix=SHLIBRBAR %s
+-# SHLIBRBAR: trace-symbols.s.tmp1.so: reference to bar
++# SHLIBRBAR-NOT: trace-symbols.s.tmp1.so: reference to bar
+ 
+ # RUN: ld.lld -y foo -y bar %t -u bar --start-lib %t1 %t2 --end-lib -o %t3 | \
+ # RUN:   FileCheck -check-prefix=STARTLIB %s
 -- 
-2.35.1.265.g69c8d7142f-goog
+2.35.1.894.gb6a874cedc-goog
 
