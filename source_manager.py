@@ -128,7 +128,7 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
         outfile.write('\n'.join(output))
 
 
-def setup_sources(source_dir):
+def setup_sources(source_dir, skip_apply_patches):
     """Setup toolchain sources into source_dir.
 
     Copy toolchain/llvm-project into source_dir.
@@ -168,10 +168,11 @@ def setup_sources(source_dir):
     patch_json = os.path.join(patch_dir, 'PATCHES.json')
     svn_version = android_version.get_svn_revision_number()
 
-    patch_output = apply_patches(tmp_source_dir, svn_version, patch_json,
-                                 patch_dir)
-    logger().info(patch_output)
-    write_source_info(tmp_source_dir, patch_output)
+    if not skip_apply_patches:
+      patch_output = apply_patches(tmp_source_dir, svn_version, patch_json,
+                                   patch_dir)
+      logger().info(patch_output)
+      write_source_info(tmp_source_dir, patch_output)
 
     # Copy tmp_source_dir to source_dir if they are different.  This avoids
     # invalidating prior build outputs.
