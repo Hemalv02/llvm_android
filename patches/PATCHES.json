@@ -788,6 +788,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [AArch64] Ensure fixed point fptoi_sat has correct saturation width"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/60f57b36587c99175cb380406e2502a592a0c400.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 457377
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
