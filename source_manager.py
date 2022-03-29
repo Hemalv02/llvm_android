@@ -128,7 +128,7 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
         outfile.write('\n'.join(output))
 
 
-def setup_sources(source_dir, skip_apply_patches):
+def setup_sources(source_dir, skip_apply_patches=False):
     """Setup toolchain sources into source_dir.
 
     Copy toolchain/llvm-project into source_dir.
