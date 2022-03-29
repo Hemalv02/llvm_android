@@ -701,6 +701,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [ELF][X86] Don't create IBT .plt if there is no PLT entry"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9d7001eba9c4cb311e03cd8cdc231f9e579f2d0f.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 454222
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[DAG] Ensure type is legal for bswap(shl(x,c)) -> zext(bswap(trunc(shl(x,c-bw/2)))) fold"
         },
         "platforms": [
