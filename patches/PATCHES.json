@@ -759,6 +759,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "[ELF] Fix llvm_unreachable failure when COMMON is placed in SHT_PROGBITS output section"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/1db59dc8e28819b1960dae8e7fe6d79ad4b03340.patch",
+        "version_range": {
+            "from": 446699,
+            "until": 457288
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
