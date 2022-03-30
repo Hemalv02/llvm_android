@@ -483,9 +483,9 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
         defines['COMPILER_RT_HAS_LIBSTDCXX'] = 'FALSE'
         defines['COMPILER_RT_HAS_LIBCXX'] = 'TRUE'
         defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
-        # TODO(b/215802826) Add this variable once we have libunwind included in
-        # libc_musl
-        # defines['COMPILER_RT_HAS_GCC_S_LIB'] = 'FALSE'
+        defines['COMPILER_RT_HAS_GCC_S_LIB'] = 'FALSE'
+        defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'TRUE'
+        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = self._config.llvm_triple
         return defines
 
 

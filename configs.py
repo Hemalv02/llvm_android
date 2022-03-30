@@ -200,6 +200,12 @@ class LinuxMuslConfig(LinuxConfig):
         ]
 
     @property
+    def ldflags(self) -> List[str]:
+        return super().ldflags + [
+                '-rtlib=compiler-rt',
+        ]
+
+    @property
     def sysroot(self) -> Path:
         suffix = '32' if self.is_32_bit else ''
         return paths.BUILD_TOOLS_DIR / 'sysroots' / self.llvm_triple
