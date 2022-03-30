@@ -92,6 +92,17 @@ def pgo_profdata_tar() -> Optional[Path]:
     return profile if profile.exists() else None
 
 
+def bolt_fdata_tarname() -> str:
+    svn_revision = android_version.get_svn_revision_number()
+    return f'bolt-r{svn_revision}.tar.bz2'
+
+
+def bolt_fdata_tar() -> Optional[Path]:
+    profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
+               bolt_fdata_tarname())
+    return profile if profile.exists() else None
+
+
 def get_package_install_path(host: hosts.Host, package_name) -> Path:
     return OUT_DIR / 'install' / host.os_tag / package_name
 

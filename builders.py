@@ -131,6 +131,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
     remove_install_dir: bool = True
     debug_build: bool = False
     build_instrumented: bool = False
+    bolt_optimize: bool = False
+    bolt_instrument: bool = False
     profdata_file: Optional[Path] = None
     lto: bool = True
 
@@ -159,6 +161,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
+        if self.bolt_optimize or self.bolt_instrument:
+            ldflags.append('-Wl,-q')
         if self.build_instrumented:
             # Building libcxx, libcxxabi with instrumentation causes linker errors
             # because these are built with -nodefaultlibs and prevent libc symbols
