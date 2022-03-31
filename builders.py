@@ -490,6 +490,14 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
 
 
     @property
+    def cflags(self) -> List[str]:
+        # Use the stage2 toolchain's resource-dir where libclang_rt.builtins
+        # gets installed.  This is only needed in debug and instrumented builds
+        # (where the stage1 toolchain is used to build runtimes) and a no-op
+        # elsewhere.
+        return super().cflags + ['-resource-dir', f'{self.output_toolchain.clang_lib_dir}']
+
+    @property
     def install_dir(self) -> Path:
         return self.output_toolchain.resource_dir / self._config.llvm_triple
 
