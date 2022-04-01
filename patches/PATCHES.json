@@ -773,6 +773,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Driver: Make macOS the default target OS for -arch arm64"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/37e7cf7f1c6920d33a4a5dd3f0a415a61dd24731.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 456374
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[ELF] Fix llvm_unreachable failure when COMMON is placed in SHT_PROGBITS output section"
         },
         "platforms": [

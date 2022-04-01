@@ -1,0 +1,59 @@
+From 37e7cf7f1c6920d33a4a5dd3f0a415a61dd24731 Mon Sep 17 00:00:00 2001
+From: "Duncan P. N. Exon Smith" <dexonsmith@apple.com>
+Date: Fri, 18 Mar 2022 13:08:26 -0700
+Subject: [PATCH] Driver: Make macOS the default target OS for -arch arm64
+
+This is a follow up to 565603cc94d79a8d0de6df840fd53714899fb890,
+which made macOS the default target OS for `-arch arm64` when
+running on an Apple Silicon Mac. Now it'll be the default when
+running on an Intel Mac too.
+
+clang/test/Driver/apple-arm64-arch.c was a bit odd before: it was added
+for the above commit, but tested the inverse behaviour and XFAIL'ed on
+Apple Silicon. This inverts it to the (new) behaviour (that's now
+correct regardless) and removes the XFAIL.
+
+Radar-Id: rdar://90500294
+---
+ clang/lib/Driver/ToolChains/Darwin.cpp | 11 ++---------
+ clang/test/Driver/apple-arm64-arch.c   |  3 +--
+ 2 files changed, 3 insertions(+), 11 deletions(-)
+
+diff --git a/clang/lib/Driver/ToolChains/Darwin.cpp b/clang/lib/Driver/ToolChains/Darwin.cpp
+index a11cd3fbaa71..47eb14ffb83e 100644
+--- a/clang/lib/Driver/ToolChains/Darwin.cpp
++++ b/clang/lib/Driver/ToolChains/Darwin.cpp
+@@ -1886,16 +1886,9 @@ inferDeploymentTargetFromArch(DerivedArgList &Args, const Darwin &Toolchain,
+   llvm::Triple::OSType OSTy = llvm::Triple::UnknownOS;
+ 
+   StringRef MachOArchName = Toolchain.getMachOArchName(Args);
+-  if (MachOArchName == "arm64" || MachOArchName == "arm64e") {
+-#if __arm64__
+-    // A clang running on an Apple Silicon mac defaults
+-    // to building for mac when building for arm64 rather than
+-    // defaulting to iOS.
++  if (MachOArchName == "arm64" || MachOArchName == "arm64e")
+     OSTy = llvm::Triple::MacOSX;
+-#else
+-    OSTy = llvm::Triple::IOS;
+-#endif
+-  } else if (MachOArchName == "armv7" || MachOArchName == "armv7s")
++  else if (MachOArchName == "armv7" || MachOArchName == "armv7s")
+     OSTy = llvm::Triple::IOS;
+   else if (MachOArchName == "armv7k" || MachOArchName == "arm64_32")
+     OSTy = llvm::Triple::WatchOS;
+diff --git a/clang/test/Driver/apple-arm64-arch.c b/clang/test/Driver/apple-arm64-arch.c
+index a37346b1a9bb..a111260b38a6 100644
+--- a/clang/test/Driver/apple-arm64-arch.c
++++ b/clang/test/Driver/apple-arm64-arch.c
+@@ -2,6 +2,5 @@
+ // RUN:   FileCheck %s
+ //
+ // REQUIRES: system-darwin
+-// XFAIL: apple-silicon-mac
+ //
+-// CHECK: "-triple" "arm64-apple-ios{{[0-9.]+}}"
++// CHECK: "-triple" "arm64-apple-macosx{{[0-9.]+}}"
+-- 
+2.35.1.1094.g7c7d902a7c-goog
+
