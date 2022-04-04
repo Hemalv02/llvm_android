@@ -138,17 +138,17 @@ def parse_args():
         action='store_false',
         dest='clean_built_target',
         help='Do not remove target output.')
-    redirect_stderr_group = parser.add_mutually_exclusive_group()
-    redirect_stderr_group.add_argument(
-        '--redirect-stderr',
+    fallback_group = parser.add_mutually_exclusive_group()
+    fallback_group.add_argument(
+        '--enable-fallback',
         action='store_true',
-        default=True,
-        help='Redirect clang stderr to $OUT/clang-error.log.')
-    redirect_stderr_group.add_argument(
-        '--no-redirect-stderr',
+        default=False,
+        help='Enable clang wrapper fallback to older prebuilts.')
+    fallback_group.add_argument(
+        '--disable-fallback',
         action='store_false',
-        dest='redirect_stderr',
-        help='Do not redirect clang stderr.')
+        dest='enable_fallback',
+        help='Disable clang wrapper fallback to older prebuilts.')
 
     parser.add_argument(
         '--generate-clang-profile',
@@ -224,7 +224,7 @@ def invoke_llvm_tools(profiler: ClangProfileHandler):
 
 def build_target(android_base: Path, clang_version: version.Version,
                  target: str, modules: List[str],
-                 max_jobs: int, redirect_stderr: bool, with_tidy: bool,
+                 max_jobs: int, enable_fallback: bool, with_tidy: bool,
                  profiler: Optional[ClangProfileHandler]=None) -> None:
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
     try:
@@ -251,7 +251,7 @@ def build_target(android_base: Path, clang_version: version.Version,
     # setting path to write PGO profiles.
     env['ALLOW_NINJA_ENV'] = 'true'
 
-    if redirect_stderr:
+    if enable_fallback:
         redirect_key = STDERR_REDIRECT_KEY
         if 'DIST_DIR' in env:
             redirect_path = Path(env['DIST_DIR']) / 'logs' / 'clang-error.log'
@@ -289,7 +289,7 @@ def build_target(android_base: Path, clang_version: version.Version,
 
 def test_device(android_base: Path, clang_version: version.Version, device: List[str],
                 modules: List[str], max_jobs: int, clean_output: str, flashall_path: Optional[Path],
-                redirect_stderr: bool, with_tidy: bool) -> bool:
+                enable_fallback: bool, with_tidy: bool) -> bool:
     [label, target] = device[-1].split(':')
     # If current device is not connected correctly we will just skip it.
     if label != 'device':
@@ -299,7 +299,7 @@ def test_device(android_base: Path, clang_version: version.Version, device: List
         target = 'aosp_' + target + '-eng'
     try:
         build_target(android_base, clang_version, target, modules, max_jobs,
-                     redirect_stderr, with_tidy)
+                     enable_fallback, with_tidy)
         if flashall_path is None:
             bin_path = (android_base / 'out' / 'host' /
                         hosts.build_host().os_tag / 'bin')
@@ -382,7 +382,7 @@ def main():
         for target in targets:
             build_target(Path(args.android_path), clang_version, target,
                          modules, args.jobs,
-                         args.redirect_stderr, args.with_tidy, profiler)
+                         args.enable_fallback, args.with_tidy, profiler)
 
         if profiler is not None:
             invoke_llvm_tools(profiler)
@@ -396,8 +396,7 @@ def main():
             result = test_device(Path(args.android_path), clang_version, device,
                                  modules, args.jobs, args.clean_built_target,
                                  Path(args.flashall_path) if args.flashall_path else None,
-                                 args.redirect_stderr,
-                                 args.with_tidy)
+                                 args.enable_fallback, args.with_tidy)
             if not result and not args.keep_going:
                 break
 
