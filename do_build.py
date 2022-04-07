@@ -287,10 +287,6 @@ def remove_static_libraries(static_lib_dir, necessary_libs=None):
                 os.remove(static_library)
 
 
-def darwin_codesign(binary):
-      utils.check_call(['codesign', '--force', '-s', '-', binary])
-
-
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
                       strip=True, create_tar=True, llvm_next=False):
@@ -416,9 +412,6 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 # stripped of additional global symbols that might be used
                 # by plugins.
                 utils.check_call([strip_cmd, '-S', '-x', binary])
-                # Strip mutates binary, need to codesign the binary again.
-                if host.is_darwin:
-                    darwin_codesign(binary)
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
