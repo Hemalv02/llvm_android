@@ -408,10 +408,13 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 continue
             elif strip and binary.name not in script_bins:
                 # Strip all non-global symbols and debug info.
-                # These specific flags prevent Darwin executables from being
-                # stripped of additional global symbols that might be used
-                # by plugins.
-                utils.check_call([strip_cmd, '-S', '-x', binary])
+                if binary.name == 'clang-' + version.major_version() + ext:
+                    # These specific flags prevent Darwin executables from being
+                    # stripped of additional global symbols that might be used
+                    # by plugins.
+                    utils.check_call([strip_cmd, '-S', '-x', binary])
+                else:
+                    utils.check_call([strip_cmd, binary])
 
     # FIXME: check that all libs under lib64/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
