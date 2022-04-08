@@ -816,6 +816,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [asan] Always skip first object from dl_iterate_phdr"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/795b07f5498c7e5783237418f34d7ea69e801f87.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 458378
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
