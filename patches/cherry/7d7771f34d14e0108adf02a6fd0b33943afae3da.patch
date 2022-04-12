@@ -1,0 +1,56 @@
+From 7d7771f34d14e0108adf02a6fd0b33943afae3da Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Mon, 11 Apr 2022 21:56:12 +0800
+Subject: [PATCH] [BOLT] Compact legacy profiles
+
+Merging multiple legacy profiles (produced by instrumentation BOLT) can
+easily reach GiBs. Let merge-fdata compact the profiles during merge to
+significantly reduce space usage.
+
+Differential Revision: https://reviews.llvm.org/D123513
+---
+ bolt/tools/merge-fdata/merge-fdata.cpp | 19 ++++++++++++++++++-
+ 1 file changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/bolt/tools/merge-fdata/merge-fdata.cpp b/bolt/tools/merge-fdata/merge-fdata.cpp
+index cd8f343ac08c..5738219247ba 100644
+--- a/bolt/tools/merge-fdata/merge-fdata.cpp
++++ b/bolt/tools/merge-fdata/merge-fdata.cpp
+@@ -239,6 +239,7 @@ void mergeLegacyProfiles(const cl::list<std::string> &Filenames) {
+   errs() << "Using legacy profile format.\n";
+   bool BoltedCollection = false;
+   bool First = true;
++  StringMap<uint64_t> Entries;
+   for (const std::string &Filename : Filenames) {
+     if (isYAML(Filename))
+       report_error(Filename, "cannot mix YAML and legacy formats");
+@@ -265,9 +266,25 @@ void mergeLegacyProfiles(const cl::list<std::string> &Filenames) {
+             "cannot mix profile collected in BOLT and non-BOLT deployments");
+     }
+ 
+-    outs() << Buf;
++    SmallVector<StringRef, 10> Lines;
++    SplitString(Buf, Lines, "\n");
++    for (StringRef Line : Lines) {
++      size_t Pos = Line.rfind(" ");
++      if (Pos == StringRef::npos)
++        report_error(Filename, "Malformed / corrupted profile");
++      StringRef Signature = Line.substr(0, Pos);
++      uint64_t Count;
++      if (Line.substr(Pos + 1, Line.size() - Pos).getAsInteger(10, Count))
++        report_error(Filename, "Malformed / corrupted profile counter");
++      Count += Entries.lookup(Signature);
++      Entries.insert_or_assign(Signature, Count);
++    }
+     First = false;
+   }
++
++  for (const auto &Entry : Entries)
++    outs() << Entry.getKey() << " " << Entry.getValue() << "\n";
++
+   errs() << "Profile from " << Filenames.size() << " files merged.\n";
+ }
+ 
+-- 
+2.35.1.1178.g4f1659d476-goog
+

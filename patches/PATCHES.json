@@ -830,6 +830,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [BOLT] Compact legacy profiles"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7d7771f34d14e0108adf02a6fd0b33943afae3da.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 458718
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
