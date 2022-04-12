@@ -82,7 +82,8 @@ def pgo_profdata_filename() -> str:
 
 
 def pgo_profdata_tarname() -> str:
-    return pgo_profdata_filename() + '.tar.bz2'
+    svn_revision = android_version.get_svn_revision_number()
+    return f'pgo-{svn_revision}.tar.bz2'
 
 
 def pgo_profdata_tar() -> Optional[Path]:
