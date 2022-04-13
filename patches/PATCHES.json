@@ -844,6 +844,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Support the min of module flags when linking, use for AArch64 BTI/PAC-RET"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b0343a38a5910e980bb031e4014655d77cd0c162.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 458830
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
