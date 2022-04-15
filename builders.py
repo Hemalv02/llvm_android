@@ -40,7 +40,7 @@ class SanitizerMapFileBuilder(base_builders.Builder):
     def _build_config(self) -> None:
         arch = self._config.target_arch
 
-        lib_dir = self.output_toolchain.resource_dir
+        lib_dir = self.output_toolchain.clang_lib_dir / 'lib' / 'linux'
         self._build_sanitizer_map_file('asan', arch, lib_dir, 'ASAN')
         self._build_sanitizer_map_file('ubsan_standalone', arch, lib_dir, 'ASAN')
         if super()._is_64bit():
@@ -168,8 +168,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
             # because these are built with -nodefaultlibs and prevent libc symbols
             # needed by libclang_rt.profile from being resolved.  Manually adding
             # the libclang_rt.profile to linker flags fixes the issue.
-            resource_dir = self.toolchain.resource_dir
-            ldflags.append(str(resource_dir / 'libclang_rt.profile-x86_64.a'))
+            ldflags.append(str(self.resource_dir / 'libclang_rt.profile-x86_64.a'))
         return ldflags
 
     @property
@@ -255,7 +254,8 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
     # which can only have a single copy installed into its resource directory.
     @property
     def config_list(self) -> List[configs.Config]:
-        result = configs.android_configs(platform=False, extra_config={'is_exported': False})
+        result = configs.android_configs(platform=False)
+        result.append(configs.BaremetalAArch64Config())
         # For arm32 and x86, build a special version of the builtins library
         # where the symbols are exported, not hidden. This version is needed
         # to continue exporting builtins from libc.so and libm.so.
@@ -267,7 +267,7 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
 
     @property
     def is_exported(self) -> bool:
-        return cast(Dict[str, bool], self._config.extra_config)['is_exported']
+        return self._config.extra_config and self._config.extra_config.get('is_exported', False)
 
     @property
     def output_dir(self) -> Path:
@@ -286,6 +286,7 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         # because we can't link an executable until builtins have been built.
         defines['CMAKE_TRY_COMPILE_TARGET_TYPE'] = 'STATIC_LIBRARY'
         defines['COMPILER_RT_EXCLUDE_ATOMIC_BUILTIN'] = 'OFF'
+        defines['COMPILER_RT_OS_DIR'] = self._config.target_os.crt_dir
         return defines
 
     def install_config(self) -> None:
@@ -293,26 +294,30 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         # runtimes_ndk_cxx.
         arch = self._config.target_arch
         sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
-        filename = 'libclang_rt.builtins-' + sarch + '-android.a'
+        filename = 'libclang_rt.builtins-' + sarch
+        filename += '-android.a' if self._config.target_os.is_android else '.a'
         filename_exported = 'libclang_rt.builtins-' + sarch + '-android-exported.a'
-        src_path = self.output_dir / 'lib' / 'linux' / filename
+        src_path = self.output_dir / 'lib' / self._config.target_os.crt_dir / filename
 
+        self.output_resource_dir.mkdir(parents=True, exist_ok=True)
         if self.is_exported:
             # This special copy exports its symbols and is only intended for use
             # in Bionic's libc.so.
-            shutil.copy2(src_path, self.output_toolchain.resource_dir / filename_exported)
+            shutil.copy2(src_path, self.output_resource_dir / filename_exported)
         else:
-            shutil.copy2(src_path, self.output_toolchain.resource_dir / filename)
+            shutil.copy2(src_path, self.output_resource_dir / filename)
 
-            # Also install to self.toolchain.resource_dir, if it's different,
+            # Also install to self.resource_dir, if it's different,
             # for use when building target libraries.
-            if self.toolchain.resource_dir != self.output_toolchain.resource_dir:
-                shutil.copy2(src_path, self.toolchain.resource_dir / filename)
+            if self.resource_dir != self.output_resource_dir:
+                self.resource_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, self.resource_dir / filename)
 
             # Make a copy for the NDK.
-            dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
-            dst_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src_path, dst_dir / filename)
+            if self._config.target_os.is_android:
+                dst_dir = self.output_toolchain.path / 'runtimes_ndk_cxx'
+                dst_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, dst_dir / filename)
 
 
 class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
@@ -396,7 +401,7 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
             if f.suffix in ('.h', '.def'):
                 shutil.copy2(f, header_dst)
 
-        symlink_path = self.output_toolchain.resource_dir / 'libclang_rt.hwasan_static-aarch64-android.a'
+        symlink_path = self.output_resource_dir / 'libclang_rt.hwasan_static-aarch64-android.a'
         symlink_path.unlink(missing_ok=True)
         os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
 
@@ -503,7 +508,7 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
 
     @property
     def install_dir(self) -> Path:
-        return self.output_toolchain.resource_dir / self._config.llvm_triple
+        return self.output_resource_dir / self._config.llvm_triple
 
 
 class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
@@ -564,7 +569,7 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
         # We need to install libunwind manually.
         arch = self._config.target_arch
         src_path = self.output_dir / 'lib' / 'libunwind.a'
-        out_res_dir = self.output_toolchain.resource_dir / arch.value
+        out_res_dir = self.output_resource_dir / arch.value
         out_res_dir.mkdir(parents=True, exist_ok=True)
 
         if self.is_exported:
@@ -574,10 +579,10 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
         else:
             shutil.copy2(src_path, out_res_dir / 'libunwind.a')
 
-            # Also install to self.toolchain.resource_dir, if it's different, for
+            # Also install to self.resource_dir, if it's different, for
             # use when building runtimes.
-            if self.toolchain.resource_dir != self.output_toolchain.resource_dir:
-                res_dir = self.toolchain.resource_dir / arch.value
+            if self.resource_dir != self.output_resource_dir:
+                res_dir = self.resource_dir / arch.value
                 res_dir.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_path, res_dir / 'libunwind.a')
 

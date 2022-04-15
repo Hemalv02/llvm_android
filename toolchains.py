@@ -134,10 +134,6 @@ class Toolchain:
         return self.clang_lib_dir / 'include'
 
     @property
-    def resource_dir(self) -> Path:
-        return self.clang_lib_dir / 'lib' / 'linux'
-
-    @property
     def libcxx_headers(self) -> Path:
         return self.path / 'include' / 'c++' / 'v1'
 

@@ -485,7 +485,7 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         # Building llvm with tests needs python >= 3.6, which may not be available on build server.
         # So always use prebuilts python.
         target = self._config.target_os
-        if target != hosts.Host.Android:
+        if target != hosts.Host.Android and target != hosts.Host.Baremetal:
             defines['Python3_LIBRARY'] = str(paths.get_python_lib(target))
             defines['Python3_LIBRARIES'] = str(paths.get_python_lib(target))
             defines['Python3_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
@@ -501,11 +501,19 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     _config: configs.AndroidConfig
 
     @property
+    def resource_dir(self) -> Path:
+        return self.toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
+
+    @property
+    def output_resource_dir(self) -> Path:
+        return self.output_toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
+
+    @property
     def install_dir(self) -> Path:
         arch = self._config.target_arch
-        if self._config.platform:
-            return self.output_toolchain.resource_dir / arch.value
-        return self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
+        if self._config.target_os.is_android and not self._config.platform:
+            return self.output_toolchain.path / 'runtimes_ndk_cxx' / arch.value
+        return self.output_resource_dir / arch.value
 
     @property
     def cmake_defines(self) -> Dict[str, str]:

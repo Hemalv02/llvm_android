@@ -24,6 +24,7 @@ class Host(enum.Enum):
     Linux = 'linux'
     Windows = 'windows'
     Android = 'android'
+    Baremetal = 'baremetal'
 
     @property
     def is_android(self) -> bool:
@@ -52,6 +53,15 @@ class Host(enum.Enum):
             Host.Darwin: 'darwin-x86',
             Host.Linux: 'linux-x86',
             Host.Windows: 'windows-x86',
+        }[self]
+
+    @property
+    def crt_dir(self) -> str:
+        """Returns the subdirectory under lib for runtimes."""
+        return {
+            Host.Android: 'linux',
+            Host.Baremetal: 'baremetal',
+            Host.Linux: 'linux',
         }[self]
 
 

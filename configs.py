@@ -123,6 +123,34 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
         return None
 
 
+class BaremetalConfig(_BaseConfig):
+    """Configuration for baremetal targets."""
+
+    target_os: hosts.Host = hosts.Host.Baremetal
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['COMPILER_RT_BAREMETAL_BUILD'] = 'ON'
+        return defines
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append(f'--target={self.llvm_triple}')
+        return cflags
+
+
+class BaremetalAArch64Config(BaremetalConfig):
+    """Configuration for baremetal targets."""
+
+    target_arch: hosts.Arch = hosts.Arch.AARCH64
+
+    @property
+    def llvm_triple(self) -> str:
+        return 'aarch64-elf'
+
+
 class DarwinConfig(_BaseConfig):
     """Configuration for Darwin targets."""
 
