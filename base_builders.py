@@ -188,6 +188,14 @@ class Builder:  # pylint: disable=too-few-public-methods
         env['PATH'] = os.pathsep.join(p for p in paths if p)
         return env
 
+    @property
+    def resource_dir(self) -> Path:
+        return self.toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
+
+    @property
+    def output_resource_dir(self) -> Path:
+        return self.output_toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
+
     def install(self) -> None:
         """Installs built artifacts."""
 
@@ -499,14 +507,6 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     """Base builder for llvm runtime libs."""
 
     _config: configs.AndroidConfig
-
-    @property
-    def resource_dir(self) -> Path:
-        return self.toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
-
-    @property
-    def output_resource_dir(self) -> Path:
-        return self.output_toolchain.clang_lib_dir / 'lib' / self._config.target_os.crt_dir
 
     @property
     def install_dir(self) -> Path:
