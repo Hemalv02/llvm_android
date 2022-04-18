@@ -139,10 +139,16 @@ def validity_check(host, install_dir, clang_version_major):
     if host == 'linux-x86':
       realClangPath = os.path.join(install_dir, 'bin', 'clang-' + clang_version_major)
       strings = utils.check_output(['strings', realClangPath])
-      no_pgo_profile = strings.find('NO PGO PROFILE') != -1
       llvm_next = strings.find('ANDROID_LLVM_NEXT') != -1
+
+      no_pgo_profile = strings.find('NO PGO PROFILE') != -1
       if no_pgo_profile and not llvm_next:
-          logger().error('The Clang binary is not built with profiles.')
+          logger().error('The Clang binary is not built with PGO profiles.')
+          return False
+
+      no_bolt_profile = strings.find('NO BOLT PROFILE') != -1
+      if no_bolt_profile and not llvm_next:
+          logger().error('The Clang binary is not built with BOLT profiles.')
           return False
 
     # Check that all the files listed in remote_toolchain_inputs are valid
