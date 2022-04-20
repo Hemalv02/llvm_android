@@ -271,7 +271,8 @@ def build_target(android_base: Path, clang_version: version.Version,
 
     if profiler is not None:
         # Build only a subset of targets and collect profiles
-        modules = ['libart', 'libc', 'libLLVM_android-host64']
+        env['CLANG_ANALYZER_CHECKS'] = '1'
+        modules = ['libart', 'libc', 'adb-tidy']
 
         # Set the environment variable specifying where the profile file gets
         # written.
