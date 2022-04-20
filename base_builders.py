@@ -668,9 +668,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def install_config(self) -> None:
         super().install_config()
-
-        if self.build_lldb:
-            self._install_lldb_deps()
+        self._install_lldb_deps()
 
     @functools.cached_property
     def installed_toolchain(self) -> toolchains.Toolchain:
