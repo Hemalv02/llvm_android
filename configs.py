@@ -349,6 +349,9 @@ class AndroidARMConfig(AndroidConfig):
     def cflags(self) -> List[str]:
         cflags = super().cflags
         cflags.append('-march=armv7-a')
+        # https://github.com/android/ndk/issues/1672
+        # armeabi-v7a libs should not use registers d16 to d31
+        cflags.append('-mfpu=vfpv3-d16')
         return cflags
 
 
