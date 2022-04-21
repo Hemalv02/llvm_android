@@ -615,6 +615,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [ARM] Patterns for vector conversion between half and float"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a76620143c54e0b40c7538f4ffa38f4c9db8a009.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 452352
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [CodeView] Avoid integer overflow while parsing long version strings"
         },
         "platforms": [
@@ -715,6 +729,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [AArch64] Cleanup and extend cast costs. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2e7c35ea12c88d0876e453a936ecce0456353621.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 454251
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[DAG] Ensure type is legal for bswap(shl(x,c)) -> zext(bswap(trunc(shl(x,c-bw/2)))) fold"
         },
         "platforms": [
@@ -725,6 +753,48 @@
         "version_range": {
             "from": 454067,
             "until": 454267
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Add some tests for the cost of extending an extract. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/02de9752593d3289804a307dbf628960f417f51e.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 454584
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Add some fp16 conversion cost tests. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/97e0366d6711babc3121d2a043c08a7a0c258479.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 454625
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Update costs for some fp16 converts"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/47f4cd9c3dbfb383dd7706f20ba9eda2dd17c5b8.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 454699
         }
     },
     {
@@ -768,6 +838,34 @@
         "version_range": {
             "from": 450784,
             "until": 455347
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Move fp16 cast tests."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/697f55e36823dbd91ca94a666d99f3c4ba11cacb.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 455390
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Improve costs for some conversions to fp16."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/aa590e5823c352358fbeefa8bbd47a4b9c7de93f.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 455497
         }
     },
     {
