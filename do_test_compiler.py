@@ -270,6 +270,9 @@ def build_target(android_base: Path, clang_version: version.Version,
         env['WITH_TIDY'] = '1'
 
     if profiler is not None:
+        # lld calls _Exit as a speedup, which prevents it from writing the PGO
+        # profiles.
+        env['LLD_IN_TEST'] = '1'
         # Build only a subset of targets and collect profiles
         env['CLANG_ANALYZER_CHECKS'] = '1'
         modules = ['libart', 'libc', 'adb-tidy']
