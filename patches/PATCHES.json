@@ -270,6 +270,12 @@
         "end_version": 440947
     },
     {
+        "comment": "[UPSTREAM] [ARM] Patterns for vector conversion between half and float",
+        "rel_patch_path": "cherry/a76620143c54e0b40c7538f4ffa38f4c9db8a009.patch",
+        "start_version": 416183,
+        "end_version": 452352
+    },
+    {
         "comment": "Revert two changes that break Android builds.",
         "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v5.patch",
         "start_version": 416183,
