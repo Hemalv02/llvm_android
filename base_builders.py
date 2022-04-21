@@ -608,7 +608,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
-    def _install_lldb_deps(self) -> None:
+    def _install_deps(self) -> None:
         lib_dir = self.install_dir / ('bin' if self._config.target_os.is_windows else 'lib64')
         lib_dir.mkdir(exist_ok=True, parents=True)
 
@@ -668,7 +668,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def install_config(self) -> None:
         super().install_config()
-        self._install_lldb_deps()
+        self._install_deps()
 
     @functools.cached_property
     def installed_toolchain(self) -> toolchains.Toolchain:
