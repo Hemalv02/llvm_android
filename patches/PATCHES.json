@@ -970,34 +970,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "Revert two changes that break Android builds."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v6.patch",
-        "version_range": {
-            "from": 428724,
-            "until": 448965
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert two changes that break Android builds."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-two-changes-that-break-Android-builds.v7.patch",
-        "version_range": {
-            "from": 448965,
-            "until": null
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
