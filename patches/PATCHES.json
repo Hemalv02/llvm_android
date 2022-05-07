@@ -701,6 +701,36 @@
     {
         "metadata": {
             "info": [],
+            "title": "[ELF] Change (NOLOAD) section type mismatch error to warning"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/cb0a4bb5be10636aaec3ecb56ed586dee3eb0b9e.patch",
+        "version_range": {
+            "from": 453414,
+            "until": 453550
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[ELF][test] Avoid non-portable |& in notest.s"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/93e2b59c076e266e78627ff7cf1dc9ed7d85550d.patch",
+        "version_range": {
+            "from": 453414,
+            "until": 453557
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [ELF] Check COMMON symbols for PROVIDE and don't redefine COMMON symbols edata/end/etext"
         },
         "platforms": [
@@ -966,6 +996,21 @@
         "version_range": {
             "from": 450784,
             "until": 460305
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[ELF] Change (NOLOAD) type mismatch to use SHT_NOBITS instead of SHT_PROGBITS"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/b3d5bb3b308f9a41022cdd30542991840b826a6b.patch",
+        "version_range": {
+            "from": 453414,
+            "until": 461017
         }
     },
     {
