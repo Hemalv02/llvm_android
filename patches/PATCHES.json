@@ -1016,6 +1016,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "[AArch64] Add `foldADCToCINC` DAG combine."
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/0298cce257f8f8070377baab790eb8cc277904fc.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 461546
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
