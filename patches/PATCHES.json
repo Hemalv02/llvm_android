@@ -1016,6 +1016,36 @@
     {
         "metadata": {
             "info": [],
+            "title": "[AArch64] Add llvm/test/CodeGen/AArch64/i256-math.ll"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/26ba347fbb0cf8abcb861aa558711f51455a0ec3.patch",
+        "version_range": {
+            "from": 459639,
+            "until": 461075
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[AArch64] Replace `performANDSCombine` with `performFlagSettingCombine`."
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/d29fc6e7d24f9bf67512180c0be3f08526049a27.patch",
+        "version_range": {
+            "from": 459639,
+            "until": 461545
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[AArch64] Add `foldADCToCINC` DAG combine."
         },
         "platforms": [
