@@ -633,10 +633,17 @@ def parse_args():
         default=False,
         help='Enable BOLT instrumentation (only affects stage2).')
 
-    parser.add_argument(
-        '--no-pgo',
+    pgo_group = parser.add_mutually_exclusive_group()
+    pgo_group.add_argument(
+        '--pgo',
         action='store_true',
         default=False,
+        help='Enable PGO (only affects stage2)')
+    pgo_group.add_argument(
+        '--no-pgo',
+        action='store_false',
+        default=False,
+        dest='pgo',
         help='Disable PGO (only affects stage2)')
 
     parser.add_argument(
@@ -802,7 +809,7 @@ def main():
         swig_builder = None
 
     if need_host:
-        if not args.no_pgo:
+        if args.pgo:
             profdata, clang_bolt_fdata = extract_profiles()
         else:
             profdata, clang_bolt_fdata = None, None
