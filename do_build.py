@@ -159,6 +159,7 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
                       f'--output_file={wrapper_path}'], env=go_env)
 
     bisect_path = paths.SCRIPTS_DIR / 'bisect_driver.py'
+    clang_tidy_sh_path = paths.SCRIPTS_DIR / 'clang-tidy.sh'
     bin_path = llvm_install_path / 'bin'
     clang_path = bin_path / 'clang'
     clang_real_path = bin_path / 'clang.real'
@@ -186,6 +187,7 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
     shutil.copy2(wrapper_path, clangxx_path)
     shutil.copy2(wrapper_path, clang_tidy_path)
     shutil.copy2(bisect_path, bin_path)
+    shutil.copy2(clang_tidy_sh_path, bin_path)
 
     # point clang-cl to clang.real instead of clang (which is the wrapper)
     clangcl_path = bin_path / 'clang-cl'
