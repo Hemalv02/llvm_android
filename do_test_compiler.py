@@ -40,14 +40,23 @@ DISABLED_WARNINGS = [
 ]
 
 
-class ClangProfileHandler(object):
+class ProfileHandler(object):
+
+    def getProfileFileEnvVars(self):
+        return []
+
+    def mergeProfiles(self):
+        return
+
+
+class PgoProfileHandler(ProfileHandler):
 
     def __init__(self):
         self.profiles_dir = paths.OUT_DIR / 'clang-profiles'
         self.profiles_format = os.path.join(self.profiles_dir, '%4m.profraw')
 
-    def getProfileFileEnvVar(self):
-        return ('LLVM_PROFILE_FILE', self.profiles_format)
+    def getProfileFileEnvVars(self):
+        return [('LLVM_PROFILE_FILE', self.profiles_format)]
 
     def mergeProfiles(self):
         stage1_install = paths.OUT_DIR / 'stage1-install'
@@ -66,6 +75,30 @@ class ClangProfileHandler(object):
             'tar', '-cjC',
             str(profdata_dir), profdata_filename, '-f',
             str(dist_dir / paths.pgo_profdata_tarname())
+        ])
+
+
+class BoltProfileHandler(ProfileHandler):
+
+    def __init__(self):
+        self.profiles_dir = paths.OUT_DIR / 'bolt-profiles'
+
+    def mergeProfiles(self):
+        stage2_install = paths.OUT_DIR / 'stage2-install'
+        merge_fdata_tool = stage2_install / 'bin' / 'merge-fdata'
+
+        bolt_collection_path = paths.OUT_DIR / 'bolt_collection'
+        clang_fdata_filename = 'clang.fdata'
+        clang_fdata_path = bolt_collection_path / clang_fdata_filename
+        utils.check_call([
+            merge_fdata_tool, '-o', str(clang_fdata_path), str(bolt_collection_path / 'clang')
+        ])
+
+        dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
+        utils.check_call([
+            'tar', '-cjC',
+            str(bolt_collection_path), clang_fdata_filename, '-f',
+            str(dist_dir / paths.bolt_fdata_tarname())
         ])
 
 
@@ -149,12 +182,19 @@ def parse_args():
         dest='enable_fallback',
         help='Disable clang wrapper fallback to older prebuilts.')
 
-    parser.add_argument(
+    profile_generate_group = parser.add_mutually_exclusive_group()
+    profile_generate_group.add_argument(
         '--generate-clang-profile',
         action='store_true',
         default=False,
         dest='profile',
         help='Build instrumented compiler and gather profiles')
+    profile_generate_group.add_argument(
+        '--generate-bolt-profile',
+        action='store_true',
+        default=False,
+        dest='bolt',
+        help='Build BOLT instrumented compiler and gather profiles')
 
     args = parser.parse_args()
     if args.clang_path and args.clang_package_path:
@@ -200,7 +240,7 @@ def extract_clang_version(clang_install: Path) -> version.Version:
     return version.Version(version_file)
 
 
-def invoke_llvm_tools(profiler: ClangProfileHandler):
+def invoke_llvm_tools(profiler: ProfileHandler):
     """Collect profiles from llvm tools.
 
     For now, just use '--help' to invoke the tools.
@@ -211,8 +251,8 @@ def invoke_llvm_tools(profiler: ClangProfileHandler):
     # build.py instead of calling its internal functions.
     stage2_install = paths.OUT_DIR / 'stage2-install'
     env = dict(os.environ)
-    key, val = profiler.getProfileFileEnvVar()
-    env[key] = val
+    for key, val in profiler.getProfileFileEnvVars():
+        env[key] = val
 
     for tool in (stage2_install / 'bin').iterdir():
         # unchecked call since the tools may have non-zero exit code with
@@ -226,7 +266,7 @@ def invoke_llvm_tools(profiler: ClangProfileHandler):
 def build_target(android_base: Path, clang_version: version.Version,
                  target: str, modules: List[str],
                  max_jobs: int, enable_fallback: bool, with_tidy: bool,
-                 profiler: Optional[ClangProfileHandler]=None) -> None:
+                 profiler: Optional[ProfileHandler]=None) -> None:
     jobs = '-j{}'.format(max(1, min(max_jobs, multiprocessing.cpu_count())))
     try:
         env_out = subprocess.check_output(
@@ -280,8 +320,8 @@ def build_target(android_base: Path, clang_version: version.Version,
 
         # Set the environment variable specifying where the profile file gets
         # written.
-        key, val = profiler.getProfileFileEnvVar()
-        env[key] = val
+        for key, val in profiler.getProfileFileEnvVars():
+            env[key] = val
 
     modulesList = ' '.join(modules)
     print('Start building target %s and modules %s.' % (target, modulesList))
@@ -373,6 +413,12 @@ def main():
         if args.profile:
             cmd.append('--build-instrumented')
             cmd.append('--skip-tests')
+        elif args.bolt:
+            cmd.append('--pgo')
+            cmd.append('--lto')
+            cmd.append('--bolt-instrument')
+            cmd.append('--no-strip')
+            cmd.append('--skip-tests')
         elif args.skip_tests:
             cmd.append('--skip-tests')
         utils.check_call(cmd)
@@ -381,7 +427,12 @@ def main():
     link_clang(Path(args.android_path), clang_path)
 
     if args.build_only:
-        profiler = ClangProfileHandler() if args.profile else None
+        if args.profile:
+            profiler = PgoProfileHandler()
+        elif args.bolt:
+            profiler = BoltProfileHandler()
+        else:
+            profiler = None
 
         build_target(Path(args.android_path), clang_version, args.target,
                      modules, args.jobs,
