@@ -1061,6 +1061,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [BOLT] Allow merge-fdata to take a directory as input"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2a42f7f72a138db541fd3f5c0f14998f197d406d.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 463150
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
