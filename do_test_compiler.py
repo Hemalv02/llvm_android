@@ -30,7 +30,6 @@ import paths
 import utils
 import version
 
-TARGETS = ('aosp_angler-eng', 'aosp_bullhead-eng', 'aosp_marlin-eng')
 STDERR_REDIRECT_KEY = 'ANDROID_LLVM_STDERR_REDIRECT'
 PREBUILT_COMPILER_PATH_KEY = 'ANDROID_LLVM_PREBUILT_COMPILER_PATH'
 DISABLED_WARNINGS_KEY = 'ANDROID_LLVM_FALLBACK_DISABLED_WARNINGS'
@@ -161,6 +160,8 @@ def parse_args():
     if args.clang_path and args.clang_package_path:
         parser.error('Only one of --clang-path and --clang-package-path must'
                      'be specified')
+    if args.build_only and not args.target:
+        parser.error('Build target is not specified in build only mode.')
 
     return args
 
@@ -382,11 +383,9 @@ def main():
     if args.build_only:
         profiler = ClangProfileHandler() if args.profile else None
 
-        targets = [args.target] if args.target else TARGETS
-        for target in targets:
-            build_target(Path(args.android_path), clang_version, target,
-                         modules, args.jobs,
-                         args.enable_fallback, args.with_tidy, profiler)
+        build_target(Path(args.android_path), clang_version, args.target,
+                     modules, args.jobs,
+                     args.enable_fallback, args.with_tidy, profiler)
 
         if profiler is not None:
             invoke_llvm_tools(profiler)
