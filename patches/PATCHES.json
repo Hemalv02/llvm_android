@@ -1061,6 +1061,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [BOLT] Fix merge-fdata handling of BAT profiles"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2fdc5d336ed1fdcde4700a4c23777e0959d5c8d7.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 461691
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [BOLT] Allow merge-fdata to take a directory as input"
         },
         "platforms": [
@@ -1070,6 +1084,20 @@
         "version_range": {
             "from": 450784,
             "until": 463150
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [BOLT] Add `-o` option to merge-fdata"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/716d428ab525121db6c5574b62923d49ea5191ed.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 463271
         }
     },
     {

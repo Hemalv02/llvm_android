@@ -1,0 +1,95 @@
+From 716d428ab525121db6c5574b62923d49ea5191ed Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Wed, 1 Jun 2022 23:53:59 +0800
+Subject: [PATCH] [BOLT] Add `-o` option to merge-fdata
+
+Differential Revision: https://reviews.llvm.org/D126788
+---
+ bolt/test/X86/merge-fdata-output.test  | 16 ++++++++++++++++
+ bolt/tools/merge-fdata/merge-fdata.cpp | 24 +++++++++++++++++++++---
+ 2 files changed, 37 insertions(+), 3 deletions(-)
+ create mode 100644 bolt/test/X86/merge-fdata-output.test
+
+diff --git a/bolt/test/X86/merge-fdata-output.test b/bolt/test/X86/merge-fdata-output.test
+new file mode 100644
+index 00000000000..17050e48a95
+--- /dev/null
++++ b/bolt/test/X86/merge-fdata-output.test
+@@ -0,0 +1,16 @@
++# Check merge-fdata tool correctly handles `-o` option.
++RUN: merge-fdata %S/Inputs/bat_profile_1.fdata \
++RUN:             %S/Inputs/bat_profile_2.fdata \
++RUN:   | FileCheck %s
++
++RUN: merge-fdata %S/Inputs/bat_profile_1.fdata \
++RUN:             %S/Inputs/bat_profile_2.fdata \
++RUN:             -o - \
++RUN:   | FileCheck %s
++
++RUN: merge-fdata %S/Inputs/bat_profile_1.fdata \
++RUN:             %S/Inputs/bat_profile_2.fdata \
++RUN:             -o %t
++RUN: FileCheck %s < %t
++
++CHECK: 1 main 451 1 SolveCubic 0 0 302
+\ No newline at end of file
+diff --git a/bolt/tools/merge-fdata/merge-fdata.cpp b/bolt/tools/merge-fdata/merge-fdata.cpp
+index bea503f43e7..3cb6c910a8b 100644
+--- a/bolt/tools/merge-fdata/merge-fdata.cpp
++++ b/bolt/tools/merge-fdata/merge-fdata.cpp
+@@ -64,6 +64,12 @@ SuppressMergedDataOutput("q",
+   cl::Optional,
+   cl::cat(MergeFdataCategory));
+ 
++static cl::opt<std::string>
++OutputFilePath("o",
++  cl::value_desc("file"),
++  cl::desc("Write output to <file>"),
++  cl::cat(MergeFdataCategory));
++
+ } // namespace opts
+ 
+ namespace {
+@@ -81,6 +87,18 @@ static void report_error(Twine Message, StringRef CustomError) {
+   exit(1);
+ }
+ 
++static raw_fd_ostream &output() {
++  if (opts::OutputFilePath.empty() || opts::OutputFilePath == "-")
++    return outs();
++  else {
++    std::error_code EC;
++    static raw_fd_ostream Output(opts::OutputFilePath, EC);
++    if (EC)
++      report_error(opts::OutputFilePath, EC);
++    return Output;
++  }
++}
++
+ void mergeProfileHeaders(BinaryProfileHeader &MergedHeader,
+                          const BinaryProfileHeader &Header) {
+   if (MergedHeader.FileName.empty())
+@@ -283,9 +301,9 @@ void mergeLegacyProfiles(const SmallVectorImpl<std::string> &Filenames) {
+   }
+ 
+   if (BoltedCollection)
+-    outs() << "boltedcollection\n";
++    output() << "boltedcollection\n";
+   for (const auto &Entry : Entries)
+-    outs() << Entry.getKey() << " " << Entry.getValue() << "\n";
++    output() << Entry.getKey() << " " << Entry.getValue() << "\n";
+ 
+   errs() << "Profile from " << Filenames.size() << " files merged.\n";
+ }
+@@ -375,7 +393,7 @@ int main(int argc, char **argv) {
+   }
+ 
+   if (!opts::SuppressMergedDataOutput) {
+-    yaml::Output YamlOut(outs());
++    yaml::Output YamlOut(output());
+ 
+     BinaryProfile MergedProfile;
+     MergedProfile.Header = MergedHeader;
+-- 
+2.36.1.255.ge46751e96f-goog
+
