@@ -438,8 +438,12 @@ def main():
                      modules, args.jobs,
                      args.enable_fallback, args.with_tidy, profiler)
 
-        if profiler is not None:
+        # Linking LLVM tools with no PGO data is super slow. Workaround by
+        # invoking them to gather some data.
+        if isinstance(profiler, PgoProfileHandler):
             invoke_llvm_tools(profiler)
+
+        if profiler is not None:
             profiler.mergeProfiles()
 
     else:
