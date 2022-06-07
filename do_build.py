@@ -331,7 +331,7 @@ def bolt_instrument(toolchain_builder: LLVMBuilder):
 
     clang_bin = bin_dir / ('clang-' + major_version)
     clang_bin_orig = bin_dir / ('clang-' + major_version + '.orig')
-    clang_afdo_path = paths.OUT_DIR / 'bolt_collection' / 'clang'
+    clang_afdo_path = paths.OUT_DIR / 'bolt_collection' / 'clang' / 'clang'
     shutil.move(clang_bin, clang_bin_orig)
     args = [
         llvm_bolt_bin, '-instrument', '--instrumentation-file=' + str(clang_afdo_path),
@@ -339,6 +339,10 @@ def bolt_instrument(toolchain_builder: LLVMBuilder):
         clang_bin_orig
     ]
     utils.check_call(args)
+
+    # Need to create the profile output directory for BOLT.
+    # TODO: Let BOLT instrumented library to create it on itself.
+    os.makedirs(clang_afdo_path, exist_ok=True)
 
 
 def package_toolchain(toolchain_builder: LLVMBuilder,
