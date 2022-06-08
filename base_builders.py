@@ -601,7 +601,10 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         if self.libncurses:
             defines['LLDB_ENABLE_CURSES'] = 'ON'
-            defines['CURSES_INCLUDE_DIRS'] = str(self.libncurses.include_dir)
+            defines['CURSES_INCLUDE_DIRS'] = ';'.join([
+                str(self.libncurses.include_dir),
+                str(self.libncurses.include_dir / 'ncurses'),
+            ])
             curses_libs = ';'.join(str(lib) for lib in self.libncurses.link_libraries)
             defines['CURSES_LIBRARIES'] = curses_libs
             defines['PANEL_LIBRARIES'] = curses_libs
