@@ -496,7 +496,7 @@ class AndroidI386Config(AndroidConfig):
         return cflags
 
 
-def _get_default_host_config() -> Config:
+def host_config() -> Config:
     """Returns the Config matching the current machine."""
     return {
         hosts.Host.Linux: LinuxConfig,
@@ -504,14 +504,6 @@ def _get_default_host_config() -> Config:
         hosts.Host.Windows: MinGWConfig
     }[hosts.build_host()]()
 
-
-_HOST_CONFIG: Config = _get_default_host_config()
-
-
-def host_config() -> Config:
-    """Returns the cached Host matching the current machine."""
-    global _HOST_CONFIG  # pylint: disable=global-statement
-    return _HOST_CONFIG
 
 def android_configs(platform: bool=True,
                     static: bool=False,
