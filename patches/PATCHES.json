@@ -529,6 +529,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"[AArch64] Set maximum VF with shouldMaximizeVectorBandwidth\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/42ebfa8269470e6b1fe2de996d3f1db6d142e16a.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 458807
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Support the min of module flags when linking, use for AArch64 BTI/PAC-RET"
         },
         "platforms": [
