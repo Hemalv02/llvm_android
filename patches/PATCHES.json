@@ -675,6 +675,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [lldb] Fix TCPSocket::Connect when getaddrinfo returns multiple addrs"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/926a7ecdc8b21f01b06a1db78bdd81f1dacaad61.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 464600
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [

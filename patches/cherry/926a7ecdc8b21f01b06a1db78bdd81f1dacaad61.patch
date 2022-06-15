@@ -1,0 +1,83 @@
+From 926a7ecdc8b21f01b06a1db78bdd81f1dacaad61 Mon Sep 17 00:00:00 2001
+From: Pavel Labath <pavel@labath.sk>
+Date: Tue, 14 Jun 2022 08:44:48 +0200
+Subject: [PATCH] [lldb] Fix TCPSocket::Connect when getaddrinfo returns
+ multiple addrs
+
+TCPSocket::Connect() calls SocketAddress::GetAddressInfo() and tries to
+connect any of them (in a for loop).
+
+This used to work before commit 4f6d3a376c9f("[LLDB] Fix setting of
+success in Socket::Close()") https://reviews.llvm.org/D116768.
+
+As a side effect of that commit, TCPSocket can only connect to the first
+address returned by SocketAddress::GetAddressInfo().
+
+1. If the attempt to connect to the first address fails,
+   TCPSocket::Connect(), calls CLOSE_SOCKET(GetNativeSocket()), which
+   closes the fd, but DOES NOT set m_socket to kInvalidSocketValue.
+2. On the second attempt, TCPSocket::CreateSocket() calls
+   Socket::Close().
+3. Socket::Close() proceeds, because IsValid() is true (m_socket was not
+   reset on step 1).
+4. Socket::Close() calls ::close(m_socket), which fails
+5. Since commit 4f6d3a376c9f("[LLDB] Fix setting of success in
+   Socket::Close()"), this is error is detected. Socket::Close() returns
+   an error.
+6. TCPSocket::CreateSocket() therefore returns an error.
+7. TCPSocket::Connect() detects the error and continues, skipping the
+   second (and the third, fourth...) address.
+
+This commit fixes the problem by changing step 1: by calling
+Socket::Close, instead of directly calling close(m_socket), m_socket is
+also se to kInvalidSocketValue. On step 3, Socket::Close() is going to
+return immediately and, on step 6, TCPSocket::CreateSocket() does not
+fail.
+
+How to reproduce this problem:
+
+On my system, getaddrinfo() resolves "localhost" to "::1" (first) and to
+"127.0.0.1" (second).
+
+Start a gdbserver that only listens on 127.0.0.1:
+
+```
+gdbserver 127.0.0.1:2159 /bin/cat
+Process /bin/cat created; pid = 2146709
+Listening on port 2159
+```
+
+Start lldb and make it connect to "localhost:2159"
+
+```
+./bin/lldb
+(lldb) gdb-remote localhost:2159
+```
+
+Before 4f6d3a376c9f("[LLDB] Fix setting of success in Socket::Close()"),
+this used to work. After that commit, it stopped working. This commit
+fixes the problem.
+
+Reviewed By: labath
+
+Differential Revision: https://reviews.llvm.org/D126702
+---
+ lldb/source/Host/common/TCPSocket.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lldb/source/Host/common/TCPSocket.cpp b/lldb/source/Host/common/TCPSocket.cpp
+index 46d97ad470e4..eabc9fef8a66 100644
+--- a/lldb/source/Host/common/TCPSocket.cpp
++++ b/lldb/source/Host/common/TCPSocket.cpp
+@@ -170,7 +170,7 @@ Status TCPSocket::Connect(llvm::StringRef name) {
+     if (-1 == llvm::sys::RetryAfterSignal(-1, ::connect, GetNativeSocket(),
+                                           &address.sockaddr(),
+                                           address.GetLength())) {
+-      CLOSE_SOCKET(GetNativeSocket());
++      Close();
+       continue;
+     }
+ 
+-- 
+2.36.1.476.g0c4daa206d-goog
+
