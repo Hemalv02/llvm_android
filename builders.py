@@ -264,6 +264,8 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
             arch.platform = False
             arch.extra_config = {'is_exported': True}
             result.append(arch)
+        result.append(configs.LinuxMuslConfig(hosts.Arch.AARCH64))
+        result.append(configs.LinuxMuslConfig(hosts.Arch.ARM))
         return result
 
     @property
@@ -282,7 +284,16 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         arch = self._config.target_arch
         defines['COMPILER_RT_BUILTINS_HIDE_SYMBOLS'] = \
             'TRUE' if not self.is_exported else 'FALSE'
-        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = self._config.llvm_triple
+        # Most builders use COMPILER_RT_DEFAULT_TARGET_TRIPLE, but that cause
+        # a problem for non-Android arm.  compiler-rt autodetects arm, armhf
+        # and armv6m in compiler-rt/cmake/base-config-ix.cmake, but
+        # set_output_name in compiler-rt/cmake/Modules/AddCompilerRT.cmake
+        # uses the name libclang_rt.builtins-arm for both arm and armv6m.
+        # Use CMAKE_C_COMPILER_TARGET + COMPILER_RT_DEFAULT_TARGET_ONLY
+        # instead to only build for armhf.
+        defines['CMAKE_C_COMPILER_TARGET'] = self._config.llvm_triple
+        defines['CMAKE_CXX_COMPILER_TARGET'] = self._config.llvm_triple
+        defines['COMPILER_RT_DEFAULT_TARGET_ONLY'] = 'TRUE'
         # For CMake feature testing, create an archive instead of an executable,
         # because we can't link an executable until builtins have been built.
         defines['CMAKE_TRY_COMPILE_TARGET_TYPE'] = 'STATIC_LIBRARY'
@@ -295,6 +306,8 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         # runtimes_ndk_cxx.
         arch = self._config.target_arch
         sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
+        if isinstance(self._config, configs.LinuxMuslConfig) and arch == hosts.Arch.ARM:
+            sarch = 'armhf'
         filename = 'libclang_rt.builtins-' + sarch
         filename += '-android.a' if self._config.target_os.is_android else '.a'
         filename_exported = 'libclang_rt.builtins-' + sarch + '-android-exported.a'
@@ -456,14 +469,11 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
     src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
     config_list: List[configs.Config] = [
-            configs.LinuxMuslConfig(),
-            configs.LinuxMuslConfig(is_32_bit=True),
+            configs.LinuxMuslConfig(hosts.Arch.X86_64),
+            configs.LinuxMuslConfig(hosts.Arch.I386),
+            configs.LinuxMuslConfig(hosts.Arch.AARCH64),
+            configs.LinuxMuslConfig(hosts.Arch.ARM),
     ]
-
-    @property
-    def output_dir(self) -> Path:
-        suffix = '-32' if self._config.is_32_bit else ''
-        return Path(str(super().output_dir) + suffix)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -495,7 +505,19 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
         defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
         defines['COMPILER_RT_HAS_GCC_S_LIB'] = 'FALSE'
         defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'TRUE'
-        defines['COMPILER_RT_DEFAULT_TARGET_TRIPLE'] = self._config.llvm_triple
+
+        # Most builders use COMPILER_RT_DEFAULT_TARGET_TRIPLE, but that cause
+        # a problem for non-Android arm.  compiler-rt autodetects arm, armhf
+        # and armv6m in compiler-rt/cmake/base-config-ix.cmake, but
+        # set_output_name in compiler-rt/cmake/Modules/AddCompilerRT.cmake
+        # uses the name libclang_rt.builtins-arm for both arm and armv6m.
+        # Use CMAKE_C_COMPILER_TARGET + COMPILER_RT_DEFAULT_TARGET_ONLY
+        # instead to only build for armhf.
+        # CMAKE_CXX_COMPILER_TARGET is also necessary for the libcxx embedded
+        # in libclang_rt.fuzzer.
+        defines['CMAKE_C_COMPILER_TARGET'] = self._config.llvm_triple
+        defines['CMAKE_CXX_COMPILER_TARGET'] = self._config.llvm_triple
+        defines['COMPILER_RT_DEFAULT_TARGET_ONLY'] = 'TRUE'
         return defines
 
 

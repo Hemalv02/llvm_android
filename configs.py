@@ -213,35 +213,63 @@ class LinuxConfig(_GccConfig):
 class LinuxMuslConfig(LinuxConfig):
     """Config for Musl sysroot bootstrapping"""
     target_os: hosts.Host = hosts.Host.Linux
+    target_arch: hosts.Arch
     is_cross_compiling: bool = True
 
-    def __init__(self, is_32_bit: bool = False):
-        self.is_32_bit = is_32_bit
+    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64):
+        self.triple = arch.llvm_arch + '-linux-musl'
+        if arch is hosts.Arch.ARM:
+            self.triple += 'eabihf'
+        self.target_arch = arch
 
     @property
     def llvm_triple(self) -> str:
-        if self.is_32_bit:
-            return 'i686-linux-musl'
-        else:
-            return 'x86_64-linux-musl'
+        return self.triple
 
     @property
     def cflags(self) -> List[str]:
-        return super().cflags + [
+        cflags = super().cflags + [
                 f'--target={self.llvm_triple}',
                 '-D_LIBCPP_HAS_MUSL_LIBC',
         ]
+        if self.target_arch is hosts.Arch.ARM:
+            cflags.append('-march=armv7-a')
+
+        return cflags
+
+    @property
+    def cxxflags(self) -> List[str]:
+        cxxflags = super().cxxflags + [
+                '-stdlib=libc++',
+        ]
+
+        return cxxflags
 
     @property
     def ldflags(self) -> List[str]:
         return super().ldflags + [
                 '-rtlib=compiler-rt',
+                '-stdlib=libc++',
         ]
 
     @property
     def sysroot(self) -> Path:
-        suffix = '32' if self.is_32_bit else ''
         return paths.BUILD_TOOLS_DIR / 'sysroots' / self.llvm_triple
+
+    @property
+    def output_suffix(self) -> str:
+        """The suffix of output directory name."""
+        return f'-{self.llvm_triple}'
+
+    @property
+    def lib_dirs(self) -> List[Path]:
+        """Override gcc libdirs."""
+        return []
+
+    @property
+    def bin_dirs(self) -> List[Path]:
+        """Override gcc bindirs."""
+        return []
 
 
 class MinGWConfig(_GccConfig):
