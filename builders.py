@@ -191,6 +191,9 @@ class Stage2Builder(base_builders.LLVMBuilder):
                 not self.debug_build):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
+            # Increase the ThinLTO link jobs limit to improve build speed.
+            defines['LLVM_PARALLEL_LINK_JOBS'] = 8
+
         # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
         # is not currently supported on Darwin.
         if self._config.target_os.is_darwin:
