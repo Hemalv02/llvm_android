@@ -90,6 +90,8 @@ class _BaseConfig(Config):  # pylint: disable=abstract-method
 
     use_lld: bool = True
     target_os: hosts.Host
+    # Assume most configs are cross compiling
+    is_cross_compiling: bool = True
 
     @property
     def cflags(self) -> List[str]:
@@ -156,6 +158,7 @@ class DarwinConfig(_BaseConfig):
 
     target_os: hosts.Host = hosts.Host.Darwin
     use_lld: bool = False
+    is_cross_compiling: bool = False
 
     @property
     def cflags(self) -> List[str]:
@@ -198,6 +201,7 @@ class LinuxConfig(_GccConfig):
     gcc_root: Path = (paths.GCC_ROOT / 'host' / 'x86_64-linux-glibc2.17-4.8')
     gcc_triple: str = 'x86_64-linux'
     gcc_ver: str = '4.8.3'
+    is_cross_compiling: bool = False
 
     @property
     def ldflags(self) -> List[str]:
@@ -209,6 +213,7 @@ class LinuxConfig(_GccConfig):
 class LinuxMuslConfig(LinuxConfig):
     """Config for Musl sysroot bootstrapping"""
     target_os: hosts.Host = hosts.Host.Linux
+    is_cross_compiling: bool = True
 
     def __init__(self, is_32_bit: bool = False):
         self.is_32_bit = is_32_bit

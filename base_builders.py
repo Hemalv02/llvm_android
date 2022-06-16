@@ -144,11 +144,6 @@ class Builder:  # pylint: disable=too-few-public-methods
     def _build_config(self) -> None:
         raise NotImplementedError()
 
-    def _is_cross_compiling(self) -> bool:
-        if isinstance(self._config, configs.LinuxMuslConfig):
-            return True
-        return self._config.target_os != hosts.build_host()
-
     def _is_64bit(self) -> bool:
         return self._config.target_arch in (hosts.Arch.AARCH64, hosts.Arch.X86_64)
 
@@ -175,7 +170,7 @@ class Builder:  # pylint: disable=too-few-public-methods
         """Additional ldflags to use."""
         ldflags = []
         # When cross compiling, toolchain libs won't work on target arch.
-        if not self._is_cross_compiling():
+        if not self._config.is_cross_compiling:
             ldflags.append(f'-L{self.toolchain.lib_dir}')
         return ldflags
 
@@ -396,7 +391,7 @@ class CMakeBuilder(Builder):
         if self._config.target_os.is_darwin:
             # Build universal binaries.
             defines['CMAKE_OSX_ARCHITECTURES'] = 'arm64;x86_64'
-        if self._is_cross_compiling():
+        if self._config.is_cross_compiling:
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
             defines['CMAKE_SYSTEM_PROCESSOR'] = self._get_cmake_system_arch()
