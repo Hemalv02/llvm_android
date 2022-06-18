@@ -647,6 +647,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "Use the canonical type when matching a generic selection association"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/85750de685f543443ec38c407392d9d7cdc19451.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 462785
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [BOLT] Allow merge-fdata to take a directory as input"
         },
         "platforms": [
