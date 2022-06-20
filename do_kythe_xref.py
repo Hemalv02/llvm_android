@@ -23,12 +23,14 @@ import sys
 
 import android_version
 import builders
+import configs
 import hosts
 import paths
 import utils
 
 def build_llvm() -> builders.Stage2Builder:
-    stage2 = builders.Stage2Builder()
+    host_configs = [configs.host_config()]
+    stage2 = builders.Stage2Builder(host_configs)
     stage2.toolchain_name = 'prebuilt'
     stage2.build_name = 'stage2'
     stage2.svn_revision = android_version.get_svn_revision()
