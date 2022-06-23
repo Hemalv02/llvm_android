@@ -45,7 +45,9 @@ GO_BIN_PATH: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag / 'bin'
 CMAKE_BIN_PATH: Path = PREBUILTS_DIR / 'cmake' / hosts.build_host().os_tag / 'bin' / 'cmake'
 BUILD_TOOLS_DIR: Path = PREBUILTS_DIR / 'build-tools'
 MAKE_BIN_PATH: Path = BUILD_TOOLS_DIR / hosts.build_host().os_tag / 'bin' / 'make'
-NINJA_BIN_PATH: Path = BUILD_TOOLS_DIR / hosts.build_host().os_tag / 'bin' / 'ninja'
+# Use the musl version of ninja on Linux, it is statically linked and avoids
+# problems with LD_LIBRARY_PATH causing ninja to use the wrong libc++.so.
+NINJA_BIN_PATH: Path = BUILD_TOOLS_DIR / hosts.build_host().os_tag_musl / 'bin' / 'ninja'
 
 LIBNCURSES_SRC_DIR: Path = EXTERNAL_DIR / 'libncurses'
 LIBEDIT_SRC_DIR: Path = EXTERNAL_DIR / 'libedit'
