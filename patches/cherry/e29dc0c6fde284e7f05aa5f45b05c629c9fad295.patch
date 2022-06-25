@@ -1,0 +1,273 @@
+From e29dc0c6fde284e7f05aa5f45b05c629c9fad295 Mon Sep 17 00:00:00 2001
+From: Alex Borcan <alexborcan@fb.com>
+Date: Tue, 3 May 2022 21:00:41 -0400
+Subject: [PATCH] [lld] Implement safe icf for MachO
+
+This change implements --icf=safe for MachO based on addrsig section that is implemented in D123751.
+
+Reviewed By: int3, #lld-macho
+
+Differential Revision: https://reviews.llvm.org/D123752
+---
+ lld/MachO/Driver.cpp         |  8 +++---
+ lld/MachO/ICF.cpp            | 38 +++++++++++++++++++++++-
+ lld/MachO/ICF.h              |  4 +++
+ lld/MachO/InputFiles.cpp     |  3 ++
+ lld/MachO/InputFiles.h       |  1 +
+ lld/MachO/InputSection.h     |  3 ++
+ lld/test/MachO/icf-options.s |  5 ++--
+ lld/test/MachO/icf-safe.s    | 56 ++++++++++++++++++++++++++++++++++++
+ 8 files changed, 110 insertions(+), 8 deletions(-)
+ create mode 100644 lld/test/MachO/icf-safe.s
+
+diff --git a/lld/MachO/Driver.cpp b/lld/MachO/Driver.cpp
+index 5b95278a991c..15daac5e5512 100644
+--- a/lld/MachO/Driver.cpp
++++ b/lld/MachO/Driver.cpp
+@@ -721,9 +721,6 @@ static ICFLevel getICFLevel(const ArgList &args) {
+     warn(Twine("unknown --icf=OPTION `") + icfLevelStr +
+          "', defaulting to `none'");
+     icfLevel = ICFLevel::none;
+-  } else if (icfLevel == ICFLevel::safe) {
+-    warn(Twine("`--icf=safe' is not yet implemented, reverting to `none'"));
+-    icfLevel = ICFLevel::none;
+   }
+   return icfLevel;
+ }
+@@ -1545,8 +1542,11 @@ bool macho::link(ArrayRef<const char *> argsArr, llvm::raw_ostream &stdoutOS,
+     // ICF assumes that all literals have been folded already, so we must run
+     // foldIdenticalLiterals before foldIdenticalSections.
+     foldIdenticalLiterals();
+-    if (config->icfLevel != ICFLevel::none)
++    if (config->icfLevel != ICFLevel::none) {
++      if (config->icfLevel == ICFLevel::safe)
++        markAddrSigSymbols();
+       foldIdenticalSections();
++    }
+ 
+     // Write to an output file.
+     if (target->wordSize == 8)
+diff --git a/lld/MachO/ICF.cpp b/lld/MachO/ICF.cpp
+index 29892b66b31b..e35944343012 100644
+--- a/lld/MachO/ICF.cpp
++++ b/lld/MachO/ICF.cpp
+@@ -8,11 +8,14 @@
+ 
+ #include "ICF.h"
+ #include "ConcatOutputSection.h"
++#include "Config.h"
+ #include "InputSection.h"
++#include "SymbolTable.h"
+ #include "Symbols.h"
+ #include "UnwindInfoSection.h"
+ 
+ #include "lld/Common/CommonLinkerContext.h"
++#include "llvm/Support/LEB128.h"
+ #include "llvm/Support/Parallel.h"
+ #include "llvm/Support/TimeProfiler.h"
+ #include "llvm/Support/xxhash.h"
+@@ -363,6 +366,39 @@ void ICF::segregate(size_t begin, size_t end, EqualsFn equals) {
+   }
+ }
+ 
++void macho::markSymAsAddrSig(Symbol *s) {
++  if (auto *d = dyn_cast_or_null<Defined>(s))
++    if (d->isec)
++      d->isec->keepUnique = true;
++}
++
++void macho::markAddrSigSymbols() {
++  for (InputFile *file : inputFiles) {
++    ObjFile *obj = dyn_cast<ObjFile>(file);
++    if (!obj)
++      continue;
++
++    Section *addrSigSection = obj->addrSigSection;
++    if (!addrSigSection)
++      continue;
++    assert(addrSigSection->subsections.size() == 1);
++
++    Subsection *subSection = &addrSigSection->subsections[0];
++    ArrayRef<unsigned char> &contents = subSection->isec->data;
++
++    const uint8_t *pData = contents.begin();
++    while (pData != contents.end()) {
++      unsigned size;
++      const char *err;
++      uint32_t symIndex = decodeULEB128(pData, &size, contents.end(), &err);
++      if (err)
++        fatal(toString(file) + ": could not decode addrsig section: " + err);
++      markSymAsAddrSig(obj->symbols[symIndex]);
++      pData += size;
++    }
++  }
++}
++
+ void macho::foldIdenticalSections() {
+   TimeTraceScope timeScope("Fold Identical Code Sections");
+   // The ICF equivalence-class segregation algorithm relies on pre-computed
+@@ -385,7 +421,7 @@ void macho::foldIdenticalSections() {
+     // FIXME: consider non-code __text sections as hashable?
+     bool isHashable = (isCodeSection(isec) || isCfStringSection(isec) ||
+                        isClassRefsSection(isec)) &&
+-                      !isec->shouldOmitFromOutput() &&
++                      !isec->keepUnique && !isec->shouldOmitFromOutput() &&
+                       sectionType(isec->getFlags()) == MachO::S_REGULAR;
+     if (isHashable) {
+       hashable.push_back(isec);
+diff --git a/lld/MachO/ICF.h b/lld/MachO/ICF.h
+index 9500a946601e..a287692d7ffa 100644
+--- a/lld/MachO/ICF.h
++++ b/lld/MachO/ICF.h
+@@ -9,12 +9,16 @@
+ #ifndef LLD_MACHO_ICF_H
+ #define LLD_MACHO_ICF_H
+ 
++#include "InputFiles.h"
+ #include "lld/Common/LLVM.h"
+ #include <vector>
+ 
+ namespace lld {
+ namespace macho {
++class Symbol;
+ 
++void markAddrSigSymbols();
++void markSymAsAddrSig(Symbol *s);
+ void foldIdenticalSections();
+ 
+ } // namespace macho
+diff --git a/lld/MachO/InputFiles.cpp b/lld/MachO/InputFiles.cpp
+index de3c3ae39bb0..f0cd4269d282 100644
+--- a/lld/MachO/InputFiles.cpp
++++ b/lld/MachO/InputFiles.cpp
+@@ -354,6 +354,9 @@ void ObjFile::parseSections(ArrayRef<SectionHeader> sectionHeaders) {
+       // spurious duplicate symbol errors, we do not parse these sections.
+       // TODO: Evaluate whether the bitcode metadata is needed.
+     } else {
++      if (name == section_names::addrSig)
++        addrSigSection = sections.back();
++
+       auto *isec = make<ConcatInputSection>(section, data, align);
+       if (isDebugSection(isec->getFlags()) &&
+           isec->getSegName() == segment_names::dwarf) {
+diff --git a/lld/MachO/InputFiles.h b/lld/MachO/InputFiles.h
+index ca9943605a99..b33e510a6901 100644
+--- a/lld/MachO/InputFiles.h
++++ b/lld/MachO/InputFiles.h
+@@ -149,6 +149,7 @@ public:
+   const uint32_t modTime;
+   std::vector<ConcatInputSection *> debugSections;
+   std::vector<CallGraphEntry> callGraph;
++  Section *addrSigSection = nullptr;
+ 
+ private:
+   template <class LP> void parseLazy();
+diff --git a/lld/MachO/InputSection.h b/lld/MachO/InputSection.h
+index 68d8ed97b11f..c4366c2ed34a 100644
+--- a/lld/MachO/InputSection.h
++++ b/lld/MachO/InputSection.h
+@@ -71,6 +71,8 @@ protected:
+ public:
+   // is address assigned?
+   bool isFinal = false;
++  // keep the address of the symbol(s) in this section unique in the final binary ?
++  bool keepUnique = false;
+   uint32_t align = 1;
+ 
+   OutputSection *parent = nullptr;
+@@ -328,6 +330,7 @@ constexpr const char threadVars[] = "__thread_vars";
+ constexpr const char unwindInfo[] = "__unwind_info";
+ constexpr const char weakBinding[] = "__weak_binding";
+ constexpr const char zeroFill[] = "__zerofill";
++constexpr const char addrSig[] = "__llvm_addrsig";
+ 
+ } // namespace section_names
+ 
+diff --git a/lld/test/MachO/icf-options.s b/lld/test/MachO/icf-options.s
+index 3a6eddb80361..51383602214b 100644
+--- a/lld/test/MachO/icf-options.s
++++ b/lld/test/MachO/icf-options.s
+@@ -8,8 +8,8 @@
+ # RUN:     | FileCheck %s --check-prefix=DIAG-EMPTY --allow-empty
+ # RUN: %lld -lSystem -no_deduplicate -o %t/no_dedup %t/main.o 2>&1 \
+ # RUN:     | FileCheck %s --check-prefix=DIAG-EMPTY --allow-empty
+-# RUN: not %lld -lSystem --icf=safe -o %t/safe %t/main.o 2>&1 \
+-# RUN:     | FileCheck %s --check-prefix=DIAG-SAFE
++# RUN: %lld -lSystem --icf=safe -o %t/safe %t/main.o 2>&1 \
++# RUN:     | FileCheck %s --check-prefix=DIAG-EMPTY --allow-empty
+ # RUN: not %lld -lSystem --icf=junk -o %t/junk %t/main.o 2>&1 \
+ # RUN:     | FileCheck %s --check-prefix=DIAG-JUNK
+ # RUN: %lld -lSystem --icf=all -no_deduplicate -o %t/none2 %t/main.o 2>&1 \
+@@ -18,7 +18,6 @@
+ # RUN:     | FileCheck %s --check-prefix=DIAG-EMPTY --allow-empty
+ 
+ # DIAG-EMPTY-NOT: {{.}}
+-# DIAG-SAFE: `--icf=safe' is not yet implemented, reverting to `none'
+ # DIAG-JUNK: unknown --icf=OPTION `junk', defaulting to `none'
+ 
+ # RUN: llvm-objdump -d --syms %t/all | FileCheck %s --check-prefix=FOLD
+diff --git a/lld/test/MachO/icf-safe.s b/lld/test/MachO/icf-safe.s
+new file mode 100644
+index 000000000000..014156a5543a
+--- /dev/null
++++ b/lld/test/MachO/icf-safe.s
+@@ -0,0 +1,56 @@
++; RUN: rm -rf %t; mkdir %t
++; RUN: llc -filetype=obj %s -O3 -o %t/icf-obj.o -enable-machine-outliner=never -mtriple arm64-apple-ios -addrsig
++; RUN: %lld -arch arm64 -lSystem --icf=safe -dylib -o %t/icf-safe.dylib %t/icf-obj.o
++; RUN: %lld -arch arm64 -lSystem --icf=all  -dylib -o %t/icf-all.dylib  %t/icf-obj.o
++; RUN: llvm-objdump %t/icf-safe.dylib -d --macho | FileCheck %s --check-prefix=ICFSAFE
++; RUN: llvm-objdump %t/icf-all.dylib  -d --macho | FileCheck %s --check-prefix=ICFALL
++
++; ICFSAFE-LABEL:  _callAllFunctions
++; ICFSAFE:        bl _func02
++; ICFSAFE-NEXT:   bl _func02
++; ICFSAFE-NEXT:   bl _func03_takeaddr
++
++; ICFALL-LABEL:   _callAllFunctions
++; ICFALL:         bl _func03_takeaddr
++; ICFALL-NEXT:    bl _func03_takeaddr
++; ICFALL-NEXT:    bl _func03_takeaddr
++
++target datalayout = "e-m:o-i64:64-i128:128-n32:64-S128"
++target triple = "arm64-apple-ios7.0.0"
++
++@result = global i32 0, align 4
++
++define void @func01() local_unnamed_addr noinline {
++entry:
++  %0 = load volatile i32, ptr @result, align 4
++  %add = add nsw i32 %0, 1
++  store volatile i32 %add, ptr @result, align 4
++  ret void
++}
++
++define void @func02() local_unnamed_addr noinline {
++entry:
++  %0 = load volatile i32, ptr @result, align 4
++  %add = add nsw i32 %0, 1
++  store volatile i32 %add, ptr @result, align 4
++  ret void
++}
++
++define void @func03_takeaddr() noinline {
++entry:
++  %0 = load volatile i32, ptr @result, align 4
++  %add = add nsw i32 %0, 1
++  store volatile i32 %add, ptr @result, align 4
++  ret void
++}
++
++define void @callAllFunctions() local_unnamed_addr {
++entry:
++  tail call void @func01()
++  tail call void @func02()
++  tail call void @func03_takeaddr()
++  %0 = load volatile i32, ptr @result, align 4
++  %add = add nsw i32 %0, ptrtoint (ptr @func03_takeaddr to i32)
++  store volatile i32 %add, ptr @result, align 4
++  ret void
++}
+-- 
+2.37.0.rc0.161.g10f37bed90-goog
+

@@ -573,6 +573,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [lld] Implement safe icf for MachO"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/e29dc0c6fde284e7f05aa5f45b05c629c9fad295.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 460734
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[ELF] Change (NOLOAD) type mismatch to use SHT_NOBITS instead of SHT_PROGBITS"
         },
         "platforms": [
