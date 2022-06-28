@@ -116,7 +116,7 @@ class Toolchain:
     @property
     def lib_dirs(self) -> List[Path]:
         """Returns the paths to lib dirs."""
-        return [self.path / 'lib', self.path / 'lib' / 'x86_64-unknown-linux-gnu']
+        return [self.path / 'lib', self.path / 'lib' / 'x86_64-unknown-linux-gnu', self.path / 'lib' / 'x86_64-unknown-linux-musl']
 
     @property
     def _version_file(self) -> Path:

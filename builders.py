@@ -77,6 +77,9 @@ class Stage1Builder(base_builders.LLVMBuilder):
         proj.add('clang-tools-extra')
         if self.build_lldb:
             proj.add('lldb')
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            # libcxx builds against libunwind when building for musl
+            proj.add('libunwind')
         return proj
 
     @property
@@ -118,6 +121,14 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
         return defines
 
+    def install_config(self) -> None:
+        # Still run `ninja install`.
+        super().install_config()
+
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            lib_dir = self.install_dir / 'lib'
+            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
+
     def test(self) -> None:
         with timer.Timer(f'stage1_test'):
             self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
@@ -145,6 +156,9 @@ class Stage2Builder(base_builders.LLVMBuilder):
                 'clang-tools-extra', 'polly', 'bolt'}
         if self.build_lldb:
             proj.add('lldb')
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            # libcxx builds against libunwind when building for musl
+            proj.add('libunwind')
         return proj
 
     @property
@@ -166,7 +180,10 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
         if self._config.target_os.is_linux:
-            ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
+            if isinstance(self._config, configs.LinuxMuslConfig):
+                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-musl')
+            else:
+                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
         # '$ORIGIN/../lib' is added by llvm's CMake rules.
         if self.bolt_optimize or self.bolt_instrument:
             ldflags.append('-Wl,-q')
@@ -256,6 +273,20 @@ class Stage2Builder(base_builders.LLVMBuilder):
             "$CURDIR/lldb" "$@"
         """))
         lldb_wrapper_path.chmod(0o755)
+
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            lib_dir = self.output_dir / 'lib'
+            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
+            lib_dir = self.install_dir / 'lib'
+            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
+
+    def test(self) -> None:
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            # musl cannot run check-cxx yet
+            with timer.Timer(f'stage2_test'):
+                self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
+        else:
+            super().test()
 
 
 class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
@@ -495,9 +526,6 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
         # compiler-rt CMake defines
         # ORC JIT fails to build with MUSL.
         defines['COMPILER_RT_BUILD_ORC'] = 'OFF'
-        # We don't have a libc++ for 32-bit musl.  It shouldn't be needed for
-        # compiler-rt, unless we're building tests.
-        del defines['LLVM_ENABLE_LIBCXX']
 
         # libunwind CMake defines
         if self.enable_assertions:
@@ -506,15 +534,9 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
             defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'FALSE'
         defines['LIBUNWIND_ENABLE_SHARED'] = 'FALSE'
         defines['LIBUNWIND_TARGET_TRIPLE'] = self._config.llvm_triple
-        defines['LIBUNWIND_HAS_DL_LIB'] = 'FALSE'
-        defines['LIBUNWIND_HAS_PTHREAD_LIB'] = 'FALSE'
-        defines['LIBCXX_HAS_RT_LIB'] = 'FALSE'
-        defines['LIBCXX_HAS_PTHREAD_LIB'] = 'FALSE'
-        defines['LIBCXXABI_HAS_PTHREAD_LIB'] = 'FALSE'
         defines['COMPILER_RT_HAS_LIBSTDCXX'] = 'FALSE'
         defines['COMPILER_RT_HAS_LIBCXX'] = 'TRUE'
         defines['SANITIZER_CXX_ABI'] = 'libcxxabi'
-        defines['COMPILER_RT_HAS_GCC_S_LIB'] = 'FALSE'
         defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'TRUE'
 
         # Most builders use COMPILER_RT_DEFAULT_TARGET_TRIPLE, but that cause

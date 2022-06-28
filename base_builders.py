@@ -170,7 +170,7 @@ class Builder:  # pylint: disable=too-few-public-methods
         """Additional ldflags to use."""
         ldflags = []
         # When cross compiling, toolchain libs won't work on target arch.
-        if not self._config.is_cross_compiling:
+        if not self._config.is_cross_compiling and not isinstance(self._config, configs.LinuxMuslConfig):
             # at least swig and libncurses need to link with lib/libc++.so
             for lib_dir in self.toolchain.lib_dirs:
                 ldflags.append(f'-L{lib_dir}')
@@ -295,14 +295,14 @@ class AutoconfBuilder(Builder):
         utils.check_call(config_cmd, cwd=self.output_dir, env=env)
 
         make_cmd = [str(paths.MAKE_BIN_PATH), f'-j{multiprocessing.cpu_count()}']
-        utils.check_call(make_cmd, cwd=self.output_dir)
+        utils.check_call(make_cmd, cwd=self.output_dir, env=self.env)
 
         self.install_config()
 
     def install_config(self) -> None:
         """Installs built artifacts for current config."""
         install_cmd = [str(paths.MAKE_BIN_PATH), 'install']
-        utils.check_call(install_cmd, cwd=self.output_dir)
+        utils.check_call(install_cmd, cwd=self.output_dir, env=self.env)
         if isinstance(self, LibInfo):
             cast(LibInfo, self).update_lib_id()
 
@@ -332,6 +332,10 @@ class CMakeBuilder(Builder):
         cflags = self._config.cflags + self.cflags
         cxxflags = self._config.cxxflags + self.cxxflags
         ldflags = self._config.ldflags + self.ldflags
+        if self._config.sysroot:
+            cflags.append(f'--sysroot={self._config.sysroot}')
+            cxxflags.append(f'--sysroot={self._config.sysroot}')
+            ldflags.append(f'--sysroot={self._config.sysroot}')
         cflags_str = ' '.join(cflags)
         cxxflags_str = ' '.join(cxxflags)
         ldflags_str = ' '.join(ldflags)

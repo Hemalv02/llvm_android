@@ -223,15 +223,16 @@ class LinuxMuslConfig(LinuxConfig):
     """Config for Musl sysroot bootstrapping"""
     target_os: hosts.Host = hosts.Host.Linux
     target_arch: hosts.Arch
-    is_cross_compiling: bool = True
+    is_cross_compiling: bool
 
-    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64):
+    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64, is_cross_compiling: bool = True):
         self.triple = arch.llvm_arch + '-unknown-linux-musl'
         self.sysroot_triple = arch.llvm_arch + '-linux-musl'
         if arch is hosts.Arch.ARM:
             self.triple += 'eabihf'
             self.sysroot_triple += 'eabihf'
         self.target_arch = arch
+        self.is_cross_compiling = is_cross_compiling
 
     @property
     def llvm_triple(self) -> str:
@@ -242,6 +243,10 @@ class LinuxMuslConfig(LinuxConfig):
         cflags = super().cflags + [
                 f'--target={self.llvm_triple}',
                 '-D_LIBCPP_HAS_MUSL_LIBC',
+                # gcc does this automatically and glibc includes it in features.h
+                # Neither clang nor musl include it, so add it here.  Otherwise
+                # libedit fails with error: wchar_t must store ISO 10646 characters
+                '-include stdc-predef.h',
         ]
         if self.target_arch is hosts.Arch.ARM:
             cflags.append('-march=armv7-a')
@@ -251,7 +256,12 @@ class LinuxMuslConfig(LinuxConfig):
     @property
     def cxxflags(self) -> List[str]:
         cxxflags = super().cxxflags + [
-                '-stdlib=libc++',
+            # -stdlib=libc++ prevents the "Check for working CXX compiler"
+            # step from failing when it can't find libstdc++.
+            # -Wno-unused-command-line-argument is necessary for commands that
+            # use -Werror -nostdinc++.
+            '-stdlib=libc++',
+            '-Wno-unused-command-line-argument',
         ]
 
         return cxxflags
@@ -259,8 +269,8 @@ class LinuxMuslConfig(LinuxConfig):
     @property
     def ldflags(self) -> List[str]:
         return super().ldflags + [
-                '-rtlib=compiler-rt',
-                '-stdlib=libc++',
+            '-rtlib=compiler-rt',
+            '-Wl,-z,stack-size=2097152',
         ]
 
     @property
@@ -282,6 +292,40 @@ class LinuxMuslConfig(LinuxConfig):
         """Override gcc bindirs."""
         return []
 
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LIBCXX_USE_COMPILER_RT'] = 'TRUE'
+        defines['LIBCXXABI_USE_COMPILER_RT'] = 'TRUE'
+        defines['LIBUNWIND_USE_COMPILER_RT'] = 'TRUE'
+        defines['LIBCXXABI_USE_LLVM_UNWINDER'] = 'TRUE'
+
+        # The musl sysroots contain empty libdl.a, libpthread.a and librt.a to
+        # satisfy the parts of the LLVM build that hardcode -lpthread, etc.,
+        # but that causes LLVM to mis-detect them as libpthread.so, etc.
+        # Hardcoded them as disabled to prevent references from .deplibs
+        # sections.
+        defines['LIBCXX_HAS_RT_LIB'] = 'FALSE'
+        defines['LIBCXX_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['LIBCXXABI_HAS_PTHREAD_LIB'] = 'FALSE'
+        defines['LIBUNWIND_HAS_DL_LIB'] = 'FALSE'
+        defines['LIBUNWIND_HAS_PTHREAD_LIB'] = 'FALSE'
+
+        defines['LLVM_DEFAULT_TARGET_TRIPLE'] = self.llvm_triple
+
+        return defines
+
+
+class LinuxMuslHostConfig(LinuxMuslConfig):
+    """Config for Musl as the host"""
+    def __init__(self):
+        super().__init__(is_cross_compiling=False)
+
+    @property
+    def env(self) -> Dict[str, str]:
+        env = super().env
+        env['LD_LIBRARY_PATH'] = str(self.sysroot / 'lib')
+        return env
 
 class MinGWConfig(_GccConfig):
     """Configuration for MinGW targets."""
@@ -544,10 +588,10 @@ class AndroidI386Config(AndroidConfig):
         return cflags
 
 
-def host_config() -> Config:
+def host_config(musl: bool=False) -> Config:
     """Returns the Config matching the current machine."""
     return {
-        hosts.Host.Linux: LinuxConfig,
+        hosts.Host.Linux: LinuxMuslHostConfig if musl else LinuxConfig,
         hosts.Host.Darwin: DarwinConfig,
         hosts.Host.Windows: MinGWConfig
     }[hosts.build_host()]()

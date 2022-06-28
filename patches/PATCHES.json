@@ -403,6 +403,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Pass through even more LIBCXX_* variables to libfuzzer's custom lib++"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/80aa41d9df3dbe4ee673b3b0a8b41854b69820c5.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 464881
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
@@ -482,6 +496,48 @@
         "version_range": {
             "from": 463634,
             "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Set HOME for tests that use module cache path"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7fe475756b26080fe0bb02e8e317662ccc9a01f1.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 473971
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Support dlclose as a noop in DynamicLibraryTest"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Support-dlclose-as-a-noop-in-DynamicLibraryTest.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 471972
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Fix std::fpos pretty printer on musl"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/13c6828bedeb815ee7748f82ca36073dbd55a9db.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 473968
         }
     }
 ]
