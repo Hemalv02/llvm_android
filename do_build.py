@@ -96,7 +96,6 @@ def build_llvm_for_windows(enable_assertions: bool,
         libcxx_builder = builders.LibCxxBuilder(config_list)
         libcxx_builder.enable_assertions = enable_assertions
         libcxx_builder.build()
-        win_builder.libcxx_path = libcxx_builder.install_dir
 
     lldb_bins: Set[str] = set()
     libxml2_builder = builders.LibXml2Builder(config_list)
@@ -126,7 +125,7 @@ def build_llvm_for_windows(enable_assertions: bool,
 
 
 def build_runtimes(build_lldb_server: bool):
-    builders.SysrootsBuilder().build()
+    builders.DeviceSysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
     builders.LibUnwindBuilder().build()
     builders.PlatformLibcxxAbiBuilder().build()
@@ -879,6 +878,8 @@ def main():
             build_runtimes(build_lldb_server=build_lldb)
 
     if need_windows:
+        # Host sysroots are currently setup only for Windows
+        builders.HostSysrootsBuilder().build()
         if args.windows_sdk:
             win_sdk.set_path(Path(args.windows_sdk))
         win_builder, win_lldb_bins = build_llvm_for_windows(
