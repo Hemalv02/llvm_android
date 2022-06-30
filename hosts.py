@@ -56,6 +56,11 @@ class Host(enum.Enum):
         }[self]
 
     @property
+    def os_tag_musl(self) -> str:
+        """Returns the os tag of current Host, using musl if the Host is Linux."""
+        return 'linux_musl-x86' if self is Host.Linux else self.os_tag
+
+    @property
     def crt_dir(self) -> str:
         """Returns the subdirectory under lib for runtimes."""
         return {
