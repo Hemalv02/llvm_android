@@ -38,6 +38,10 @@ TOOLCHAIN_LLVM_PATH: Path = TOOLCHAIN_DIR / 'llvm-project'
 CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host().os_tag
                             / constants.CLANG_PREBUILT_VERSION)
 CLANG_PREBUILT_LIBCXX_HEADERS: Path = CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1'
+WINDOWS_CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / 'windows-x86'
+                                    / constants.CLANG_PREBUILT_VERSION)
+
+
 BIONIC_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'include'
 BIONIC_KERNEL_HEADERS: Path = ANDROID_DIR / 'bionic' / 'libc' / 'kernel' / 'uapi'
 

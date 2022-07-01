@@ -835,8 +835,39 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         shutil.copy2(src_path, install_dir)
 
 
-class SysrootsBuilder(base_builders.Builder):
-    name: str = 'sysroots'
+class HostSysrootsBuilder(base_builders.Builder):
+    name: str = 'host-sysroots'
+    config_list: List[configs.Config] = (configs.MinGWConfig(),)
+
+    def _build_config(self) -> None:
+        config = self._config
+        sysroot = config.sysroot
+        sysroot_lib = sysroot / 'lib'
+        if sysroot.exists():
+            shutil.rmtree(sysroot)
+        sysroot.parent.mkdir(parents=True, exist_ok=True)
+
+        # copy sysroot and add libgcc* to it.
+        shutil.copytree(config.gcc_root / config.gcc_triple,
+                        sysroot, symlinks=True)
+        shutil.copytree(config.gcc_lib_dir, sysroot_lib, dirs_exist_ok=True)
+
+        # b/237425904 cleanup: uncomment to remove libstdc++ after toolchain defaults to
+        # libc++
+        # (sysroot_lib / 'libstdc++.a').unlink()
+        # shutil.rmtree(sysroot / 'include' / 'c++' / '4.8.3')
+
+        # copy libc++ libs and headers from bootstrap prebuilts.  This is needed
+        # for the libcxx builder to pass CMake configuration.  The libcxx
+        # builder will subsequently overwrite these.
+        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib64' / 'libc++.a', sysroot_lib)
+        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib64' / 'libc++abi.a', sysroot_lib)
+        shutil.copytree(paths.WINDOWS_CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1',
+                        sysroot / 'include' / 'c++' / 'v1')
+
+
+class DeviceSysrootsBuilder(base_builders.Builder):
+    name: str = 'device-sysroots'
     config_list: List[configs.Config] = (
         configs.android_configs(platform=True) +
         configs.android_configs(platform=False)
@@ -1008,12 +1039,25 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
 
         return defines
 
+    def install_config(self) -> None:
+        super().install_config()
+
+        # Copy to sysroot in addition to install_dir
+        sysroot = self._config.sysroot
+        (sysroot / 'lib' / 'libc++.a').unlink()
+        (sysroot / 'lib' / 'libc++abi.a').unlink()
+        shutil.rmtree(sysroot / 'include' / 'c++' / 'v1')
+
+        shutil.copy(self.install_dir / 'lib64' / 'libc++.a', sysroot / 'lib')
+        shutil.copy(self.install_dir / 'lib64' / 'libc++abi.a', sysroot / 'lib')
+        shutil.copytree(self.install_dir / 'include' / 'c++' / 'v1',
+                        sysroot / 'include' / 'c++' / 'v1', dirs_exist_ok=True)
+
 
 class WindowsToolchainBuilder(base_builders.LLVMBuilder):
     name: str = 'windows-x86-64'
     toolchain_name: str = 'stage1'
     build_lldb: bool = True
-    libcxx_path: Optional[Path] = None
 
     @property
     def _is_msvc(self) -> bool:
@@ -1077,10 +1121,6 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
             libpath_prefix = '/LIBPATH:'
 
         ldflags.append(libpath_prefix + str(paths.WIN_ZLIB_LIB_PATH))
-        if self.libcxx_path:
-            # Add path to libc++, libc++abi.
-            libcxx_lib = self.libcxx_path / 'lib64'
-            ldflags.append(libpath_prefix + str(libcxx_lib))
         return ldflags
 
     @property
@@ -1098,15 +1138,6 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         # Use -fuse-cxa-atexit to allow static TLS destructors.  This is needed for
         # clang-tools-extra/clangd/Context.cpp
         cxxflags.append('-fuse-cxa-atexit')
-
-        if self.libcxx_path:
-            # Explicitly add the path to libc++ headers.  We don't need to configure
-            # options like visibility annotations, win32 threads etc. because the
-            # __generated_config header in the patch captures all the options used when
-            # building libc++.
-            cxx_headers = self.libcxx_path / 'include' / 'c++' / 'v1'
-            cxxflags.append(f'-I{cxx_headers}')
-
         return cxxflags
 
     def install_config(self) -> None:

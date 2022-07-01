@@ -183,14 +183,23 @@ class _GccConfig(_BaseConfig):  # pylint: disable=abstract-method
         return [self.gcc_root / self.gcc_triple / 'bin']
 
     @property
-    def lib_dirs(self) -> List[Path]:
+    def gcc_lib_dir(self) -> Path:
         gcc_lib_dir = self.gcc_root / 'lib' / 'gcc' / self.gcc_triple / self.gcc_ver
         if self.is_32_bit:
             gcc_lib_dir = gcc_lib_dir / '32'
-            gcc_builtin_dir = self.gcc_root / self.gcc_triple / 'lib32'
+        return gcc_lib_dir
+
+    @property
+    def gcc_builtin_dir(self)-> Path:
+        base = self.gcc_root / self.gcc_triple
+        if self.is_32_bit:
+            return base / 'lib32'
         else:
-            gcc_builtin_dir = self.gcc_root / self.gcc_triple / 'lib64'
-        return [gcc_lib_dir, gcc_builtin_dir]
+            return base / 'lib64'
+
+    @property
+    def lib_dirs(self) -> List[Path]:
+        return [self.gcc_lib_dir, self.gcc_builtin_dir]
 
 
 class LinuxConfig(_GccConfig):
@@ -277,9 +286,9 @@ class MinGWConfig(_GccConfig):
 
     target_os: hosts.Host = hosts.Host.Windows
     gcc_root: Path = (paths.GCC_ROOT / 'host' / 'x86_64-w64-mingw32-4.8')
-    sysroot: Optional[Path] = gcc_root / 'x86_64-w64-mingw32'
     gcc_triple: str = 'x86_64-w64-mingw32'
     gcc_ver: str = '4.8.3'
+    sysroot: Optional[Path] = paths.SYSROOTS / gcc_triple
 
     @property
     def llvm_triple(self) -> str:
@@ -305,6 +314,10 @@ class MinGWConfig(_GccConfig):
         ldflags.append('-Wl,--Xlink=-Brepro')
         return ldflags
 
+    @property
+    def lib_dirs(self) -> List[Path]:
+        # No need for explicit lib_dirs.  We copy them into the sysroot.
+        return []
 
 
 class MSVCConfig(Config):
