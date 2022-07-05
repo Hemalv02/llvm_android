@@ -776,6 +776,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Fix tests with non-default CLANG_DEFAULT_LINKER"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f6fa9985900ee757a2cfce0f472ff1fc84463242_v0.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 460526
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Fix tests with non-default CLANG_DEFAULT_LINKER"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f6fa9985900ee757a2cfce0f472ff1fc84463242.patch",
+        "version_range": {
+            "from": 460526,
+            "until": 466750
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Rename `disable-noundef-analysis` flag to `-[no-]enable-noundef-analysis`"
         },
         "platforms": [
