@@ -733,6 +733,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [lldb] Fix build on older Linux kernel versions"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b83b82f9f431f20ae35cb3b11443049e31a71481.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 466111
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[SLP]Fix PR56251: Do not remove the reordering from the root node, being used as an operand."
         },
         "platforms": [
