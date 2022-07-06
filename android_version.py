@@ -21,7 +21,7 @@ _version_read = False
 
 _patch_level = '7'
 _svn_revision = 'r450784e'
-_svn_revision_next = 'r450784'
+_svn_revision_next = 'r458507'
 
 
 def set_llvm_next(llvm_next: bool):

@@ -552,6 +552,20 @@
         "rel_patch_path": "cherry/b0343a38a5910e980bb031e4014655d77cd0c162.patch",
         "version_range": {
             "from": 450784,
+            "until": 458507
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Support the min of module flags when linking, use for AArch64 BTI/PAC-RET"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b0343a38a5910e980bb031e4014655d77cd0c162_v1.patch",
+        "version_range": {
+            "from": 458507,
             "until": 458830
         }
     },
@@ -771,6 +785,34 @@
         "version_range": {
             "from": 450784,
             "until": 466511
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Fix tests with non-default CLANG_DEFAULT_LINKER"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f6fa9985900ee757a2cfce0f472ff1fc84463242_v0.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 460526
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Fix tests with non-default CLANG_DEFAULT_LINKER"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f6fa9985900ee757a2cfce0f472ff1fc84463242.patch",
+        "version_range": {
+            "from": 460526,
+            "until": 466750
         }
     },
     {
