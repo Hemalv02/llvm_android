@@ -43,7 +43,7 @@ def parse_args():
                         help='check if patches can be applied cleanly')
     parser.add_argument('--create-cl', action='store_true', help='create a CL')
     parser.add_argument('--bug', help='bug to reference in CLs created (if any)')
-    parser.add_argument('--reason', help='issue/reason to mention in CL subject line', required=True)
+    parser.add_argument('--reason', help='issue/reason to mention in CL subject line')
     args = parser.parse_args()
     return args
 
@@ -176,15 +176,12 @@ def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
     return check_output(['git', 'rev-parse', short_sha], cwd=upstream_dir).strip()
 
 
-def create_cl(new_patches: PatchList, bug: Optional[str], reason: Optional[str]):
+def create_cl(new_patches: PatchList, reason: str, bug: Optional[str]):
     file_list = [p.rel_patch_path for p in new_patches] + ['PATCHES.json']
     file_list = [str(paths.SCRIPTS_DIR / 'patches' / f) for f in file_list]
     check_call(['git', 'add'] + file_list)
 
-    if reason:
-        subject = f'[patches] Cherry pick CLS for: {reason}'
-    else:
-        subject = '[patches] Cherry pick CLs from upstream'
+    subject = f'[patches] Cherry pick CLS for: {reason}'
     commit_lines = [subject, '']
     if bug:
         if bug.isnumeric():
@@ -214,7 +211,10 @@ def main():
         print('verify merge...')
         source_manager.setup_sources(source_dir=paths.LLVM_PATH)
     if args.create_cl:
-        create_cl(new_patches, args.bug, args.reason)
+        if not args.reason:
+            print('error: --create-cl requires --reason')
+            exit(1)
+        create_cl(new_patches, args.reason, args.bug)
 
 
 if __name__ == '__main__':
