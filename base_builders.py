@@ -662,7 +662,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         if self.build_lldb:
             self._set_lldb_flags(self._config.target_os, defines)
 
-        defines['CLANG_DEFAULT_LINKER'] = 'lld'
+        if not self._config.target_os.is_darwin:
+            defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
         return defines
 
