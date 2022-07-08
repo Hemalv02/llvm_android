@@ -466,7 +466,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 continue
             elif strip and binary.name not in script_bins:
                 # Strip all non-global symbols and debug info.
-                if binary.name == 'clang-' + version.major_version() + ext:
+                if host.is_darwin and binary.name == 'clang-' + version.major_version() + ext:
                     # These specific flags prevent Darwin executables from being
                     # stripped of additional global symbols that might be used
                     # by plugins.
