@@ -884,5 +884,19 @@
             "from": 450784,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[X86] initial -mfunction-return=thunk-extern support"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "0001-X86-initial-mfunction-return-thunk-extern-support.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
     }
 ]
