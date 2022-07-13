@@ -306,6 +306,7 @@ def build_target(android_base: Path, clang_version: version.Version,
 
     env['LLVM_PREBUILTS_VERSION'] = 'clang-dev'
     env['LLVM_RELEASE_VERSION'] = clang_version.long_version()
+    env['LLVM_NEXT'] = 'true'
 
     if with_tidy:
         env['WITH_TIDY'] = '1'
