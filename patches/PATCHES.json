@@ -472,6 +472,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [lldb] Fix interpreting absolute Windows paths with forward slashes"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b548f5847235118878c15caa8df1b89e75fc965b.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 457210
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[ELF] Fix llvm_unreachable failure when COMMON is placed in SHT_PROGBITS output section"
         },
         "platforms": [
@@ -515,6 +529,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Support the min of module flags when linking, use for AArch64 BTI/PAC-RET"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b0343a38a5910e980bb031e4014655d77cd0c162.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 458507
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [BOLT] Compact legacy profiles"
         },
         "platforms": [
@@ -549,20 +577,6 @@
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/b0343a38a5910e980bb031e4014655d77cd0c162.patch",
-        "version_range": {
-            "from": 450784,
-            "until": 458507
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] Support the min of module flags when linking, use for AArch64 BTI/PAC-RET"
-        },
-        "platforms": [
-            "android"
-        ],
         "rel_patch_path": "cherry/b0343a38a5910e980bb031e4014655d77cd0c162_v1.patch",
         "version_range": {
             "from": 458507,
@@ -582,6 +596,20 @@
         "version_range": {
             "from": 450784,
             "until": 460305
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Fix tests with non-default CLANG_DEFAULT_LINKER"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f6fa9985900ee757a2cfce0f472ff1fc84463242_v0.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 460526
         }
     },
     {
@@ -785,20 +813,6 @@
         "version_range": {
             "from": 450784,
             "until": 466511
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] Fix tests with non-default CLANG_DEFAULT_LINKER"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/f6fa9985900ee757a2cfce0f472ff1fc84463242_v0.patch",
-        "version_range": {
-            "from": 450784,
-            "until": 460526
         }
     },
     {
