@@ -1,0 +1,66 @@
+From b548f5847235118878c15caa8df1b89e75fc965b Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Martin=20Storsj=C3=B6?= <martin@martin.st>
+Date: Thu, 24 Mar 2022 10:42:37 +0200
+Subject: [PATCH] [lldb] Fix interpreting absolute Windows paths with forward
+ slashes
+
+In practice, Windows paths can use either backslashes or forward slashes.
+
+This fixes an issue reported downstream at
+https://github.com/mstorsjo/llvm-mingw/issues/266.
+
+Differential Revision: https://reviews.llvm.org/D122389
+---
+ lldb/source/Plugins/SymbolFile/DWARF/DWARFUnit.cpp | 3 ++-
+ lldb/source/Utility/FileSpec.cpp                   | 3 ++-
+ lldb/unittests/Utility/FileSpecTest.cpp            | 3 +++
+ 3 files changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/lldb/source/Plugins/SymbolFile/DWARF/DWARFUnit.cpp b/lldb/source/Plugins/SymbolFile/DWARF/DWARFUnit.cpp
+index 085c9e9ce1a..295433ddb78 100644
+--- a/lldb/source/Plugins/SymbolFile/DWARF/DWARFUnit.cpp
++++ b/lldb/source/Plugins/SymbolFile/DWARF/DWARFUnit.cpp
+@@ -772,7 +772,8 @@ removeHostnameFromPathname(llvm::StringRef path_from_dwarf) {
+ 
+   // check whether we have a windows path, and so the first character is a
+   // drive-letter not a hostname.
+-  if (host.size() == 1 && llvm::isAlpha(host[0]) && path.startswith("\\"))
++  if (host.size() == 1 && llvm::isAlpha(host[0]) &&
++      (path.startswith("\\") || path.startswith("/")))
+     return path_from_dwarf;
+ 
+   return path;
+diff --git a/lldb/source/Utility/FileSpec.cpp b/lldb/source/Utility/FileSpec.cpp
+index 24f8c2b1c23..eed3bbd4602 100644
+--- a/lldb/source/Utility/FileSpec.cpp
++++ b/lldb/source/Utility/FileSpec.cpp
+@@ -311,7 +311,8 @@ llvm::Optional<FileSpec::Style> FileSpec::GuessPathStyle(llvm::StringRef absolut
+   if (absolute_path.startswith(R"(\\)"))
+     return Style::windows;
+   if (absolute_path.size() >= 3 && llvm::isAlpha(absolute_path[0]) &&
+-      absolute_path.substr(1, 2) == R"(:\)")
++      (absolute_path.substr(1, 2) == R"(:\)" ||
++       absolute_path.substr(1, 2) == R"(:/)"))
+     return Style::windows;
+   return llvm::None;
+ }
+diff --git a/lldb/unittests/Utility/FileSpecTest.cpp b/lldb/unittests/Utility/FileSpecTest.cpp
+index 64b72bec483..f92be63892c 100644
+--- a/lldb/unittests/Utility/FileSpecTest.cpp
++++ b/lldb/unittests/Utility/FileSpecTest.cpp
+@@ -196,9 +196,12 @@ TEST(FileSpecTest, GuessPathStyle) {
+   EXPECT_EQ(FileSpec::Style::posix, FileSpec::GuessPathStyle("//net/bar.txt"));
+   EXPECT_EQ(FileSpec::Style::windows,
+             FileSpec::GuessPathStyle(R"(C:\foo.txt)"));
++  EXPECT_EQ(FileSpec::Style::windows,
++            FileSpec::GuessPathStyle(R"(C:/foo.txt)"));
+   EXPECT_EQ(FileSpec::Style::windows,
+             FileSpec::GuessPathStyle(R"(\\net\foo.txt)"));
+   EXPECT_EQ(FileSpec::Style::windows, FileSpec::GuessPathStyle(R"(Z:\)"));
++  EXPECT_EQ(FileSpec::Style::windows, FileSpec::GuessPathStyle(R"(Z:/)"));
+   EXPECT_EQ(llvm::None, FileSpec::GuessPathStyle("foo.txt"));
+   EXPECT_EQ(llvm::None, FileSpec::GuessPathStyle("foo/bar.txt"));
+   EXPECT_EQ(llvm::None, FileSpec::GuessPathStyle("Z:"));
+-- 
+2.37.0.170.g444d1eabd0-goog
+
