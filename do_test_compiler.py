@@ -240,29 +240,6 @@ def extract_clang_version(clang_install: Path) -> version.Version:
     return version.Version(version_file)
 
 
-def invoke_llvm_tools(profiler: ProfileHandler):
-    """Collect profiles from llvm tools.
-
-    For now, just use '--help' to invoke the tools.
-    """
-
-    # This directory is actually created by build.py.  Hardcode this even though
-    # this creates an implicit dependence that we had avoided by invoking
-    # build.py instead of calling its internal functions.
-    stage2_install = paths.OUT_DIR / 'stage2-install'
-    env = dict(os.environ)
-    for key, val in profiler.getProfileFileEnvVars():
-        env[key] = val
-
-    for tool in (stage2_install / 'bin').iterdir():
-        # unchecked call since the tools may have non-zero exit code with
-        # '--help'.
-        utils.unchecked_call([tool, '--help'],
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL,
-                             env=env)
-
-
 def build_target(android_base: Path, clang_version: version.Version,
                  target: str, modules: List[str],
                  max_jobs: int, enable_fallback: bool, with_tidy: bool,
@@ -438,11 +415,6 @@ def main():
         build_target(Path(args.android_path), clang_version, args.target,
                      modules, args.jobs,
                      args.enable_fallback, args.with_tidy, profiler)
-
-        # Linking LLVM tools with no PGO data is super slow. Workaround by
-        # invoking them to gather some data.
-        if isinstance(profiler, PgoProfileHandler):
-            invoke_llvm_tools(profiler)
 
         if profiler is not None:
             profiler.mergeProfiles()
