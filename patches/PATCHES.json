@@ -775,6 +775,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] ELF: Do not relax ADRP/LDR -> ADRP/ADD for absolute symbols in PIC."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b064bc18c30c334d3111c3db45b8d38ec35ad045.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 465785
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [lldb] Fix build on older Linux kernel versions"
         },
         "platforms": [
