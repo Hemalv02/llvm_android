@@ -551,6 +551,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                             "lib64/*",
                         ]),
                     )"""))
+            bazel_file.write('\n')
 
         # Create RBE input files.
         with (install_dir / 'bin' / 'remote_toolchain_inputs').open('w') as inputs_file:
