@@ -217,7 +217,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         else:
             return '1.0', '1'
 
-    libdir = os.path.join(install_dir, 'lib64')
+    libdir = os.path.join(install_dir, 'lib')
     for libname, libformat in libs.items():
         short_version, major = getVersions(libname)
 
@@ -455,7 +455,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     }
 
     bin_dir = install_dir / 'bin'
-    lib_dir = install_dir / 'lib64'
+    lib_dir = install_dir / 'lib'
     strip_cmd = Builder.toolchain.strip
 
     for binary in bin_dir.iterdir():
@@ -474,7 +474,12 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 else:
                     utils.check_call([strip_cmd, binary])
 
-    # FIXME: check that all libs under lib64/clang/<version>/ are created.
+    # Symlink lib64 to lib.
+    # TODO: Remove this once all users moved to the new directory.
+    lib64_dir = install_dir / 'lib64'
+    lib64_dir.symlink_to('lib')
+
+    # FIXME: check that all libs under lib/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
         if not (bin_dir / necessary_bin_file).is_file():
             raise RuntimeError(f'Did not find {necessary_bin_file} in {bin_dir}')
@@ -548,7 +553,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                         name = "binaries",
                         srcs = glob([
                             "bin/*",
-                            "lib64/*",
+                            "lib/*",
                         ]),
                     )"""))
             bazel_file.write('\n')
@@ -561,14 +566,14 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                             'clang++.real\n'
                             'clang-tidy\n'
                             'clang-tidy.real\n'
-                            '../lib64/libc++.so.1\n'
+                            '../lib/libc++.so.1\n'
                             'lld\n'
                             'ld64.lld\n'
                             'ld.lld\n'
-                            f'../lib64/clang/{version.long_version()}/share\n'
-                            f'../lib64/clang/{version.long_version()}/lib/linux\n'
-                            f'../lib64/clang/{version.long_version()}/include\n'
-                            f'../lib64/libxml2.so.{builders.LibXml2Builder.lib_version}\n'
+                            f'../lib/clang/{version.long_version()}/share\n'
+                            f'../lib/clang/{version.long_version()}/lib/linux\n'
+                            f'../lib/clang/{version.long_version()}/include\n'
+                            f'../lib/libxml2.so.{builders.LibXml2Builder.lib_version}\n'
                            )
             inputs_file.write(dependencies)
 

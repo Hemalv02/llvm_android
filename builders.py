@@ -151,7 +151,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
         env = super().env
         # Point CMake to the libc++ from stage1.  It is possible that once built,
         # the newly-built libc++ may override this because of the rpath pointing to
-        # $ORIGIN/../lib64.  That'd be fine because both libraries are built from
+        # $ORIGIN/../lib.  That'd be fine because both libraries are built from
         # the same sources.
         env['LD_LIBRARY_PATH'] = str(self.toolchain.lib_dir)
         return env
@@ -491,7 +491,6 @@ class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
         del defines['LLVM_ENABLE_LIBCXX']
 
         # libunwind CMake defines
-        del defines['LLVM_LIBDIR_SUFFIX']
         if self.enable_assertions:
             defines['LIBUNWIND_ENABLE_ASSERTIONS'] = 'TRUE'
         else:
@@ -860,8 +859,8 @@ class HostSysrootsBuilder(base_builders.Builder):
         # copy libc++ libs and headers from bootstrap prebuilts.  This is needed
         # for the libcxx builder to pass CMake configuration.  The libcxx
         # builder will subsequently overwrite these.
-        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib64' / 'libc++.a', sysroot_lib)
-        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib64' / 'libc++abi.a', sysroot_lib)
+        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib' / 'libc++.a', sysroot_lib)
+        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib' / 'libc++abi.a', sysroot_lib)
         shutil.copytree(paths.WINDOWS_CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1',
                         sysroot / 'include' / 'c++' / 'v1')
 
@@ -941,7 +940,7 @@ class DeviceSysrootsBuilder(base_builders.Builder):
             # Create a stub library for the platform's libc++.
             platform_stubs = paths.OUT_DIR / 'platform_stubs' / config.ndk_arch
             platform_stubs.mkdir(parents=True, exist_ok=True)
-            libdir = sysroot / 'usr' / ('lib64' if arch == hosts.Arch.X86_64 else 'lib')
+            libdir = sysroot / 'usr' / 'lib'
             libdir.mkdir(parents=True, exist_ok=True)
             with (platform_stubs / 'libc++.c').open('w') as f:
                 f.write(textwrap.dedent("""\
@@ -994,8 +993,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
 
     def install_config(self) -> None:
         arch = self._config.target_arch
-        lib_name = 'lib64' if arch == hosts.Arch.X86_64 else 'lib'
-        install_dir = self._config.sysroot / 'usr' / lib_name
+        install_dir = self._config.sysroot / 'usr' / 'lib'
 
         if super()._is_64bit():
             src_path = self.output_dir / 'lib' / 'libc++abi.a'
@@ -1048,8 +1046,8 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
         (sysroot / 'lib' / 'libc++abi.a').unlink()
         shutil.rmtree(sysroot / 'include' / 'c++' / 'v1')
 
-        shutil.copy(self.install_dir / 'lib64' / 'libc++.a', sysroot / 'lib')
-        shutil.copy(self.install_dir / 'lib64' / 'libc++abi.a', sysroot / 'lib')
+        shutil.copy(self.install_dir / 'lib' / 'libc++.a', sysroot / 'lib')
+        shutil.copy(self.install_dir / 'lib' / 'libc++abi.a', sysroot / 'lib')
         shutil.copytree(self.install_dir / 'include' / 'c++' / 'v1',
                         sysroot / 'include' / 'c++' / 'v1', dirs_exist_ok=True)
 

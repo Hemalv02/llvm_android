@@ -115,7 +115,7 @@ class Toolchain:
     @property
     def lib_dir(self) -> Path:
         """Returns the path to lib dir."""
-        return self.path / 'lib64'
+        return self.path / 'lib'
 
     @property
     def _version_file(self) -> Path:

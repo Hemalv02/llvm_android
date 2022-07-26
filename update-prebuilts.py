@@ -115,12 +115,12 @@ def extract_clang_info(clang_dir):
 def symlink_to_linux_resource_dir(install_dir):
     # Assume we're in a Darwin (non-linux) prebuilt dir.  Find the Clang version
     # string.  Pick the longest string, if there's more than one.
-    version_dirs = os.listdir(os.path.join(install_dir, 'lib64', 'clang'))
+    version_dirs = os.listdir(os.path.join(install_dir, 'lib', 'clang'))
     if version_dirs:
         version_dirs.sort(key=len)
     version_dir = version_dirs[-1]
 
-    symlink_dir = os.path.join(install_dir, 'lib64', 'clang', version_dir,
+    symlink_dir = os.path.join(install_dir, 'lib', 'clang', version_dir,
                                'lib')
     link_src = os.path.join('/'.join(['..'] * 6), 'linux-x86', symlink_dir,
                             'linux')
