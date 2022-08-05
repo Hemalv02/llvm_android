@@ -319,6 +319,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Orc] Disable use of shared memory on Android"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ac3cb4ecd0c6ed03c135945d27bbe197d80cba4e.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 469611
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
