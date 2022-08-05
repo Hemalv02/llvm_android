@@ -596,6 +596,17 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
+    def _install_dep_libs(self, lib_dir) -> None:
+        for lib in (self.liblzma, self.libedit, self.libxml2, self.libncurses):
+            if lib:
+                for lib_file in lib.install_libraries:
+                    shutil.copy2(lib_file, lib_dir)
+                for link in lib.symlinks:
+                    # cannot copy to an existing symlink pointing to the source file
+                    dest_file = lib_dir / link.name
+                    dest_file.unlink(missing_ok=True)
+                    shutil.copy2(link, dest_file, follow_symlinks=False)
+
     def _install_deps(self) -> None:
         lib_dir = self.install_dir / ('bin' if self._config.target_os.is_windows else 'lib')
         lib_dir.mkdir(exist_ok=True, parents=True)
@@ -606,13 +617,7 @@ class LLVMBuilder(LLVMBaseBuilder):
             shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True, dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
                                                           '.git', '.gitignore'))
-
-        for lib in (self.liblzma, self.libedit, self.libxml2, self.libncurses):
-            if lib:
-                for lib_file in lib.install_libraries:
-                    shutil.copy2(lib_file, lib_dir)
-                for link in lib.symlinks:
-                    shutil.copy2(link, lib_dir, follow_symlinks=False)
+        self._install_dep_libs(lib_dir)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -668,6 +673,9 @@ class LLVMBuilder(LLVMBaseBuilder):
 
     def test(self) -> None:
         with timer.Timer(f'stage2_test'):
+            # newer test tools like dexp, clang-query, c-index-test
+            # need libedit.so.*, libxml2.so.*, etc. in stage2/lib.
+            self._install_dep_libs(self.output_dir / 'lib')
             self._ninja(
                 ['check-clang', 'check-llvm', 'check-clang-tools', 'check-cxx'])
         # Known failed tests:
