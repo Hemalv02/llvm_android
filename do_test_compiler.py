@@ -305,7 +305,7 @@ def build_target(android_base: Path, clang_version: version.Version,
     print('Start building target %s and modules %s.' % (target, modulesList))
     subprocess.check_call(
         ['/bin/bash', '-c', 'build/soong/soong_ui.bash --make-mode ' + jobs + \
-         ' ' + modulesList],
+         ' -k100 ' + modulesList],
         cwd=android_base,
         env=env)
 
