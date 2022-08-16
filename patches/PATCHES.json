@@ -333,6 +333,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [clang-tidy] Rename the make-confusable-table executable"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/18b4a8bcf3553174f770f09528c9bd01c8cebfe7.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 469268
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [clang-tidy] Add CLANG_TIDY_CONFUSABLE_CHARS_GEN cmake cache variable to avoid building when cross compiling"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/dc95d0c525636aed53a3b38258efa2dff4c83edf.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 469269
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [Orc] Disable use of shared memory on Android"
         },
         "platforms": [

@@ -72,8 +72,9 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
-        if self.build_extra_tools:
-            proj.add('clang-tools-extra')
+        # Need tools like clang-pseudo-gen and clang-tidy-confusable-chars-gen
+        # for Linux when cross-compiling for Windows.
+        proj.add('clang-tools-extra')
         if self.build_lldb:
             proj.add('lldb')
         return proj
@@ -1090,6 +1091,8 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         defines['LLVM_CONFIG_PATH'] = str(self.toolchain.build_path / 'bin' / 'llvm-config')
         defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
         defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
+        defines['CLANG_PSEUDO_GEN'] = str(self.toolchain.build_path / 'bin' / 'clang-pseudo-gen')
+        defines['CLANG_TIDY_CONFUSABLE_CHARS_GEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tidy-confusable-chars-gen')
         if self.build_lldb:
             defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
             defines['LLDB_PYTHON_RELATIVE_PATH'] = f'lib/python{paths._PYTHON_VER}/site-packages'
