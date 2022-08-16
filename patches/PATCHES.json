@@ -319,6 +319,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [clang-format] Fix the return code of git-clang-format"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f9a2f6b6aecf0dd2b484d99458c99f799caee584.patch",
+        "version_range": {
+            "from": 458507,
+            "until": 469245
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [Orc] Disable use of shared memory on Android"
         },
         "platforms": [
