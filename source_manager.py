@@ -59,14 +59,6 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
     return utils.check_output(patch_manager_cmd)
 
 
-def get_base_llvm_revision(source_dir: str) -> str:
-    message = utils.check_output([
-        'git', f'--git-dir={source_dir}/.git', 'log', '--pretty=format:%s',
-        '--merges', '-n', '1'
-    ])
-    return message.split()[1]
-
-
 def get_scripts_sha() -> str:
     return utils.check_output(
         ['git', f'--git-dir={paths.SCRIPTS_DIR}/.git', 'rev-parse',
@@ -103,7 +95,7 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
         return f'- [{link_text}]({url_prefix}{url_suffix})'
 
     output = []
-    base_revision = get_base_llvm_revision(source_dir)
+    base_revision = android_version.get_git_sha()
     github_url = 'https://github.com/llvm/llvm-project/commits/' + base_revision
     output.append(f'Base revision: [{base_revision}]({github_url})')
     output.append('')
