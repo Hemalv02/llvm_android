@@ -171,7 +171,9 @@ class Builder:  # pylint: disable=too-few-public-methods
         ldflags = []
         # When cross compiling, toolchain libs won't work on target arch.
         if not self._config.is_cross_compiling:
-            ldflags.append(f'-L{self.toolchain.lib_dir}')
+            # at least swig and libncurses need to link with lib/libc++.so
+            for lib_dir in self.toolchain.lib_dirs:
+                ldflags.append(f'-L{lib_dir}')
         return ldflags
 
     @property

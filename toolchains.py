@@ -17,6 +17,7 @@
 
 import functools
 from pathlib import Path
+from typing import List
 
 from builder_registry import BuilderRegistry
 import paths
@@ -113,9 +114,9 @@ class Toolchain:
         return self.path / 'bin' / 'llvm-strip'
 
     @property
-    def lib_dir(self) -> Path:
-        """Returns the path to lib dir."""
-        return self.path / 'lib'
+    def lib_dirs(self) -> List[Path]:
+        """Returns the paths to lib dirs."""
+        return [self.path / 'lib', self.path / 'lib' / 'x86_64-unknown-linux-gnu']
 
     @property
     def _version_file(self) -> Path:
@@ -127,7 +128,7 @@ class Toolchain:
 
     @property
     def clang_lib_dir(self) -> Path:
-        return self.lib_dir / 'clang' / self.version.long_version()
+        return self.lib_dirs[0] / 'clang' / self.version.long_version()
 
     @property
     def clang_builtin_header_dir(self) -> Path:

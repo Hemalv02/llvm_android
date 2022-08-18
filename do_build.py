@@ -17,6 +17,7 @@
 # pylint: disable=not-callable, line-too-long, no-else-return
 
 import argparse
+import glob
 import logging
 from pathlib import Path
 import os
@@ -124,6 +125,32 @@ def build_llvm_for_windows(enable_assertions: bool,
     return (win_builder, lldb_bins)
 
 
+def add_lib_links():
+    # FIXME: b/245395722. When all dependent scripts and .bp rules are changed
+    # to use the new lib names and location. These lib links won't be necessary.
+    # Libraries in ./stage2-install/lib/clang/*/lib/linux/*-x86_64.* are now
+    # built into ./stage2-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*
+    # Add symbolic links from linux/*-x86_64.* to ../x86_64-unknown-linux-gnu/*.*
+    srcglob = f'{paths.OUT_DIR}/stage2-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*'
+    for file in glob.glob(srcglob):
+        dirname = os.path.dirname(file)
+        filename = os.path.basename(file)
+        suffix = Path(file).suffix
+        stem = Path(file).stem
+        dst = Path(dirname) / '..' / 'linux' / (stem + '-x86_64' + suffix)
+        src = f'../x86_64-unknown-linux-gnu/{filename}'
+        dst.unlink(missing_ok=True)
+        dst.symlink_to(src)
+    # Add symbolic links from lib/* to lib/x86_64-unknown-linux-gnu/*
+    srcglob = f'{paths.OUT_DIR}/stage2-install/lib/x86_64-unknown-linux-gnu/*'
+    for file in glob.glob(srcglob):
+        filename = os.path.basename(file)
+        src = f'x86_64-unknown-linux-gnu/{filename}'
+        dst = paths.OUT_DIR / 'stage2-install/lib' / filename
+        dst.unlink(missing_ok=True)
+        dst.symlink_to(src)
+
+
 def build_runtimes(build_lldb_server: bool):
     builders.DeviceSysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
@@ -134,6 +161,7 @@ def build_runtimes(build_lldb_server: bool):
     # Build musl runtimes and 32-bit glibc for Linux
     if hosts.build_host().is_linux:
         builders.CompilerRTHostI386Builder().build()
+        add_lib_links()
         builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
     if build_lldb_server:
@@ -219,16 +247,23 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
 
     libdir = os.path.join(install_dir, 'lib')
     for libname, libformat in libs.items():
+        if libformat.startswith('libc++'):
+            libprefix = os.path.join(libdir, 'x86_64-unknown-linux-gnu')
+            if not os.path.exists(libprefix):
+                libprefix = libdir
+        else:
+            libprefix = libdir
+
         short_version, major = getVersions(libname)
 
         soname_version = '13' if libname == 'libclang' else major
-        soname_lib = os.path.join(libdir, libformat.format(version=soname_version))
+        soname_lib = os.path.join(libprefix, libformat.format(version=soname_version))
         if libname.startswith('libclang') and libname != 'libclang-cpp':
             soname_lib = soname_lib[:-3]
-        real_lib = os.path.join(libdir, libformat.format(version=short_version))
+        real_lib = os.path.join(libprefix, libformat.format(version=short_version))
 
         preserved_libnames = ('libLLVM', 'libclang-cpp')
-        if libname not in preserved_libnames:
+        if libname not in preserved_libnames and os.path.exists(real_lib):
             # Rename the library to match its SONAME
             if not os.path.isfile(real_lib):
                 raise RuntimeError(real_lib + ' must be a regular file')
@@ -244,7 +279,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         # is not deleted when cleaning up libclang.so* and libc++abi is not
         # deleted when cleaning up libc++.so*.
         libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
-        all_libs = [lib for lib in os.listdir(libdir) if
+        all_libs = [lib for lib in os.listdir(libprefix) if
                     lib != libcxx_name and
                     not lib.startswith('libclang-cpp') and # retain libclang-cpp
                     not lib.endswith('.a') and # skip static host libraries
@@ -252,7 +287,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
                      lib.startswith(libname + '-'))]
 
         for lib in all_libs:
-            lib = os.path.join(libdir, lib)
+            lib = os.path.join(libprefix, lib)
             if lib != soname_lib:
                 os.remove(lib)
 
@@ -508,7 +543,13 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Check necessary lib files exist.
     for necessary_lib_file in necessary_lib_files:
-        if not (lib_dir / necessary_lib_file).is_file():
+        if not host.is_windows and necessary_lib_file.startswith('libc++'):
+            libprefix = lib_dir / 'x86_64-unknown-linux-gnu'
+            if not os.path.exists(libprefix):
+                libprefix = lib_dir
+        else:
+            libprefix = lib_dir
+        if not (libprefix / necessary_lib_file).is_file():
             raise RuntimeError(f'Did not find {necessary_lib_file} in {lib_dir}')
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.

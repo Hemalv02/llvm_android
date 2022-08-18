@@ -83,7 +83,7 @@ class Stage1Builder(base_builders.LLVMBuilder):
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
         # Use -static-libstdc++ to statically link the c++ runtime [1].  This
-        # avoids specifying self.toolchain.lib_dir in rpath to find libc++ at
+        # avoids specifying self.toolchain.lib_dirs in rpath to find libc++ at
         # runtime.
         # [1] libc++ in our case, despite the flag saying -static-libstdc++.
         ldflags.append('-static-libstdc++')
@@ -154,12 +154,20 @@ class Stage2Builder(base_builders.LLVMBuilder):
         # the newly-built libc++ may override this because of the rpath pointing to
         # $ORIGIN/../lib.  That'd be fine because both libraries are built from
         # the same sources.
-        env['LD_LIBRARY_PATH'] = str(self.toolchain.lib_dir)
+        # Newer compilers put lib files in lib/x86_64-unknown-linux-gnu.
+        # Include the path to the libc++.so.1 in stage2-install,
+        # to run unittests/.../*Tests programs.
+        env['LD_LIBRARY_PATH'] = (
+                ':'.join([str(item) for item in self.toolchain.lib_dirs])
+                + f':{self.install_dir}/lib')
         return env
 
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
+        if self._config.target_os.is_linux:
+            ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
+        # '$ORIGIN/../lib' is added by llvm's CMake rules.
         if self.bolt_optimize or self.bolt_instrument:
             ldflags.append('-Wl,-q')
         if self.build_instrumented:
@@ -687,6 +695,13 @@ class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     def ldflags(self) -> List[str]:
         return [
             f'-L{self.libncurses.link_libraries[0].parent}',
+            # check-llvm calls stage2/unittests/LineEditor/LineEditorTests,
+            # which loads lib/libedit-linux-install/lib/libedit.so.
+            # So libedit.so needs to find libncurses.so with this -rpath.
+            # f'-Wl,-rpath,{self.libncurses.install_dir}/lib',
+            # However, we set LD_LIBRARY_PATH in Stage2Builder's env() so that
+            # the LineEditorTests can run within stage2's environment.
+            # Without that, it won't run alone without -rpath in libedit.so.
         ] + super().ldflags
 
     @property
@@ -716,7 +731,8 @@ class SwigBuilder(base_builders.AutoconfBuilder):
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
         # Point to the libc++.so from the toolchain.
-        ldflags.append(f'-Wl,-rpath,{self.toolchain.lib_dir}')
+        for lib_dir in self.toolchain.lib_dirs:
+            ldflags.append(f'-Wl,-rpath,{lib_dir}')
         return ldflags
 
 
