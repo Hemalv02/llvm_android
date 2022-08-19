@@ -118,7 +118,7 @@ def merge_projects(sha, revision, bug_id, create_new_branch, dry_run):
                      cwd=path, dry_run=dry_run)
     utils.check_call(['git', 'config', '--add', 'secrets.allowed', '...'],
                      cwd=path, dry_run=dry_run)
-    utils.check_call(['git', 'merge', '--no-verify', '--quiet', sha,
+    utils.check_call(['git', 'merge', '--quiet', sha,
                       '-m', commit_msg], cwd=path, dry_run=dry_run)
 
 
