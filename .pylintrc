@@ -1,0 +1,7 @@
+[FORMAT]
+# four spaces for each indentation level.
+indent-string='    '
+
+[MASTER]
+# tell pylint where to find import modules: paths, utils, etc.
+init-hook='import sys; sys.path.append("."); sys.path.append("../../external/toolchain-utils/llvm_tools")'

@@ -15,6 +15,8 @@
 # limitations under the License.
 #
 
+"""Update toolchain/llvm-project by merging a given upstream SHA."""
+
 import argparse
 from functools import lru_cache
 import subprocess
@@ -23,10 +25,13 @@ import sys
 import paths
 import utils
 
-# fmt: off
 sys.path.append(str(paths.TOOLCHAIN_UTILS_DIR / 'llvm_tools'))
+#pylint: disable=wrong-import-position,wrong-import-order
 import git_llvm_rev
-# fmt: on
+#pylint: enable=wrong-import-position,wrong-import-order
+
+# do not require docstring for small functions
+# pylint: disable=missing-function-docstring
 
 
 def parse_args():
@@ -69,13 +74,15 @@ def sync_branch(path):
 def fetch_upstream():
     # Fetching upstream may take a long time. So print something.
     print('fetch upstream...')
-    subprocess.check_call(['git', 'fetch', 'aosp'], cwd=paths.TOOLCHAIN_LLVM_PATH)
+    subprocess.check_call(['git', 'fetch', 'aosp'],
+                          cwd=paths.TOOLCHAIN_LLVM_PATH)
 
 
 def sha_to_revision(sha: str) -> int:
     fetch_upstream()
     git_llvm_rev.MAIN_BRANCH = 'upstream-main'
-    llvm_config = git_llvm_rev.LLVMConfig(remote='aosp', dir=str(paths.TOOLCHAIN_LLVM_PATH))
+    llvm_config = git_llvm_rev.LLVMConfig(remote='aosp',
+                                          dir=str(paths.TOOLCHAIN_LLVM_PATH))
     rev = git_llvm_rev.translate_sha_to_rev(llvm_config, sha)
     return rev.number
 
@@ -83,8 +90,10 @@ def sha_to_revision(sha: str) -> int:
 def revision_to_sha(rev: int) -> str:
     fetch_upstream()
     git_llvm_rev.MAIN_BRANCH = 'upstream-main'
-    llvm_config = git_llvm_rev.LLVMConfig(remote='aosp', dir=str(paths.TOOLCHAIN_LLVM_PATH))
-    return git_llvm_rev.translate_rev_to_sha(llvm_config, git_llvm_rev.Rev.parse(f'r{rev}'))
+    llvm_config = git_llvm_rev.LLVMConfig(remote='aosp',
+                                          dir=str(paths.TOOLCHAIN_LLVM_PATH))
+    return git_llvm_rev.translate_rev_to_sha(
+        llvm_config, git_llvm_rev.Rev.parse(f'r{rev}'))
 
 
 def merge_projects(sha, revision, bug_id, create_new_branch, dry_run):
@@ -92,24 +101,25 @@ def merge_projects(sha, revision, bug_id, create_new_branch, dry_run):
     if not dry_run:
         sync_branch(path)
     fetch_upstream()
-    print('Project llvm-project svn: %d  sha: %s' % (revision, sha))
+    print(f'Project llvm-project svn: {revision}  sha: {sha}')
 
     if create_new_branch:
-        branch_name = 'merge-upstream-r%d' % revision
+        branch_name = f'merge-upstream-r{revision}'
         utils.check_call(['repo', 'start', branch_name, '.'],
                          cwd=path,
                          dry_run=dry_run)
 
     # Merge upstream revision
-    commit_msg = 'Merge %s for LLVM update to %d\n\n' % (sha, revision)
+    commit_msg = f'Merge {sha} for LLVM update to {revision}\n\n'
     if bug_id != 0:
-      commit_msg += 'Bug: %d\n' % bug_id
+        commit_msg += f'Bug: {bug_id}\n'
     commit_msg += 'Test: presubmit'
-    utils.check_call(['git', 'config', 'merge.renameLimit', '0'], cwd=path, dry_run=dry_run)
-    utils.check_call(['git', 'config', '--add', 'secrets.allowed', '...'], cwd=path, dry_run=dry_run)
-    utils.check_call(['git', 'merge', '--no-verify', '--quiet', sha, '-m', commit_msg],
-        cwd=path,
-        dry_run=dry_run)
+    utils.check_call(['git', 'config', 'merge.renameLimit', '0'],
+                     cwd=path, dry_run=dry_run)
+    utils.check_call(['git', 'config', '--add', 'secrets.allowed', '...'],
+                     cwd=path, dry_run=dry_run)
+    utils.check_call(['git', 'merge', '--no-verify', '--quiet', sha,
+                      '-m', commit_msg], cwd=path, dry_run=dry_run)
 
 
 def main():
@@ -123,7 +133,8 @@ def main():
         sha = args.sha
         revision = sha_to_revision(sha)
 
-    merge_projects(sha, revision, int(args.bug), args.create_new_branch, args.dry_run)
+    merge_projects(sha, revision, int(args.bug),
+                   args.create_new_branch, args.dry_run)
 
 
 if __name__ == '__main__':
