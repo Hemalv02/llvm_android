@@ -383,6 +383,20 @@
         "rel_patch_path": "cherry/8b69549dc5c5fa0f5f8632cde1c740bb2c7d8957.patch",
         "version_range": {
             "from": 468909,
+            "until": 469725
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [X86][FP16] Promote FP16->[U]INT to FP16->FP32->[U]INT"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/8b69549dc5c5fa0f5f8632cde1c740bb2c7d8957_v1.patch",
+        "version_range": {
+            "from": 469725,
             "until": 470834
         }
     },
