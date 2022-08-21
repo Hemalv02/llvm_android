@@ -22,6 +22,8 @@ _version_read = False
 _patch_level = '1'
 _svn_revision = 'r458507'
 _svn_revision_next = 'r458507'
+_git_sha = 'a58d0af058038595c93de961b725f86997cf8d4a'
+_git_sha_next = 'a58d0af058038595c93de961b725f86997cf8d4a'
 
 
 def set_llvm_next(llvm_next: bool):
@@ -42,6 +44,13 @@ def get_svn_revision():
     if _llvm_next:
         return _svn_revision_next
     return _svn_revision
+
+
+def get_git_sha():
+    _version_read = True
+    if _llvm_next:
+        return _git_sha_next
+    return _git_sha
 
 
 def get_patch_level():
