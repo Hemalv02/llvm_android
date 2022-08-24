@@ -431,6 +431,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "Undef CS macro for Android x86_64"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Undef-CS-macro-for-Android-x86_64.patch",
+        "version_range": {
+            "from": 460955,
+            "until": 470628
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Double max allocation size to allow BOLTing clang and rustc"
         },
         "platforms": [
