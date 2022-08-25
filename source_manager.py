@@ -59,15 +59,9 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
     return utils.check_output(patch_manager_cmd)
 
 
-def get_scripts_sha() -> str:
-    return utils.check_output(
-        ['git', f'--git-dir={paths.SCRIPTS_DIR}/.git', 'rev-parse',
-         'HEAD']).strip()
-
-
 def write_source_info(source_dir: str, patch_output: str) -> None:
     url_prefix = 'https://android.googlesource.com/toolchain/llvm_android/+/' +\
-        get_scripts_sha()
+        '{{scripts_sha}}'
 
     def _get_subject(patch_file):
         with open(patch_file) as pf:
