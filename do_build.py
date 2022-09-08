@@ -125,28 +125,31 @@ def build_llvm_for_windows(enable_assertions: bool,
     return (win_builder, lldb_bins)
 
 
-def add_lib_links():
+def add_lib_links(stage: str):
     # FIXME: b/245395722. When all dependent scripts and .bp rules are changed
     # to use the new lib names and location. These lib links won't be necessary.
     # Libraries in ./stage2-install/lib/clang/*/lib/linux/*-x86_64.* are now
     # built into ./stage2-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*
     # Add symbolic links from linux/*-x86_64.* to ../x86_64-unknown-linux-gnu/*.*
-    srcglob = f'{paths.OUT_DIR}/stage2-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*'
+    # b/245614328, stage1-install/lib has the same issue.
+    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*'
     for file in glob.glob(srcglob):
         dirname = os.path.dirname(file)
         filename = os.path.basename(file)
         suffix = Path(file).suffix
         stem = Path(file).stem
-        dst = Path(dirname) / '..' / 'linux' / (stem + '-x86_64' + suffix)
+        dst_dir = Path(dirname) / '..' / 'linux'
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        dst = dst_dir / (stem + '-x86_64' + suffix)
         src = f'../x86_64-unknown-linux-gnu/{filename}'
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
     # Add symbolic links from lib/* to lib/x86_64-unknown-linux-gnu/*
-    srcglob = f'{paths.OUT_DIR}/stage2-install/lib/x86_64-unknown-linux-gnu/*'
+    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/x86_64-unknown-linux-gnu/*'
     for file in glob.glob(srcglob):
         filename = os.path.basename(file)
         src = f'x86_64-unknown-linux-gnu/{filename}'
-        dst = paths.OUT_DIR / 'stage2-install/lib' / filename
+        dst = paths.OUT_DIR / f'{stage}-install/lib' / filename
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
 
@@ -161,7 +164,7 @@ def build_runtimes(build_lldb_server: bool):
     # Build musl runtimes and 32-bit glibc for Linux
     if hosts.build_host().is_linux:
         builders.CompilerRTHostI386Builder().build()
-        add_lib_links()
+        add_lib_links('stage2')
         builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
     if build_lldb_server:
@@ -913,6 +916,8 @@ def main():
             stage2_tags.append('ANDROID_LLVM_NEXT')
         stage2.build_tags = stage2_tags
 
+        if hosts.build_host().is_linux:
+            add_lib_links('stage1')
         stage2.build()
 
         if do_bolt and clang_bolt_fdata is not None:
