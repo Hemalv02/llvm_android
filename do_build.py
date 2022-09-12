@@ -138,6 +138,11 @@ def add_lib_links(stage: str):
         filename = os.path.basename(file)
         suffix = Path(file).suffix
         stem = Path(file).stem
+        # If suffix is '.syms', the real suffix is '.a.syms'.
+        if suffix == '.syms':
+            suffix1 = Path(stem).suffix
+            stem = Path(stem).stem
+            suffix = suffix1 + suffix
         dst_dir = Path(dirname) / '..' / 'linux'
         dst_dir.mkdir(parents=True, exist_ok=True)
         dst = dst_dir / (stem + '-x86_64' + suffix)
