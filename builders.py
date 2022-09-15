@@ -695,13 +695,6 @@ class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     def ldflags(self) -> List[str]:
         return [
             f'-L{self.libncurses.link_libraries[0].parent}',
-            # check-llvm calls stage2/unittests/LineEditor/LineEditorTests,
-            # which loads lib/libedit-linux-install/lib/libedit.so.
-            # So libedit.so needs to find libncurses.so with this -rpath.
-            # f'-Wl,-rpath,{self.libncurses.install_dir}/lib',
-            # However, we set LD_LIBRARY_PATH in Stage2Builder's env() so that
-            # the LineEditorTests can run within stage2's environment.
-            # Without that, it won't run alone without -rpath in libedit.so.
         ] + super().ldflags
 
     @property
