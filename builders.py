@@ -185,6 +185,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
         # TODO: Turn on ICF for Darwin once it can be built with LLD.
         if not self._config.target_os.is_darwin:
             ldflags.append('-Wl,--icf=safe')
+        if self.lto and self.enable_mlgo:
+            ldflags.append('-Wl,-mllvm,-regalloc-enable-advisor=release')
         return ldflags
 
     @property
@@ -193,6 +195,8 @@ class Stage2Builder(base_builders.LLVMBuilder):
         if self.profdata_file:
             cflags.append('-Wno-profile-instr-out-of-date')
             cflags.append('-Wno-profile-instr-unprofiled')
+        if not self.lto and self.enable_mlgo:
+            cflags.append('-mllvm -regalloc-enable-advisor=release')
         return cflags
 
     @property

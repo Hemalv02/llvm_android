@@ -113,6 +113,12 @@ def bolt_fdata_tar() -> Optional[Path]:
     return profile if profile.exists() else None
 
 
+def mlgo_model(filename: str) -> Optional[Path]:
+    model = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'mlgo-models' /
+            filename)
+    return model if model.exists() else None
+
+
 def get_package_install_path(host: hosts.Host, package_name) -> Path:
     return OUT_DIR / 'install' / host.os_tag / package_name
 

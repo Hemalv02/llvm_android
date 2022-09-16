@@ -828,6 +828,12 @@ def parse_args():
         default=False,
         help='Skip building stage 1 compiler and use the prebuilt instead.')
 
+    parser.add_argument(
+        '--mlgo',
+        action='store_true',
+        default=False,
+        help='Build with MLGO support.')
+
     # skip_runtimes is set to skip recompilation of libraries
     parser.add_argument(
         '--skip-runtimes',
@@ -900,6 +906,7 @@ def main():
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug and not (args.build_llvm_next)
     build_lldb = 'lldb' not in args.no_build
+    mlgo = args.mlgo
     musl = args.musl
 
     host_configs = [configs.host_config(musl)]
@@ -927,6 +934,7 @@ def main():
     stage1.svn_revision = android_version.get_svn_revision()
     # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
     stage1.build_lldb = build_lldb
+    stage1.enable_mlgo = mlgo
     stage1.build_extra_tools = args.run_tests_stage1
     stage1.build_android_targets = args.debug or instrumented
     stage1.use_sccache = args.sccache
@@ -958,6 +966,7 @@ def main():
         stage2.enable_assertions = args.enable_assertions
         stage2.lto = args.lto
         stage2.build_instrumented = instrumented
+        stage2.enable_mlgo = mlgo
         stage2.bolt_optimize = args.bolt
         stage2.bolt_instrument = args.bolt_instrument
         stage2.profdata_file = profdata if profdata else None
