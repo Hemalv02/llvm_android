@@ -226,9 +226,11 @@ class LinuxMuslConfig(LinuxConfig):
     is_cross_compiling: bool = True
 
     def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64):
-        self.triple = arch.llvm_arch + '-linux-musl'
+        self.triple = arch.llvm_arch + '-unknown-linux-musl'
+        self.sysroot_triple = arch.llvm_arch + '-linux-musl'
         if arch is hosts.Arch.ARM:
             self.triple += 'eabihf'
+            self.sysroot_triple += 'eabihf'
         self.target_arch = arch
 
     @property
@@ -263,7 +265,7 @@ class LinuxMuslConfig(LinuxConfig):
 
     @property
     def sysroot(self) -> Path:
-        return paths.BUILD_TOOLS_DIR / 'sysroots' / self.llvm_triple
+        return paths.BUILD_TOOLS_DIR / 'sysroots' / self.sysroot_triple
 
     @property
     def output_suffix(self) -> str:
