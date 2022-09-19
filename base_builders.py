@@ -20,6 +20,7 @@ from pathlib import Path
 import logging
 import multiprocessing
 import os
+import re
 import shutil
 import subprocess
 from typing import cast, Dict, List, Optional, Set, Sequence
@@ -47,8 +48,33 @@ class LibInfo:
     name: str
     _config: configs.Config
 
-    lib_version: str
     static_lib: bool = False
+
+    @property
+    def lib_version(self) -> str:
+        target_os = self._config.target_os
+
+        if target_os.is_windows:
+            raise RuntimeError('Version shouldn\'t be needed for Windows')
+        libname = self.name + ('.so' if target_os.is_linux else '.dylib')
+        lib = self.install_dir / 'lib' / libname
+
+        if not lib.exists():
+            raise RuntimeError('Lookup of version before library is built')
+
+        objdump_output = utils.check_output([toolchains.get_prebuilt_toolchain().objdump,
+                                             '-p', lib])
+
+        if target_os.is_linux:
+            regex = f'SONAME\\s*{self.name}.so.([0-9.]*)'
+        else:
+            regex = f'name .*/{self.name}.([0-9.]*).dylib \(offset.*'
+        version = re.findall(regex, objdump_output)
+        if not version:
+            print('objdump output is')
+            print(objdump_output)
+            raise RuntimeError(f'Cannot find regex pattern {regex}')
+        return version[0]
 
     @property
     def install_dir(self) -> Path:
@@ -65,15 +91,18 @@ class LibInfo:
 
     @property
     def _lib_suffix(self) -> str:
+        target_os = self._config.target_os
         if self._config.target_os.is_windows and win_sdk.is_enabled():
             return '.lib'
         if self.static_lib:
             return '.a'
-        return {
-            hosts.Host.Linux: f'.so.{self.lib_version}',
-            hosts.Host.Darwin: f'.{self.lib_version}.dylib',
-            hosts.Host.Windows: '.dll.a',
-        }[self._config.target_os]
+        if target_os.is_linux:
+            return f'.so.{self.lib_version}'
+        elif target_os.is_darwin:
+            return f'.{self.lib_version}.dylib'
+        elif target_os.is_windows:
+            return '.dll.a'
+        raise RuntimeError('Unknown target OS')
 
     @property
     def link_libraries(self) -> List[Path]:

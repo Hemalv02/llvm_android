@@ -672,7 +672,6 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
 class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     name: str = 'libncurses'
     src_dir: Path = paths.LIBNCURSES_SRC_DIR
-    lib_version: str = '6'
 
     @property
     def config_flags(self) -> List[str]:
@@ -689,7 +688,6 @@ class LibEditBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
     name: str = 'libedit'
     src_dir: Path = paths.LIBEDIT_SRC_DIR
     libncurses: base_builders.LibInfo
-    lib_version: str = '0'
 
     @property
     def ldflags(self) -> List[str]:
@@ -749,7 +747,6 @@ class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
     src_dir: Path = paths.LIBXML2_SRC_DIR
-    lib_version: str = '2.9.13'
 
     @contextlib.contextmanager
     def _backup_file(self, file_to_backup: Path) -> Iterator[None]:
