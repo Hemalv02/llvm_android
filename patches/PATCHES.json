@@ -122,7 +122,7 @@
         "rel_patch_path": "Undef-FS-macro-for-Android-x86_64.patch",
         "version_range": {
             "from": 412851,
-            "until": null
+            "until": 470628
         }
     },
     {
