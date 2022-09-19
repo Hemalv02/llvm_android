@@ -359,8 +359,8 @@ def bolt_optimize(toolchain_builder: LLVMBuilder, clang_fdata: Path):
     shutil.move(clang_bin, clang_bin_orig)
     args = [
         llvm_bolt_bin, '-data=' + str(clang_fdata), '-o', clang_bin,
-        '-reorder-blocks=cache+', '-reorder-functions=hfsort+',
-        '-split-functions=3', '-split-all-cold', '-split-eh', '-dyno-stats',
+        '-reorder-blocks=ext-tsp', '-reorder-functions=hfsort+',
+        '-split-functions', '-split-all-cold', '-dyno-stats',
         '-icf=1', '--use-gnu-stack', clang_bin_orig
     ]
     utils.check_call(args)
