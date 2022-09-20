@@ -222,5 +222,19 @@
             "from": 450784,
             "until": 473968
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Disable vfork/fork events"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Disable-vfork-fork-events.patch",
+        "version_range": {
+            "from": 468909,
+            "until": null
+        }
     }
 ]
