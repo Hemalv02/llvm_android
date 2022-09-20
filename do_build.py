@@ -555,6 +555,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         if not host.is_windows and necessary_lib_file.startswith('libc++'):
             libprefix = lib_dir / 'x86_64-unknown-linux-gnu'
             if not os.path.exists(libprefix):
+                libprefix = lib_dir / 'x86_64-unknown-linux-musl'
+            if not os.path.exists(libprefix):
                 libprefix = lib_dir
         else:
             libprefix = lib_dir
@@ -809,6 +811,19 @@ def parse_args():
         help='Path to a Windows SDK. If set, it will be used instead of MinGW.'
     )
 
+    musl_group = parser.add_mutually_exclusive_group()
+    musl_group.add_argument(
+        '--musl',
+        action='store_true',
+        default=False,
+        help='Build against musl libc')
+    musl_group.add_argument(
+        '--no-musl',
+        action='store_false',
+        default=True,
+        dest='musl',
+        help="Don't Build against musl libc")
+
     return parser.parse_args()
 
 
@@ -831,8 +846,9 @@ def main():
     do_strip = not args.no_strip
     do_strip_host_package = do_strip and not args.debug and not args.build_llvm_next
     build_lldb = 'lldb' not in args.no_build
+    musl = args.musl
 
-    host_configs = [configs.host_config()]
+    host_configs = [configs.host_config(musl)]
 
     android_version.set_llvm_next(args.build_llvm_next)
 
@@ -841,9 +857,9 @@ def main():
 
     logging.basicConfig(level=logging.DEBUG)
 
-    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r bolt=%r' %
+    logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r bolt=%r musl=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
-                  do_runtimes, do_package, need_windows, args.lto, args.bolt))
+                  do_runtimes, do_package, need_windows, args.lto, args.bolt, args.musl))
 
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:
