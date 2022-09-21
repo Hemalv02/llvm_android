@@ -19,8 +19,8 @@ import re
 _llvm_next = False
 _version_read = False
 
-_patch_level = '6'
-_svn_revision = 'r450784d'
+_patch_level = '7'
+_svn_revision = 'r450784d1'
 _svn_revision_next = 'r450784'
 
 
