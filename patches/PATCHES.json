@@ -557,6 +557,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [AArch64][SVE] Remove false register dependency for unary FP convert operations"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6b73a4cc7db96af1dd02db68c07fe4a807104c53.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 451619
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Revert \"[x86] try harder to scalarize a vector load with extracted integer op uses\""
         },
         "platforms": [

@@ -1,0 +1,783 @@
+From 6b73a4cc7db96af1dd02db68c07fe4a807104c53 Mon Sep 17 00:00:00 2001
+From: Matt Devereau <matthew.devereau@arm.com>
+Date: Mon, 31 Jan 2022 16:24:48 +0000
+Subject: [PATCH] [AArch64][SVE] Remove false register dependency for unary FP
+ convert operations
+
+Generate movprfx for floating point convert zeroing pseudo operations
+
+Differential Revision: https://reviews.llvm.org/D118617
+---
+ .../lib/Target/AArch64/AArch64SVEInstrInfo.td |  53 +--
+ llvm/lib/Target/AArch64/SVEInstrFormats.td    |  25 +-
+ llvm/test/CodeGen/AArch64/sve-fcvt.ll         | 374 ++++++++++++++++++
+ llvm/test/CodeGen/AArch64/sve-fpext-load.ll   |   9 +-
+ llvm/test/CodeGen/AArch64/sve-split-fcvt.ll   |  54 ++-
+ 5 files changed, 470 insertions(+), 45 deletions(-)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64SVEInstrInfo.td b/llvm/lib/Target/AArch64/AArch64SVEInstrInfo.td
+index 569928e5d666..8b66b05b09ec 100644
+--- a/llvm/lib/Target/AArch64/AArch64SVEInstrInfo.td
++++ b/llvm/lib/Target/AArch64/AArch64SVEInstrInfo.td
+@@ -1683,60 +1683,61 @@ let Predicates = [HasSVEorStreamingSVE] in {
+   defm FCVTZS_ZPmZ_DtoD : sve_fp_2op_p_zd< 0b1111110, "fcvtzs", ZPR64, ZPR64, null_frag,                     AArch64fcvtzs_mt, nxv2i64, nxv2i1, nxv2f64, ElementSizeD>;
+   defm FCVTZU_ZPmZ_DtoD : sve_fp_2op_p_zd< 0b1111111, "fcvtzu", ZPR64, ZPR64, null_frag,                     AArch64fcvtzu_mt, nxv2i64, nxv2i1, nxv2f64, ElementSizeD>;
+ 
+-  def : Pat<(nxv2f32 (AArch64fcvte_mt (nxv2i1 PPR:$Pg), (nxv2f16 ZPR:$Zs), (nxv2f32 ZPR:$Zd))),
+-            (FCVT_ZPmZ_HtoS ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++  //These patterns exist to improve the code quality of conversions on unpacked types.
++  def : Pat<(nxv2f32 (AArch64fcvte_mt (nxv2i1 (SVEAllActive):$Pg), (nxv2f16 ZPR:$Zs), (nxv2f32 ZPR:$Zd))),
++            (FCVT_ZPmZ_HtoS_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+   // FP_ROUND has an additional 'precise' flag which indicates the type of rounding.
+   // This is ignored by the pattern below where it is matched by (i64 timm0_1)
+-  def : Pat<(nxv2f16 (AArch64fcvtr_mt (nxv2i1 PPR:$Pg), (nxv2f32 ZPR:$Zs), (i64 timm0_1), (nxv2f16 ZPR:$Zd))),
+-            (FCVT_ZPmZ_StoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++  def : Pat<(nxv2f16 (AArch64fcvtr_mt (nxv2i1 (SVEAllActive):$Pg), (nxv2f32 ZPR:$Zs), (i64 timm0_1), (nxv2f16 ZPR:$Zd))),
++            (FCVT_ZPmZ_StoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  // Floating-point -> signed integer
+-  def : Pat<(nxv2f16 (AArch64scvtf_mt (nxv2i1 PPR:$Pg),
++  // Signed integer -> Floating-point 
++  def : Pat<(nxv2f16 (AArch64scvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (sext_inreg (nxv2i64 ZPR:$Zs), nxv2i16), (nxv2f16 ZPR:$Zd))),
+-            (SCVTF_ZPmZ_HtoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (SCVTF_ZPmZ_HtoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv4f16 (AArch64scvtf_mt (nxv4i1 PPR:$Pg),
++  def : Pat<(nxv4f16 (AArch64scvtf_mt (nxv4i1 (SVEAllActive):$Pg),
+                       (sext_inreg (nxv4i32 ZPR:$Zs), nxv4i16), (nxv4f16 ZPR:$Zd))),
+-            (SCVTF_ZPmZ_HtoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (SCVTF_ZPmZ_HtoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv2f16 (AArch64scvtf_mt (nxv2i1 PPR:$Pg),
++  def : Pat<(nxv2f16 (AArch64scvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (sext_inreg (nxv2i64 ZPR:$Zs), nxv2i32), (nxv2f16 ZPR:$Zd))),
+-            (SCVTF_ZPmZ_StoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (SCVTF_ZPmZ_StoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv2f32 (AArch64scvtf_mt (nxv2i1 PPR:$Pg),
++  def : Pat<(nxv2f32 (AArch64scvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (sext_inreg (nxv2i64 ZPR:$Zs), nxv2i32), (nxv2f32 ZPR:$Zd))),
+-            (SCVTF_ZPmZ_StoS ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (SCVTF_ZPmZ_StoS_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv2f64 (AArch64scvtf_mt (nxv2i1 PPR:$Pg),
++  def : Pat<(nxv2f64 (AArch64scvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (sext_inreg (nxv2i64 ZPR:$Zs), nxv2i32), (nxv2f64 ZPR:$Zd))),
+-            (SCVTF_ZPmZ_StoD ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (SCVTF_ZPmZ_StoD_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  // Floating-point -> unsigned integer
+-  def : Pat<(nxv2f16 (AArch64ucvtf_mt (nxv2i1 PPR:$Pg),
++  // Unsigned integer -> Floating-point
++  def : Pat<(nxv2f16 (AArch64ucvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (and (nxv2i64 ZPR:$Zs),
+                        (nxv2i64 (AArch64dup (i64 0xFFFF)))), (nxv2f16 ZPR:$Zd))),
+-            (UCVTF_ZPmZ_HtoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (UCVTF_ZPmZ_HtoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv2f16 (AArch64ucvtf_mt (nxv2i1 PPR:$Pg),
++  def : Pat<(nxv2f16 (AArch64ucvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (and (nxv2i64 ZPR:$Zs),
+                        (nxv2i64 (AArch64dup (i64 0xFFFFFFFF)))), (nxv2f16 ZPR:$Zd))),
+-            (UCVTF_ZPmZ_StoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (UCVTF_ZPmZ_StoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv4f16 (AArch64ucvtf_mt (nxv4i1 PPR:$Pg),
++  def : Pat<(nxv4f16 (AArch64ucvtf_mt (nxv4i1 (SVEAllActive):$Pg),
+                       (and (nxv4i32 ZPR:$Zs),
+                        (nxv4i32 (AArch64dup (i32 0xFFFF)))), (nxv4f16 ZPR:$Zd))),
+-            (UCVTF_ZPmZ_HtoH ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (UCVTF_ZPmZ_HtoH_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv2f32 (AArch64ucvtf_mt (nxv2i1 PPR:$Pg),
++  def : Pat<(nxv2f32 (AArch64ucvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (and (nxv2i64 ZPR:$Zs),
+                        (nxv2i64 (AArch64dup (i64 0xFFFFFFFF)))), (nxv2f32 ZPR:$Zd))),
+-            (UCVTF_ZPmZ_StoS ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (UCVTF_ZPmZ_StoS_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+-  def : Pat<(nxv2f64 (AArch64ucvtf_mt (nxv2i1 PPR:$Pg),
++  def : Pat<(nxv2f64 (AArch64ucvtf_mt (nxv2i1 (SVEAllActive):$Pg),
+                       (and (nxv2i64 ZPR:$Zs),
+                        (nxv2i64 (AArch64dup (i64 0xFFFFFFFF)))), (nxv2f64 ZPR:$Zd))),
+-            (UCVTF_ZPmZ_StoD ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
++            (UCVTF_ZPmZ_StoD_UNDEF ZPR:$Zd, PPR:$Pg, ZPR:$Zs)>;
+ 
+   defm FRINTN_ZPmZ : sve_fp_2op_p_zd_HSD<0b00000, "frintn", AArch64frintn_mt>;
+   defm FRINTP_ZPmZ : sve_fp_2op_p_zd_HSD<0b00001, "frintp", AArch64frintp_mt>;
+diff --git a/llvm/lib/Target/AArch64/SVEInstrFormats.td b/llvm/lib/Target/AArch64/SVEInstrFormats.td
+index 21cec1bb5463..4132cb32a69f 100644
+--- a/llvm/lib/Target/AArch64/SVEInstrFormats.td
++++ b/llvm/lib/Target/AArch64/SVEInstrFormats.td
+@@ -370,6 +370,14 @@ class SVE_1_Op_Passthru_Round_Pat<ValueType vtd, SDPatternOperator op, ValueType
+ : Pat<(vtd (op pg:$Op1, vts:$Op2, (i64 timm0_1), vtd:$Op3)),
+       (inst $Op3, $Op1, $Op2)>;
+ 
++multiclass SVE_1_Op_PassthruUndef_Round_Pat<ValueType vtd, SDPatternOperator op, ValueType pg,
++                                  ValueType vts, Instruction inst>{
++  def : Pat<(vtd (op pg:$Op1, vts:$Op2, (i64 timm0_1), (vtd undef))),
++            (inst (IMPLICIT_DEF), $Op1, $Op2)>;
++  def : Pat<(vtd (op (pg (SVEAllActive:$Op1)), vts:$Op2, (i64 timm0_1), vtd:$Op3)),
++            (inst $Op3, $Op1, $Op2)>;
++}
++
+ class SVE_1_Op_Imm_OptLsl_Reverse_Pat<ValueType vt, SDPatternOperator op, ZPRRegOp zprty,
+                                       ValueType it, ComplexPattern cpx, Instruction inst>
+   : Pat<(vt (op (vt (AArch64dup (it (cpx i32:$imm, i32:$shift)))), (vt zprty:$Op1))),
+@@ -2600,8 +2608,8 @@ multiclass sve_fp_2op_p_zd<bits<7> opc, string asm,
+                            SDPatternOperator int_op,
+                            SDPatternOperator ir_op, ValueType vt1,
+                            ValueType vt2, ValueType vt3, ElementSizeEnum Sz> {
+-  def NAME : sve_fp_2op_p_zd<opc, asm, i_zprtype, o_zprtype, Sz>;
+-
++  def NAME : sve_fp_2op_p_zd<opc, asm, i_zprtype, o_zprtype, Sz>,
++             SVEPseudo2Instr<NAME, 1>;
+   // convert vt1 to a packed type for the intrinsic patterns
+   defvar packedvt1 = !cond(!eq(!cast<string>(vt1), "nxv2f16"): nxv8f16,
+                            !eq(!cast<string>(vt1), "nxv4f16"): nxv8f16,
+@@ -2615,8 +2623,11 @@ multiclass sve_fp_2op_p_zd<bits<7> opc, string asm,
+                            1 : vt3);
+ 
+   def : SVE_3_Op_Pat<packedvt1, int_op, packedvt1, vt2, packedvt3, !cast<Instruction>(NAME)>;
+-
+   def : SVE_1_Op_Passthru_Pat<vt1, ir_op, vt2, vt3, !cast<Instruction>(NAME)>;
++
++  def _UNDEF : PredOneOpPassthruPseudo<NAME, !cast<ZPRRegOp>(i_zprtype)>;
++
++  defm : SVE_1_Op_PassthruUndef_Pat<vt1, ir_op, vt2, vt3, !cast<Instruction>(NAME # _UNDEF)>;
+ }
+ 
+ multiclass sve_fp_2op_p_zdr<bits<7> opc, string asm,
+@@ -2625,7 +2636,8 @@ multiclass sve_fp_2op_p_zdr<bits<7> opc, string asm,
+                             SDPatternOperator int_op,
+                             SDPatternOperator ir_op, ValueType vt1,
+                             ValueType vt2, ValueType vt3, ElementSizeEnum Sz> {
+-  def NAME : sve_fp_2op_p_zd<opc, asm, i_zprtype, o_zprtype, Sz>;
++  def NAME : sve_fp_2op_p_zd<opc, asm, i_zprtype, o_zprtype, Sz>,
++             SVEPseudo2Instr<NAME, 1>;
+ 
+   // convert vt1 to a packed type for the intrinsic patterns
+   defvar packedvt1 = !cond(!eq(!cast<string>(vt1), "nxv2f16"): nxv8f16,
+@@ -2634,8 +2646,11 @@ multiclass sve_fp_2op_p_zdr<bits<7> opc, string asm,
+                            1 : vt1);
+ 
+   def : SVE_3_Op_Pat<packedvt1, int_op, packedvt1, vt2, vt3, !cast<Instruction>(NAME)>;
+-
+   def : SVE_1_Op_Passthru_Round_Pat<vt1, ir_op, vt2, vt3, !cast<Instruction>(NAME)>;
++
++  def _UNDEF : PredOneOpPassthruPseudo<NAME, !cast<ZPRRegOp>(i_zprtype)>;
++
++  defm : SVE_1_Op_PassthruUndef_Round_Pat<vt1, ir_op, vt2, vt3, !cast<Instruction>(NAME # _UNDEF)>;
+ }
+ 
+ multiclass sve_fp_2op_p_zd_HSD<bits<5> opc, string asm, SDPatternOperator op> {
+diff --git a/llvm/test/CodeGen/AArch64/sve-fcvt.ll b/llvm/test/CodeGen/AArch64/sve-fcvt.ll
+index f8fb037436cf..0fe38bf9ae71 100644
+--- a/llvm/test/CodeGen/AArch64/sve-fcvt.ll
++++ b/llvm/test/CodeGen/AArch64/sve-fcvt.ll
+@@ -898,3 +898,377 @@ define <vscale x 2 x double> @ucvtf_d_nxv2i64(<vscale x 2 x i64> %a) {
+   %res = uitofp <vscale x 2 x i64> %a to <vscale x 2 x double>
+   ret <vscale x 2 x double> %res
+ }
++
++define <vscale x 4 x float> @fcvt_htos_movprfx(<vscale x 4 x half> %a, <vscale x 4 x half> %b) {
++; CHECK-LABEL: fcvt_htos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvt z0.s, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fpext <vscale x 4 x half> %b to <vscale x 4 x float>
++  ret <vscale x 4 x float> %res
++}
++
++define <vscale x 2 x double> @fcvt_htod_movprfx(<vscale x 2 x half> %a, <vscale x 2 x half> %b) {
++; CHECK-LABEL: fcvt_htod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvt z0.d, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fpext <vscale x 2 x half> %b to <vscale x 2 x double>
++  ret <vscale x 2 x double> %res
++}
++
++define <vscale x 2 x double> @fcvt_stod_movprfx(<vscale x 2 x float> %a, <vscale x 2 x float> %b) {
++; CHECK-LABEL: fcvt_stod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvt z0.d, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = fpext <vscale x 2 x float> %b to <vscale x 2 x double>
++  ret <vscale x 2 x double> %res
++}
++
++define <vscale x 4 x half> @fcvt_stoh_movprfx(<vscale x 4 x float> %a, <vscale x 4 x float> %b) {
++; CHECK-LABEL: fcvt_stoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvt z0.h, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = fptrunc <vscale x 4 x float> %b to <vscale x 4 x half>
++  ret <vscale x 4 x half> %res
++}
++
++define <vscale x 2 x half> @fcvt_dtoh_movprfx(<vscale x 2 x double> %a, <vscale x 2 x double> %b) {
++; CHECK-LABEL: fcvt_dtoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvt z0.h, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = fptrunc <vscale x 2 x double> %b to <vscale x 2 x half>
++  ret <vscale x 2 x half> %res
++}
++
++define <vscale x 2 x float> @fcvt_dtos_movprfx(<vscale x 2 x double> %a, <vscale x 2 x double> %b) {
++; CHECK-LABEL: fcvt_dtos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvt z0.s, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = fptrunc <vscale x 2 x double> %b to <vscale x 2 x float>
++  ret <vscale x 2 x float> %res
++}
++
++define <vscale x 8 x half> @scvtf_htoh_movprfx(<vscale x 8 x i16> %a, <vscale x 8 x i16> %b) {
++; CHECK-LABEL: scvtf_htoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.h
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.h, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 8 x i16> %b to <vscale x 8 x half>
++  ret <vscale x 8 x half> %res
++}
++
++define <vscale x 4 x float> @scvtf_stos_movprfx(<vscale x 4 x i32> %a, <vscale x 4 x i32> %b) {
++; CHECK-LABEL: scvtf_stos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.s, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 4 x i32> %b to <vscale x 4 x float>
++  ret <vscale x 4 x float> %res
++}
++
++define <vscale x 2 x double> @scvtf_stod_movprfx(<vscale x 2 x i32> %a, <vscale x 2 x i32> %b) {
++; CHECK-LABEL: scvtf_stod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.d, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 2 x i32> %b to <vscale x 2 x double>
++  ret <vscale x 2 x double> %res
++}
++
++define <vscale x 2 x float> @scvtf_dtos_movprfx(<vscale x 2 x i64> %a, <vscale x 2 x i64> %b) {
++; CHECK-LABEL: scvtf_dtos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.s, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 2 x i64> %b to <vscale x 2 x float>
++  ret <vscale x 2 x float> %res
++}
++
++define <vscale x 4 x half> @scvtf_stoh_movprfx(<vscale x 4 x i32> %a, <vscale x 4 x i32> %b) {
++; CHECK-LABEL: scvtf_stoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.h, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 4 x i32> %b to <vscale x 4 x half>
++  ret <vscale x 4 x half> %res
++}
++
++define <vscale x 2 x half> @scvtf_dtoh_movprfx(<vscale x 2 x i64> %a, <vscale x 2 x i64> %b) {
++; CHECK-LABEL: scvtf_dtoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.h, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 2 x i64> %b to <vscale x 2 x half>
++  ret <vscale x 2 x half> %res
++}
++
++define <vscale x 2 x double> @scvtf_dtod_movprfx(<vscale x 2 x i64> %a, <vscale x 2 x i64> %b) {
++; CHECK-LABEL: scvtf_dtod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    scvtf z0.d, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = sitofp <vscale x 2 x i64> %b to <vscale x 2 x double>
++  ret <vscale x 2 x double> %res
++}
++
++define <vscale x 4 x float> @ucvtf_stos_movprfx(<vscale x 4 x i32> %a, <vscale x 4 x i32> %b) {
++; CHECK-LABEL: ucvtf_stos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.s, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 4 x i32> %b to <vscale x 4 x float>
++  ret <vscale x 4 x float> %res
++}
++
++define <vscale x 8 x half> @ucvtf_htoh_movprfx(<vscale x 8 x i16> %a, <vscale x 8 x i16> %b) {
++; CHECK-LABEL: ucvtf_htoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.h
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.h, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 8 x i16> %b to <vscale x 8 x half>
++  ret <vscale x 8 x half> %res
++}
++
++define <vscale x 2 x double> @ucvtf_stod_movprfx(<vscale x 2 x i32> %a, <vscale x 2 x i32> %b) {
++; CHECK-LABEL: ucvtf_stod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.d, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 2 x i32> %b to <vscale x 2 x double>
++  ret <vscale x 2 x double> %res
++}
++
++define <vscale x 4 x half> @ucvtf_stoh_movprfx(<vscale x 4 x i32> %a, <vscale x 4 x i32> %b) {
++; CHECK-LABEL: ucvtf_stoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.h, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 4 x i32> %b to <vscale x 4 x half>
++  ret <vscale x 4 x half> %res
++}
++
++define <vscale x 2 x float> @ucvtf_dtos_movprfx(<vscale x 2 x i64> %a, <vscale x 2 x i64> %b) {
++; CHECK-LABEL: ucvtf_dtos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.s, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 2 x i64> %b to <vscale x 2 x float>
++  ret <vscale x 2 x float> %res
++}
++
++define <vscale x 2 x half> @ucvtf_dtoh_movprfx(<vscale x 2 x i64> %a, <vscale x 2 x i64> %b) {
++; CHECK-LABEL: ucvtf_dtoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.h, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 2 x i64> %b to <vscale x 2 x half>
++  ret <vscale x 2 x half> %res
++}
++
++define <vscale x 2 x double> @ucvtf_dtod_movprfx(<vscale x 2 x i64> %a, <vscale x 2 x i64> %b) {
++; CHECK-LABEL: ucvtf_dtod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    ucvtf z0.d, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = uitofp <vscale x 2 x i64> %b to <vscale x 2 x double>
++  ret <vscale x 2 x double> %res
++}
++
++define <vscale x 8 x i16> @fcvtzs_htoh_movprfx(<vscale x 8 x half> %a, <vscale x 8 x half> %b) {
++; CHECK-LABEL: fcvtzs_htoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.h
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.h, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 8 x half> %b to <vscale x 8 x i16>
++  ret <vscale x 8 x i16> %res
++}
++
++define <vscale x 4 x i32> @fcvtzs_stos_movprfx(<vscale x 4 x float> %a, <vscale x 4 x float> %b) {
++; CHECK-LABEL: fcvtzs_stos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.s, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 4 x float> %b to <vscale x 4 x i32>
++  ret <vscale x 4 x i32> %res
++}
++
++define <vscale x 2 x i32> @fcvtzs_dtos_movprfx(<vscale x 2 x double> %a, <vscale x 2 x double> %b) {
++; CHECK-LABEL: fcvtzs_dtos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.d, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 2 x double> %b to <vscale x 2 x i32>
++  ret <vscale x 2 x i32> %res
++}
++
++define <vscale x 2 x i64> @fcvtzs_stod_movprfx(<vscale x 2 x float> %a, <vscale x 2 x float> %b) {
++; CHECK-LABEL: fcvtzs_stod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.d, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 2 x float> %b to <vscale x 2 x i64>
++  ret <vscale x 2 x i64> %res
++}
++
++define <vscale x 4 x i32> @fcvtzs_htos_movprfx(<vscale x 4 x half> %a, <vscale x 4 x half> %b) {
++; CHECK-LABEL: fcvtzs_htos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.s, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 4 x half> %b to <vscale x 4 x i32>
++  ret <vscale x 4 x i32> %res
++}
++
++define <vscale x 2 x i64> @fcvtzs_htod_movprfx(<vscale x 2 x half> %a, <vscale x 2 x half> %b) {
++; CHECK-LABEL: fcvtzs_htod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.d, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 2 x half> %b to <vscale x 2 x i64>
++  ret <vscale x 2 x i64> %res
++}
++
++define <vscale x 2 x i64> @fcvtzs_dtod_movprfx(<vscale x 2 x double> %a, <vscale x 2 x double> %b) {
++; CHECK-LABEL: fcvtzs_dtod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.d, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = fptosi <vscale x 2 x double> %b to <vscale x 2 x i64>
++  ret <vscale x 2 x i64> %res
++}
++
++define <vscale x 8 x i16> @fcvtzu_htoh_movprfx(<vscale x 8 x half> %a, <vscale x 8 x half> %b) {
++; CHECK-LABEL: fcvtzu_htoh_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.h
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzu z0.h, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 8 x half> %b to <vscale x 8 x i16>
++  ret <vscale x 8 x i16> %res
++}
++
++define <vscale x 4 x i32> @fcvtzu_stos_movprfx(<vscale x 4 x float> %a, <vscale x 4 x float> %b) {
++; CHECK-LABEL: fcvtzu_stos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzu z0.s, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 4 x float> %b to <vscale x 4 x i32>
++  ret <vscale x 4 x i32> %res
++}
++
++define <vscale x 2 x i32> @fcvtzu_dtos_movprfx(<vscale x 2 x double> %a, <vscale x 2 x double> %b) {
++; CHECK-LABEL: fcvtzu_dtos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzs z0.d, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 2 x double> %b to <vscale x 2 x i32>
++  ret <vscale x 2 x i32> %res
++}
++
++define <vscale x 2 x i64> @fcvtzu_stod_movprfx(<vscale x 2 x float> %a, <vscale x 2 x float> %b) {
++; CHECK-LABEL: fcvtzu_stod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzu z0.d, p0/m, z1.s
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 2 x float> %b to <vscale x 2 x i64>
++  ret <vscale x 2 x i64> %res
++}
++
++define <vscale x 4 x i32> @fcvtzu_htos_movprfx(<vscale x 4 x half> %a, <vscale x 4 x half> %b) {
++; CHECK-LABEL: fcvtzu_htos_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzu z0.s, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 4 x half> %b to <vscale x 4 x i32>
++  ret <vscale x 4 x i32> %res
++}
++
++define <vscale x 2 x i64> @fcvtzu_htod_movprfx(<vscale x 2 x half> %a, <vscale x 2 x half> %b) {
++; CHECK-LABEL: fcvtzu_htod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzu z0.d, p0/m, z1.h
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 2 x half> %b to <vscale x 2 x i64>
++  ret <vscale x 2 x i64> %res
++}
++
++define <vscale x 2 x i64> @fcvtzu_dtod_movprfx(<vscale x 2 x double> %a, <vscale x 2 x double> %b) {
++; CHECK-LABEL: fcvtzu_dtod_movprfx:
++; CHECK:       // %bb.0:
++; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    movprfx z0, z1
++; CHECK-NEXT:    fcvtzu z0.d, p0/m, z1.d
++; CHECK-NEXT:    ret
++  %res = fptoui <vscale x 2 x double> %b to <vscale x 2 x i64>
++  ret <vscale x 2 x i64> %res
++}
+diff --git a/llvm/test/CodeGen/AArch64/sve-fpext-load.ll b/llvm/test/CodeGen/AArch64/sve-fpext-load.ll
+index 913230eebe8b..f18252b6bfe7 100644
+--- a/llvm/test/CodeGen/AArch64/sve-fpext-load.ll
++++ b/llvm/test/CodeGen/AArch64/sve-fpext-load.ll
+@@ -23,7 +23,9 @@ define <vscale x 4 x double> @ext4_f16_f64(<vscale x 4 x half> *%ptr, i64 %index
+ ; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z1.h
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvt z1.d, p0/m, z2.h
+ ; CHECK-NEXT:    ret
+   %load = load <vscale x 4 x half>, <vscale x 4 x half>* %ptr, align 4
+@@ -43,10 +45,13 @@ define <vscale x 8 x double> @ext8_f16_f64(<vscale x 8 x half> *%ptr, i64 %index
+ ; CHECK-NEXT:    uunpklo z2.d, z1.s
+ ; CHECK-NEXT:    uunpkhi z1.d, z1.s
+ ; CHECK-NEXT:    uunpklo z3.d, z0.s
++; CHECK-NEXT:    fcvt z1.d, p0/m, z1.h
+ ; CHECK-NEXT:    uunpkhi z4.d, z0.s
++; CHECK-NEXT:    movprfx z0, z2
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z2.h
+-; CHECK-NEXT:    fcvt z1.d, p0/m, z1.h
++; CHECK-NEXT:    movprfx z2, z3
+ ; CHECK-NEXT:    fcvt z2.d, p0/m, z3.h
++; CHECK-NEXT:    movprfx z3, z4
+ ; CHECK-NEXT:    fcvt z3.d, p0/m, z4.h
+ ; CHECK-NEXT:    ret
+   %load = load <vscale x 8 x half>, <vscale x 8 x half>* %ptr, align 4
+@@ -76,7 +81,9 @@ define <vscale x 4 x double> @ext4_f32_f64(<vscale x 4 x float> *%ptr, i64 %inde
+ ; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z1.s
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvt z1.d, p0/m, z2.s
+ ; CHECK-NEXT:    ret
+   %load = load <vscale x 4 x float>, <vscale x 4 x float>* %ptr, align 4
+diff --git a/llvm/test/CodeGen/AArch64/sve-split-fcvt.ll b/llvm/test/CodeGen/AArch64/sve-split-fcvt.ll
+index 0fae0e7dbe7e..99e9e61fca29 100644
+--- a/llvm/test/CodeGen/AArch64/sve-split-fcvt.ll
++++ b/llvm/test/CodeGen/AArch64/sve-split-fcvt.ll
+@@ -6,10 +6,12 @@
+ define <vscale x 8 x float> @fcvts_nxv8f16(<vscale x 8 x half> %a) {
+ ; CHECK-LABEL: fcvts_nxv8f16:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.s
+ ; CHECK-NEXT:    uunpklo z1.s, z0.h
++; CHECK-NEXT:    ptrue p0.s
+ ; CHECK-NEXT:    uunpkhi z2.s, z0.h
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvt z0.s, p0/m, z1.h
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvt z1.s, p0/m, z2.h
+ ; CHECK-NEXT:    ret
+   %res = fpext <vscale x 8 x half> %a to <vscale x 8 x float>
+@@ -19,10 +21,12 @@ define <vscale x 8 x float> @fcvts_nxv8f16(<vscale x 8 x half> %a) {
+ define <vscale x 4 x double> @fcvtd_nxv4f16(<vscale x 4 x half> %a) {
+ ; CHECK-LABEL: fcvtd_nxv4f16:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z1.h
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvt z1.d, p0/m, z2.h
+ ; CHECK-NEXT:    ret
+   %res = fpext <vscale x 4 x half> %a to <vscale x 4 x double>
+@@ -33,15 +37,18 @@ define <vscale x 8 x double> @fcvtd_nxv8f16(<vscale x 8 x half> %a) {
+ ; CHECK-LABEL: fcvtd_nxv8f16:
+ ; CHECK:       // %bb.0:
+ ; CHECK-NEXT:    uunpklo z1.s, z0.h
+-; CHECK-NEXT:    uunpkhi z0.s, z0.h
+ ; CHECK-NEXT:    ptrue p0.d
++; CHECK-NEXT:    uunpkhi z0.s, z0.h
+ ; CHECK-NEXT:    uunpklo z2.d, z1.s
+ ; CHECK-NEXT:    uunpkhi z1.d, z1.s
+ ; CHECK-NEXT:    uunpklo z3.d, z0.s
++; CHECK-NEXT:    fcvt z1.d, p0/m, z1.h
+ ; CHECK-NEXT:    uunpkhi z4.d, z0.s
++; CHECK-NEXT:    movprfx z0, z2
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z2.h
+-; CHECK-NEXT:    fcvt z1.d, p0/m, z1.h
++; CHECK-NEXT:    movprfx z2, z3
+ ; CHECK-NEXT:    fcvt z2.d, p0/m, z3.h
++; CHECK-NEXT:    movprfx z3, z4
+ ; CHECK-NEXT:    fcvt z3.d, p0/m, z4.h
+ ; CHECK-NEXT:    ret
+   %res = fpext <vscale x 8 x half> %a to <vscale x 8 x double>
+@@ -51,10 +58,12 @@ define <vscale x 8 x double> @fcvtd_nxv8f16(<vscale x 8 x half> %a) {
+ define <vscale x 4 x double> @fcvtd_nxv4f32(<vscale x 4 x float> %a) {
+ ; CHECK-LABEL: fcvtd_nxv4f32:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z1.s
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvt z1.d, p0/m, z2.s
+ ; CHECK-NEXT:    ret
+   %res = fpext <vscale x 4 x float> %a to <vscale x 4 x double>
+@@ -64,14 +73,18 @@ define <vscale x 4 x double> @fcvtd_nxv4f32(<vscale x 4 x float> %a) {
+ define <vscale x 8 x double> @fcvtd_nxv8f32(<vscale x 8 x float> %a) {
+ ; CHECK-LABEL: fcvtd_nxv8f32:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z2.d, z0.s
+ ; CHECK-NEXT:    uunpkhi z3.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z4.d, z1.s
+ ; CHECK-NEXT:    uunpkhi z5.d, z1.s
++; CHECK-NEXT:    movprfx z0, z2
+ ; CHECK-NEXT:    fcvt z0.d, p0/m, z2.s
++; CHECK-NEXT:    movprfx z1, z3
+ ; CHECK-NEXT:    fcvt z1.d, p0/m, z3.s
++; CHECK-NEXT:    movprfx z2, z4
+ ; CHECK-NEXT:    fcvt z2.d, p0/m, z4.s
++; CHECK-NEXT:    movprfx z3, z5
+ ; CHECK-NEXT:    fcvt z3.d, p0/m, z5.s
+ ; CHECK-NEXT:    ret
+   %res = fpext <vscale x 8 x float> %a to <vscale x 8 x double>
+@@ -182,10 +195,12 @@ define <vscale x 8 x i16> @fcvtzs_h_nxv8f64(<vscale x 8 x double> %a) {
+ define <vscale x 4 x i64> @fcvtzs_d_nxv4f32(<vscale x 4 x float> %a) {
+ ; CHECK-LABEL: fcvtzs_d_nxv4f32:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvtzs z0.d, p0/m, z1.s
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvtzs z1.d, p0/m, z2.s
+ ; CHECK-NEXT:    ret
+   %res = fptosi <vscale x 4 x float> %a to <vscale x 4 x i64>
+@@ -195,14 +210,18 @@ define <vscale x 4 x i64> @fcvtzs_d_nxv4f32(<vscale x 4 x float> %a) {
+ define <vscale x 16 x i32> @fcvtzs_s_nxv16f16(<vscale x 16 x half> %a) {
+ ; CHECK-LABEL: fcvtzs_s_nxv16f16:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.s
+ ; CHECK-NEXT:    uunpklo z2.s, z0.h
+ ; CHECK-NEXT:    uunpkhi z3.s, z0.h
++; CHECK-NEXT:    ptrue p0.s
+ ; CHECK-NEXT:    uunpklo z4.s, z1.h
+ ; CHECK-NEXT:    uunpkhi z5.s, z1.h
++; CHECK-NEXT:    movprfx z0, z2
+ ; CHECK-NEXT:    fcvtzs z0.s, p0/m, z2.h
++; CHECK-NEXT:    movprfx z1, z3
+ ; CHECK-NEXT:    fcvtzs z1.s, p0/m, z3.h
++; CHECK-NEXT:    movprfx z2, z4
+ ; CHECK-NEXT:    fcvtzs z2.s, p0/m, z4.h
++; CHECK-NEXT:    movprfx z3, z5
+ ; CHECK-NEXT:    fcvtzs z3.s, p0/m, z5.h
+ ; CHECK-NEXT:    ret
+   %res = fptosi <vscale x 16 x half> %a to <vscale x 16 x i32>
+@@ -228,10 +247,12 @@ define <vscale x 4 x i32> @fcvtzu_s_nxv4f64(<vscale x 4 x double> %a) {
+ define <vscale x 4 x i64> @fcvtzu_d_nxv4f32(<vscale x 4 x float> %a) {
+ ; CHECK-LABEL: fcvtzu_d_nxv4f32:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    fcvtzu z0.d, p0/m, z1.s
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    fcvtzu z1.d, p0/m, z2.s
+ ; CHECK-NEXT:    ret
+   %res = fptoui <vscale x 4 x float> %a to <vscale x 4 x i64>
+@@ -274,15 +295,18 @@ define <vscale x 16 x float> @scvtf_s_nxv16i8(<vscale x 16 x i8> %a) {
+ ; CHECK-LABEL: scvtf_s_nxv16i8:
+ ; CHECK:       // %bb.0:
+ ; CHECK-NEXT:    sunpklo z1.h, z0.b
+-; CHECK-NEXT:    sunpkhi z0.h, z0.b
+ ; CHECK-NEXT:    ptrue p0.s
++; CHECK-NEXT:    sunpkhi z0.h, z0.b
+ ; CHECK-NEXT:    sunpklo z2.s, z1.h
+ ; CHECK-NEXT:    sunpkhi z1.s, z1.h
+ ; CHECK-NEXT:    sunpklo z3.s, z0.h
++; CHECK-NEXT:    scvtf z1.s, p0/m, z1.s
+ ; CHECK-NEXT:    sunpkhi z4.s, z0.h
++; CHECK-NEXT:    movprfx z0, z2
+ ; CHECK-NEXT:    scvtf z0.s, p0/m, z2.s
+-; CHECK-NEXT:    scvtf z1.s, p0/m, z1.s
++; CHECK-NEXT:    movprfx z2, z3
+ ; CHECK-NEXT:    scvtf z2.s, p0/m, z3.s
++; CHECK-NEXT:    movprfx z3, z4
+ ; CHECK-NEXT:    scvtf z3.s, p0/m, z4.s
+ ; CHECK-NEXT:    ret
+   %res = sitofp <vscale x 16 x i8> %a to <vscale x 16 x float>
+@@ -292,10 +316,12 @@ define <vscale x 16 x float> @scvtf_s_nxv16i8(<vscale x 16 x i8> %a) {
+ define <vscale x 4 x double> @scvtf_d_nxv4i32(<vscale x 4 x i32> %a) {
+ ; CHECK-LABEL: scvtf_d_nxv4i32:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    sunpklo z1.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    sunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    scvtf z0.d, p0/m, z1.d
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    scvtf z1.d, p0/m, z2.d
+ ; CHECK-NEXT:    ret
+   %res = sitofp <vscale x 4 x i32> %a to <vscale x 4 x double>
+@@ -352,10 +378,12 @@ define <vscale x 8 x half> @ucvtf_h_nxv8i64(<vscale x 8 x i64> %a) {
+ define <vscale x 4 x double> @ucvtf_d_nxv4i32(<vscale x 4 x i32> %a) {
+ ; CHECK-LABEL: ucvtf_d_nxv4i32:
+ ; CHECK:       // %bb.0:
+-; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpklo z1.d, z0.s
++; CHECK-NEXT:    ptrue p0.d
+ ; CHECK-NEXT:    uunpkhi z2.d, z0.s
++; CHECK-NEXT:    movprfx z0, z1
+ ; CHECK-NEXT:    ucvtf z0.d, p0/m, z1.d
++; CHECK-NEXT:    movprfx z1, z2
+ ; CHECK-NEXT:    ucvtf z1.d, p0/m, z2.d
+ ; CHECK-NEXT:    ret
+   %res = uitofp <vscale x 4 x i32> %a to <vscale x 4 x double>
+-- 
+2.37.2.789.g6183377224-goog
+
