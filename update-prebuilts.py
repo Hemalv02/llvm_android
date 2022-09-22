@@ -97,8 +97,8 @@ def fetch_artifact(branch, target, build, pattern):
     utils.check_call(cmd)
 
 
-def extract_package(package, install_dir):
-    cmd = ['tar', 'xf', package, '-C', install_dir]
+def extract_package(package, install_dir, args=[]):
+    cmd = ['tar', 'xf', package, '-C', install_dir] + args
     utils.check_call(cmd)
 
 
@@ -205,16 +205,20 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     # Install into clang-<svn_revision>.  Suffixes ('a', 'b', 'c' etc.), if any,
     # are included in the svn_revision.
     install_subdir = 'clang-' + svn_revision
-    if os.path.exists(install_subdir):
-        if overwrite:
-            logger().info('Removing/overwriting existing path: %s',
-                          install_subdir)
-            shutil.rmtree(install_subdir)
-        else:
-            logger().info('Cannot remove/overwrite existing path: %s',
-                          install_subdir)
-            sys.exit(1)
-    os.rename(extract_subdir, install_subdir)
+    install_clang_directory(extract_subdir, install_subdir, overwrite)
+
+    # Linux prebuilts need to include a few libraries from the linux_musl artifacts
+    if host == 'linux-x86':
+        musl_install_subdir = install_subdir + '/musl'
+        musl_package = f'{download_dir}/clang-{build_number}-linux_musl-x86.tar.bz2'
+        if os.path.exists(extract_subdir):
+            shutil.rmtree(extract_subdir)
+        extract_package(musl_package, prebuilt_dir, [
+            "--wildcards",
+            "*/lib/libclang.so*",
+            "*/lib/*/libc++.so*",
+            "*/lib/libc_musl.so"])
+        install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
     # coverage instrumentation and rely on the driver to pick the correct
@@ -251,6 +255,19 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     message_lines.append('Test: N/A')
     message = '\n'.join(message_lines)
     utils.check_call(['git', 'commit', '-m', message])
+
+
+def install_clang_directory(extract_subdir: str, install_subdir: str, overwrite: bool):
+    if os.path.exists(install_subdir):
+        if overwrite:
+            logger().info('Removing/overwriting existing path: %s',
+                          install_subdir)
+            shutil.rmtree(install_subdir)
+        else:
+            logger().info('Cannot remove/overwrite existing path: %s',
+                          install_subdir)
+            sys.exit(1)
+    os.rename(extract_subdir, install_subdir)
 
 
 def repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
@@ -295,6 +312,8 @@ def main():
                    'windows-x86': 'windows_x86_64'}
     hosts = [args.host] if args.host else targets_map.keys()
     targets = [targets_map[h] for h  in hosts]
+    if 'linux-x86' in hosts:
+        targets.append('linux_musl')
     clang_pattern = 'clang-*.tar.bz2'
     manifest = f'manifest_{args.build}.xml'
 
