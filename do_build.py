@@ -632,7 +632,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Package up the resulting trimmed install/ directory.
     if create_tar:
-        tarball_name = package_name + '-' + host.os_tag + '.tar.bz2'
+        tag = host.os_tag
+        if isinstance(toolchain_builder.config_list[0], configs.LinuxMuslConfig):
+            tag = host.os_tag_musl
+        tarball_name = package_name + '-' + tag + '.tar.bz2'
         package_path = dist_dir / tarball_name
         logger().info(f'Packaging {package_path}')
         args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
