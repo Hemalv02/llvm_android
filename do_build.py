@@ -626,7 +626,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                             f'../lib/clang/{version.long_version()}/share\n'
                             f'../lib/clang/{version.long_version()}/lib/linux\n'
                             f'../lib/clang/{version.long_version()}/include\n'
-                            f'../lib/libxml2.so.{builders.LibXml2Builder.lib_version}\n'
+                            f'../lib/libxml2.so.{toolchain_builder.libxml2.lib_version}\n'
                            )
             inputs_file.write(dependencies)
 
