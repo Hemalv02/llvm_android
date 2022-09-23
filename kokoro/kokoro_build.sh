@@ -8,9 +8,16 @@ python_src=$TOP/toolchain/llvm_android
 
 mkdir "${DIST}"
 
-OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-$python_src/build.py --lto --pgo --bolt --create-tar --build-name "${KOKORO_BUILD_ID}" \
---no-build=windows
+if [ $LLVM_BUILD_TYPE == "TOT" ]; then
+   OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
+   $python_src/build.py --build_llvm_next --no-build=windows
+elif [ $LLVM_BUILD_TYPE == "AOSP" ]; then
+   OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
+   $python_src/build.py --lto --pgo --bolt --create-tar --build-name "${KOKORO_BUILD_ID}" \
+   --no-build=windows
+else
+   echo "Error: requires LLVM_BUILD_TYPE"
+fi
 
 # Kokoro will rsync back everything created by the build. This can take 0
 # minutes for our out directory. Clean up these files if our build was
