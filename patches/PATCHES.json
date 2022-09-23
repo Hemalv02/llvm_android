@@ -2,6 +2,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Pass through even more LIBCXX_* variables to libfuzzer's custom lib++"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/80aa41d9df3dbe4ee673b3b0a8b41854b69820c5.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 464881
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [clang-format] Fix the return code of git-clang-format"
         },
         "platforms": [
@@ -39,6 +53,20 @@
         "version_range": {
             "from": 468909,
             "until": 469269
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [lld-macho] Support EH frame pointer encodings that use sdata4"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6c9f6812523a706c11a12e6cb4119b0cf67bbb21.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 469558
         }
     },
     {
@@ -86,15 +114,29 @@
     {
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] Pass through even more LIBCXX_* variables to libfuzzer's custom lib++"
+            "title": "[UPSTREAM] Fix std::fpos pretty printer on musl"
         },
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/80aa41d9df3dbe4ee673b3b0a8b41854b69820c5.patch",
+        "rel_patch_path": "cherry/13c6828bedeb815ee7748f82ca36073dbd55a9db.patch",
         "version_range": {
             "from": 450784,
-            "until": 464881
+            "until": 473968
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Set HOME for tests that use module cache path"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7fe475756b26080fe0bb02e8e317662ccc9a01f1.patch",
+        "version_range": {
+            "from": 450784,
+            "until": 473971
         }
     },
     {
@@ -184,20 +226,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] Set HOME for tests that use module cache path"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/7fe475756b26080fe0bb02e8e317662ccc9a01f1.patch",
-        "version_range": {
-            "from": 450784,
-            "until": 473971
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "Support dlclose as a noop in DynamicLibraryTest"
         },
         "platforms": [
@@ -207,20 +235,6 @@
         "version_range": {
             "from": 450784,
             "until": 471972
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] Fix std::fpos pretty printer on musl"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/13c6828bedeb815ee7748f82ca36073dbd55a9db.patch",
-        "version_range": {
-            "from": 450784,
-            "until": 473968
         }
     },
     {
