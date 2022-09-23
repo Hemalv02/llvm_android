@@ -142,6 +142,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [libunwind] Handle G in personality string"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a3153381af48b2e704750255a704748a13c4c4de.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 474537
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
