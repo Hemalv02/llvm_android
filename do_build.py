@@ -25,6 +25,7 @@ import shutil
 import sys
 import textwrap
 from typing import List, NamedTuple, Optional, Set, Tuple
+import re
 
 import android_version
 from base_builders import Builder, LLVMBuilder
@@ -587,6 +588,22 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                            'cherry-picks, see clang_source_info.md')
 
     clang_source_info_file = paths.OUT_DIR / 'clang_source_info.md'
+    manifest = list(Path(dist_dir).glob('manifest_*.xml'))
+
+    # get revision from manifest, update clang_source_info.md
+    if manifest:
+        manifest_path = os.fspath(manifest[0])
+        manifest_context = open(manifest_path).read()
+        get_scripts_sha = re.findall(r'name="toolchain/llvm_android" revision="(.*)" /',
+                                     manifest_context)[0]
+    else:
+        get_scripts_sha = 'refs/heads/master'
+    with open(clang_source_info_file, 'r') as info:
+        info_read = info.read()
+    with open(clang_source_info_file, 'w') as info:
+        info_read = info_read.replace('{{scripts_sha}}', get_scripts_sha)
+        info.write(info_read)
+
     if clang_source_info_file.exists():
         shutil.copy2(clang_source_info_file, install_dir)
 
