@@ -156,6 +156,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Make MLIR model URLs cache variables"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/32994b7357a33de5a32c03a29691e93911dca4e3.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 474766
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
