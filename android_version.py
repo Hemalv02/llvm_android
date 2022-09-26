@@ -17,6 +17,7 @@
 import re
 
 _llvm_next = False
+_llvm_tot = False
 _version_read = False
 
 _patch_level = '2'
@@ -25,6 +26,8 @@ _svn_revision_next = 'r468909'
 _git_sha = '7bb1151ba21e26d91ddaa83177bb58b4d1c36710'
 _git_sha_next = '7bb1151ba21e26d91ddaa83177bb58b4d1c36710'
 
+# the variable set for building liunx-tot on kokoro
+_svn_revision_tot = 'r99999999'
 
 def set_llvm_next(llvm_next: bool):
     if _version_read:
@@ -33,6 +36,12 @@ def set_llvm_next(llvm_next: bool):
     global _llvm_next
     _llvm_next = llvm_next
 
+def set_llvm_tot(llvm_tot: bool):
+    if _version_read:
+        raise RuntimeError('set_llvm_next() after earlier read of versions')
+    # pylint:disable=global-statement
+    global _llvm_tot
+    _llvm_tot = llvm_tot
 
 def is_llvm_next() -> bool:
     _version_read = True
@@ -43,6 +52,8 @@ def get_svn_revision():
     _version_read = True
     if _llvm_next:
         return _svn_revision_next
+    if _llvm_tot:
+        return _svn_revision_tot
     return _svn_revision
 
 
@@ -50,12 +61,14 @@ def get_git_sha():
     _version_read = True
     if _llvm_next:
         return _git_sha_next
+    if _llvm_tot:
+        return "refs/for/master"
     return _git_sha
 
 
 def get_patch_level():
     _version_read = True
-    if _llvm_next:
+    if _llvm_next or _llvm_tot:
         return None
     return _patch_level
 
