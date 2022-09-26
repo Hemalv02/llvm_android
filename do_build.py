@@ -806,6 +806,12 @@ def parse_args():
         nargs='+',
         help='A list of builders to skip. All builders not listed will be built.')
 
+    parser.add_argument(
+        '--prebuilt-as-stage1',
+        action='store_true',
+        default=False,
+        help='Skip building stage 1 compiler and use the prebuilt instead.')
+
     # skip_runtimes is set to skip recompilation of libraries
     parser.add_argument(
         '--skip-runtimes',
@@ -859,6 +865,9 @@ def main():
         BuilderRegistry.add_skips(args.skip)
     elif args.build:
         BuilderRegistry.add_builds(args.build)
+    if args.prebuilt_as_stage1:
+        BuilderRegistry.add_skips(['stage1'])
+
     do_bolt = args.bolt and not args.debug and not args.build_instrumented
     do_bolt_instrument = args.bolt_instrument and not args.debug and not args.build_instrumented
     do_runtimes = not args.skip_runtimes
@@ -899,8 +908,9 @@ def main():
     # stage1 test is off by default, turned on by --run-tests-stage1,
     # and suppressed by --skip-tests.
     if not args.skip_tests and args.run_tests_stage1:
-         stage1.test()
-    set_default_toolchain(stage1.installed_toolchain)
+        stage1.test()
+    if not args.prebuilt_as_stage1:
+        set_default_toolchain(stage1.installed_toolchain)
 
     if build_lldb:
         # Swig is needed for both host and windows lldb.
