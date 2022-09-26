@@ -298,7 +298,6 @@ class LinuxMuslConfig(LinuxConfig):
         defines['LIBCXX_USE_COMPILER_RT'] = 'TRUE'
         defines['LIBCXXABI_USE_COMPILER_RT'] = 'TRUE'
         defines['LIBUNWIND_USE_COMPILER_RT'] = 'TRUE'
-        defines['LIBCXXABI_USE_LLVM_UNWINDER'] = 'TRUE'
 
         # The musl sysroots contain empty libdl.a, libpthread.a and librt.a to
         # satisfy the parts of the LLVM build that hardcode -lpthread, etc.,
