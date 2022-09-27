@@ -820,11 +820,17 @@ def parse_args():
         help='Don\'t build toolchain components or platforms.  Choices: ' + \
             known_components_str)
 
-    parser.add_argument(
+    llvm_revision_group = parser.add_mutually_exclusive_group()
+    llvm_revision_group.add_argument(
         '--build-llvm-next',
         action='store_true',
         default=False,
         help='Build next LLVM revision (android_version.py:svn_revision_next)')
+    llvm_revision_group.add_argument(
+        '--build-llvm-tot',
+        action='store_true',
+        default=False,
+        help='Build tot LLVM revision (android_version.py:svn_revision_tot)')
 
     parser.add_argument(
         '--windows-sdk',
@@ -871,6 +877,7 @@ def main():
     host_configs = [configs.host_config(musl)]
 
     android_version.set_llvm_next(args.build_llvm_next)
+    android_version.set_llvm_tot(args.build_llvm_tot)
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
@@ -1004,7 +1011,7 @@ def main():
             stage2,
             strip=do_strip_host_package,
             create_tar=args.create_tar,
-            llvm_next=args.build_llvm_next)
+            llvm_next=args.build_llvm_next or args.build_llvm_tot)
 
     if do_package and need_windows:
         package_toolchain(
