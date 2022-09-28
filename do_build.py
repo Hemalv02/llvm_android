@@ -870,7 +870,7 @@ def main():
     do_runtimes = not args.skip_runtimes
     do_package = not args.skip_package
     do_strip = not args.no_strip
-    do_strip_host_package = do_strip and not args.debug and not args.build_llvm_next
+    do_strip_host_package = do_strip and not args.debug and not (args.build_llvm_next or args.build_llvm_tot)
     build_lldb = 'lldb' not in args.no_build
     musl = args.musl
 
@@ -961,7 +961,7 @@ def main():
         if clang_bolt_fdata is None:
             stage2_tags.append('NO BOLT PROFILE')
         # Annotate the version string if this is an llvm-next build.
-        if args.build_llvm_next:
+        if args.build_llvm_next or args.build_llvm_tot:
             stage2_tags.append('ANDROID_LLVM_NEXT')
         stage2.build_tags = stage2_tags
 
