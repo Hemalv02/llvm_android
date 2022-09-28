@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Set up system dependencies
+sudo apt update
+sudo apt install -y bison rsync
+
 TOP=$(cd $(dirname $0)/../../.. && pwd)
 OUT=$TOP/out
 DIST=$TOP/dist
