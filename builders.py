@@ -187,12 +187,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
         # '$ORIGIN/../lib' is added by llvm's CMake rules.
         if self.bolt_optimize or self.bolt_instrument:
             ldflags.append('-Wl,-q')
-        if self.build_instrumented:
-            # Building libcxx, libcxxabi with instrumentation causes linker errors
-            # because these are built with -nodefaultlibs and prevent libc symbols
-            # needed by libclang_rt.profile from being resolved.  Manually adding
-            # the libclang_rt.profile to linker flags fixes the issue.
-            ldflags.append(str(self.resource_dir / 'libclang_rt.profile-x86_64.a'))
         # TODO: Turn on ICF for Darwin once it can be built with LLD.
         if not self._config.target_os.is_darwin:
             ldflags.append('-Wl,--icf=safe')
