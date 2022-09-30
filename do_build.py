@@ -266,7 +266,15 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
 
         short_version, major = getVersions(libname)
 
-        soname_version = '13' if libname == 'libclang' else major
+        if libname == 'libclang':
+            soname = list(Path(libprefix).glob('libclang.so.*[0-9]'))
+            if len(soname) == 1:
+                soname_version = str(soname[0]).split('.')[-1]
+            else:
+                raise RuntimeError(str(len(soname)) + " versions of libclang.so found, 1 expected")
+        else:
+            soname_version = major
+
         soname_lib = os.path.join(libprefix, libformat.format(version=soname_version))
         if libname.startswith('libclang') and libname != 'libclang-cpp':
             soname_lib = soname_lib[:-3]
