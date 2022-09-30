@@ -975,8 +975,6 @@ def main():
             stage2_tags.append('ANDROID_LLVM_NEXT')
         stage2.build_tags = stage2_tags
 
-        if hosts.build_host().is_linux:
-            add_lib_links('stage1')
         stage2.build()
 
         if do_bolt and clang_bolt_fdata is not None:
