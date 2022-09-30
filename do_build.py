@@ -815,7 +815,7 @@ def parse_args():
         help='A list of builders to skip. All builders not listed will be built.')
 
     parser.add_argument(
-        '--prebuilt-as-stage1',
+        '--single-stage',
         action='store_true',
         default=False,
         help='Skip building stage 1 compiler and use the prebuilt instead.')
@@ -879,7 +879,7 @@ def main():
         BuilderRegistry.add_skips(args.skip)
     elif args.build:
         BuilderRegistry.add_builds(args.build)
-    if args.prebuilt_as_stage1:
+    if args.single_stage:
         BuilderRegistry.add_skips(['stage1'])
 
     do_bolt = args.bolt and not args.debug and not args.build_instrumented
@@ -924,7 +924,7 @@ def main():
     # and suppressed by --skip-tests.
     if not args.skip_tests and args.run_tests_stage1:
         stage1.test()
-    if not args.prebuilt_as_stage1:
+    if not args.single_stage:
         set_default_toolchain(stage1.installed_toolchain)
 
     if build_lldb:
