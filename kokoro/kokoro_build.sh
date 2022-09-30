@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+function cleanup {
+  # Kokoro will rsync back everything created by the build. This can take up to 10
+  # minutes for our out directory. Clean up these files at the end.
+  rm -rf "${OUT}"
+}
+
+trap cleanup EXIT
+
 # Set up system dependencies
 sudo apt update
 sudo apt install -y bison rsync
@@ -23,7 +31,3 @@ else
    echo "Error: requires LLVM_BUILD_TYPE"
 fi
 
-# Kokoro will rsync back everything created by the build. This can take 0
-# minutes for our out directory. Clean up these files if our build was
-# successful.
-rm -rf "${OUT}"
