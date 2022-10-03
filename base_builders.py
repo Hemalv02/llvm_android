@@ -566,6 +566,8 @@ class LLVMBuilder(LLVMBaseBuilder):
     svn_revision: str
     enable_assertions: bool = False
     toolchain_name: str
+    # not a singleton because we'd build the 32-bit runtime in the future.
+    runtimes_triples: Set[str] = set()
 
     # lldb options.
     build_lldb: bool = True
@@ -586,6 +588,11 @@ class LLVMBuilder(LLVMBaseBuilder):
     @property
     def llvm_projects(self) -> Set[str]:
         """Returns enabled llvm projects."""
+        raise NotImplementedError()
+
+    @property
+    def llvm_runtime_projects(self) -> Set[str]:
+        """Returns enabled llvm runtimes."""
         raise NotImplementedError()
 
     @property
@@ -656,7 +663,10 @@ class LLVMBuilder(LLVMBaseBuilder):
                     for tool in lib.install_tools:
                         shutil.copy2(tool, bin_dir)
 
-    def _install_deps(self) -> None:
+        if isinstance(self._config, configs.LinuxMuslConfig):
+            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
+
+    def _setup_install_dir(self) -> None:
         if self.swig_executable:
             python_prebuilt_dir = paths.get_python_dir(self._config.target_os)
             python_dest_dir = self.install_dir / 'python3'
@@ -666,18 +676,28 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         lib_dir = self.install_dir / ('bin' if self._config.target_os.is_windows else 'lib')
         lib_dir.mkdir(exist_ok=True, parents=True)
-
         self._install_lib_deps(lib_dir)
+
+    def _setup_build_dir(self) -> None:
         if self._config.target_os.is_linux:
-            # Force install of tool deps (that are needed for running tests) by
-            # passing a bin_dir parameter to _install_lib_deps.
-            self._install_lib_deps(self.output_dir / 'lib', self.output_dir / 'bin')
+            # Install dependent libs and tools to self.output_dir.  Just-built
+            # tools like clang and lld need libc_musl and libxml2 in their
+            # RPATH.  Tool deps (e.g. xmllint, that are needed for running
+            # tests) are installed by passing a bin_dir parameter to
+            # _install_lib_deps.
+            lib_dir = self.output_dir / 'lib'
+            bin_dir = self.output_dir / 'bin'
+            lib_dir.mkdir(exist_ok=True, parents=True)
+            bin_dir.mkdir(exist_ok=True, parents=True)
+
+            self._install_lib_deps(lib_dir, bin_dir)
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
 
         defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
+        defines['LLVM_ENABLE_RUNTIMES'] = ';'.join(sorted(self.llvm_runtime_projects))
 
         defines['LLVM_TARGETS_TO_BUILD'] = ';'.join(sorted(self.llvm_targets))
         if self._config.target_os.is_darwin or self._config.target_os.is_linux:
@@ -718,11 +738,42 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['COMPILER_RT_ENABLE_TVOS'] = 'OFF'
             defines['COMPILER_RT_ENABLE_WATCHOS'] = 'OFF'
 
+            runtimes_cmake_args = []
+            runtimes_cmake_args.append(f'-DCMAKE_OSX_DEPLOYMENT_TARGET={constants.MAC_MIN_VERSION}')
+            runtimes_cmake_args.append('-DCMAKE_OSX_ARCHITECTURES=arm64|x86_64')
+            defines['RUNTIMES_CMAKE_ARGS'] = ';'.join(sorted(runtimes_cmake_args))
+
+        if self._config.target_os.is_linux:
+            # We need to explicitly propagate some CMake flags to the runtimes
+            # CMake invocation that builds compiler-rt, libcxx, and other
+            # runtimes for the host.
+            triple = self._config.llvm_triple
+            runtimes_passthrough_args = [
+                    'CMAKE_C_FLAGS',
+                    'CMAKE_CXX_FLAGS',
+                    'CMAKE_SHARED_LINKER_FLAGS',
+                    'CMAKE_EXE_LINKER_FLAGS',
+                    'CMAKE_MODULE_LINKER_FLAGS',
+                    'LLVM_ENABLE_LIBCXX',
+            ]
+
+            self.runtimes_triples.add(triple)
+            defines['LLVM_RUNTIME_TARGETS'] = triple
+            for arg in runtimes_passthrough_args:
+                defines[f'RUNTIMES_{triple}_{arg}'] = defines[arg]
+
         return defines
+
+    def _build_config(self) -> None:
+        # LLVM build invokes the just-built tools as part of subsequent steps.
+        # We need to setup the build dir (copy libc_musl, libxml2 etc.) before
+        # the build starts so these libraries are in the RPATH for these tools.
+        self._setup_build_dir()
+        super()._build_config()
 
     def install_config(self) -> None:
         super().install_config()
-        self._install_deps()
+        self._setup_install_dir()
 
     @functools.cached_property
     def installed_toolchain(self) -> toolchains.Toolchain:
@@ -735,7 +786,8 @@ class LLVMBuilder(LLVMBaseBuilder):
             # need libedit.so.*, libxml2.so.*, etc. in stage2/lib.
             self._install_lib_deps(self.output_dir / 'lib')
             self._ninja(
-                ['check-clang', 'check-llvm', 'check-clang-tools', 'check-cxx'])
+                ['check-clang', 'check-llvm', 'check-clang-tools'] +
+                ['check-cxx-' + triple for triple in sorted(self.runtimes_triples)])
         # Known failed tests:
         #   Clang :: CodeGenCXX/builtins.cpp
         #   Clang :: CodeGenCXX/unknown-anytype.cpp

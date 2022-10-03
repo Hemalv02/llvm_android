@@ -72,12 +72,17 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt'}
+        proj = {'clang', 'lld'}
         # Need tools like clang-pseudo-gen and clang-tidy-confusable-chars-gen
         # for Linux when cross-compiling for Windows.
         proj.add('clang-tools-extra')
         if self.build_lldb:
             proj.add('lldb')
+        return proj
+
+    @property
+    def llvm_runtime_projects(self) -> Set[str]:
+        proj = {'compiler-rt', 'libcxx', 'libcxxabi'}
         if isinstance(self._config, configs.LinuxMuslConfig):
             # libcxx builds against libunwind when building for musl
             proj.add('libunwind')
@@ -122,14 +127,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
         return defines
 
-    def install_config(self) -> None:
-        # Still run `ninja install`.
-        super().install_config()
-
-        if isinstance(self._config, configs.LinuxMuslConfig):
-            lib_dir = self.install_dir / 'lib'
-            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
-
     def test(self) -> None:
         with timer.Timer(f'stage1_test'):
             self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
@@ -153,10 +150,14 @@ class Stage2Builder(base_builders.LLVMBuilder):
 
     @property
     def llvm_projects(self) -> Set[str]:
-        proj = {'clang', 'lld', 'libcxxabi', 'libcxx', 'compiler-rt',
-                'clang-tools-extra', 'polly', 'bolt'}
+        proj = {'clang', 'lld', 'clang-tools-extra', 'polly', 'bolt'}
         if self.build_lldb:
             proj.add('lldb')
+        return proj
+
+    @property
+    def llvm_runtime_projects(self) -> Set[str]:
+        proj = {'compiler-rt', 'libcxx', 'libcxxabi'}
         if isinstance(self._config, configs.LinuxMuslConfig):
             # libcxx builds against libunwind when building for musl
             proj.add('libunwind')
@@ -268,12 +269,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
             "$CURDIR/lldb" "$@"
         """))
         lldb_wrapper_path.chmod(0o755)
-
-        if isinstance(self._config, configs.LinuxMuslConfig):
-            lib_dir = self.output_dir / 'lib'
-            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
-            lib_dir = self.install_dir / 'lib'
-            shutil.copy2(self._config.sysroot / 'lib' / 'libc_musl.so', lib_dir / 'libc_musl.so')
 
     def test(self) -> None:
         if isinstance(self._config, configs.LinuxMuslConfig):
@@ -998,7 +993,7 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LLVM_ENABLE_RUNTIMES'] ='libcxxabi;libcxx'
+        defines['LLVM_ENABLE_RUNTIMES'] ='libcxx;libcxxabi'
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
 
@@ -1102,6 +1097,10 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         if self.build_lldb:
             proj.add('lldb')
         return proj
+
+    @property
+    def llvm_runtime_projects(self) -> Set[str]:
+        return {}
 
     @property
     def cmake_defines(self) -> Dict[str, str]:

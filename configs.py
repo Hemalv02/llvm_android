@@ -213,6 +213,10 @@ class LinuxConfig(_GccConfig):
     is_cross_compiling: bool = False
 
     @property
+    def llvm_triple(self) -> str:
+        return 'x86_64-unknown-linux-gnu'
+
+    @property
     def ldflags(self) -> List[str]:
         return super().ldflags + [
             '-Wl,--hash-style=both',
