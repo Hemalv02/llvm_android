@@ -30,4 +30,4 @@ NDK_VERSION: str = 'r24'
 HOST_TARGETS: Set[str] = set(['X86', 'AArch64'])
 
 # Targets for Android.
-ANDROID_TARGETS: Set[str] = set(['AArch64', 'ARM', 'BPF', 'X86'])
+ANDROID_TARGETS: Set[str] = set(['AArch64', 'ARM', 'BPF', 'RISCV', 'X86'])
