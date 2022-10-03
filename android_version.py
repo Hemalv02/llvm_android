@@ -20,9 +20,9 @@ _llvm_next = False
 _llvm_tot = False
 _version_read = False
 
-_patch_level = '2'
-_svn_revision = 'r468909'
-_svn_revision_next = 'r468909'
+_patch_level = '3'
+_svn_revision = 'r468909b'
+_svn_revision_next = 'r468909b'
 _git_sha = '7bb1151ba21e26d91ddaa83177bb58b4d1c36710'
 _git_sha_next = '7bb1151ba21e26d91ddaa83177bb58b4d1c36710'
 
