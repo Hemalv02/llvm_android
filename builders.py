@@ -253,8 +253,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
         if self._config.target_os.is_darwin:
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
-        defines["LLVM_EXPERIMENTAL_TARGETS_TO_BUILD"] = 'RISCV'
-
         return defines
 
     def install_config(self) -> None:
