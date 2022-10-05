@@ -1,7 +1,7 @@
 From 28972d5fb13a36b9258b48244ed61ec91778e069 Mon Sep 17 00:00:00 2001
 From: Yi Kong <yikong@google.com>
 Date: Fri, 3 Jun 2022 02:06:19 +0800
-Subject: [PATCH] [BOLT] Double max allocation size to allow BOLTing clang and
+Subject: [PATCH] [BOLT] Increase max allocation size to allow BOLTing clang and
  rustc
 
 Change-Id: I41536aee5c5a08f584a65b9278bca03636d10cdf
@@ -18,7 +18,7 @@ index d111599e3b7..2786ec3cbd5 100644
  private:
    static constexpr uint64_t Magic = 0x1122334455667788ull;
 -  uint64_t MaxSize = 0xa00000;
-+  uint64_t MaxSize = 0xb00000;
++  uint64_t MaxSize = 0xd00000;
    uint8_t *StackBase{nullptr};
    uint64_t StackSize{0};
    bool Shared{false};

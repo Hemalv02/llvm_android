@@ -226,12 +226,12 @@
     {
         "metadata": {
             "info": [],
-            "title": "Double max allocation size to allow BOLTing clang and rustc"
+            "title": "Increase max allocation size to allow BOLTing clang and rustc"
         },
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "BOLT-Double-max-allocation-size-to-allow-BOLTing-clang-and-rustc.patch",
+        "rel_patch_path": "BOLT-Increase-max-allocation-size-to-allow-BOLTing-clang-and-rustc.patch",
         "version_range": {
             "from": 450784,
             "until": null
