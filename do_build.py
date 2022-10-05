@@ -159,6 +159,13 @@ def add_lib_links(stage: str):
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
 
+    # b/251003274 We also need to copy __config_site from a triple-specific
+    # location until we have a copy for each target separately.
+    dst = paths.OUT_DIR / 'stage2-install' / 'include' / 'c++' / 'v1' / '__config_site'
+    src = '../../x86_64-unknown-linux-gnu/c++/v1/__config_site'
+    dst.unlink(missing_ok=True)
+    dst.symlink_to(src)
+
 
 def build_runtimes(build_lldb_server: bool):
     builders.DeviceSysrootsBuilder().build()
