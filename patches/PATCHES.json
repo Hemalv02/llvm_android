@@ -254,6 +254,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert Remove libcxx, libcxxabi and libunwind from supported LLVM_ENABLE_PROJECTS"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-llvm-Remove-libcxx-libcxxabi-and-libunwind-from.patch",
+        "version_range": {
+            "from": 475706,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Support dlclose as a noop in DynamicLibraryTest"
         },
         "platforms": [

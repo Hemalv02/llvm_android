@@ -1,0 +1,111 @@
+From f1fd0ce8011b699de55f226223554f924a651d8b Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Fri, 7 Oct 2022 15:32:13 +0900
+Subject: [PATCH] Revert "[llvm] Remove libcxx, libcxxabi and libunwind from
+ supported LLVM_ENABLE_PROJECTS"
+
+This reverts commit 258477ed0ab69d334302225322ac81ac974b59fb.
+---
+ libcxx/docs/ReleaseNotes.rst           |  2 --
+ libcxx/utils/ci/buildkite-pipeline.yml | 19 +++++++++++++++++++
+ libcxx/utils/ci/run-buildbot           | 15 +++++++++++++++
+ llvm/CMakeLists.txt                    | 10 ++++++++--
+ 4 files changed, 42 insertions(+), 4 deletions(-)
+
+diff --git a/libcxx/docs/ReleaseNotes.rst b/libcxx/docs/ReleaseNotes.rst
+index 8a49ec4443c3..8e90d7f1544c 100644
+--- a/libcxx/docs/ReleaseNotes.rst
++++ b/libcxx/docs/ReleaseNotes.rst
+@@ -110,5 +110,3 @@ ABI Affecting Changes
+ 
+ Build System Changes
+ --------------------
+-- Support for ``libcxx``, ``libcxxabi`` and ``libunwind`` in ``LLVM_ENABLE_PROJECTS`` has officially
+-  been removed. Instead, please build according to :ref:`these instructions <build instructions>`.
+diff --git a/libcxx/utils/ci/buildkite-pipeline.yml b/libcxx/utils/ci/buildkite-pipeline.yml
+index d94046ba22c8..f5475b9ee885 100644
+--- a/libcxx/utils/ci/buildkite-pipeline.yml
++++ b/libcxx/utils/ci/buildkite-pipeline.yml
+@@ -364,6 +364,25 @@ steps:
+           limit: 2
+     timeout_in_minutes: 120
+ 
++  - group: "Legacy"
++    steps:
++    - label: "Legacy LLVM_ENABLE_PROJECTS build"
++      command: "libcxx/utils/ci/run-buildbot legacy-project-build"
++      artifact_paths:
++        - "**/test-results.xml"
++        - "**/*.abilist"
++      env:
++          CC: "clang-${LLVM_HEAD_VERSION}"
++          CXX: "clang++-${LLVM_HEAD_VERSION}"
++      agents:
++        queue: "libcxx-builders"
++        os: "linux"
++      retry:
++        automatic:
++          - exit_status: -1  # Agent was lost
++            limit: 2
++      timeout_in_minutes: 120
++
+   # Tests with various build configurations.
+   - label: "Static libraries"
+     command: "libcxx/utils/ci/run-buildbot generic-static"
+diff --git a/libcxx/utils/ci/run-buildbot b/libcxx/utils/ci/run-buildbot
+index 5c10aca6741e..1b8b999db668 100755
+--- a/libcxx/utils/ci/run-buildbot
++++ b/libcxx/utils/ci/run-buildbot
+@@ -493,6 +493,21 @@ bootstrapping-build)
+     echo "--- Installing libc++ and libc++abi to a fake location"
+     ${NINJA} -C "${BUILD_DIR}" install-runtimes
+ ;;
++legacy-project-build)
++    clean
++
++    echo "--- Generating CMake"
++    ${CMAKE} \
++          -S "${MONOREPO_ROOT}/llvm" \
++          -B "${BUILD_DIR}" \
++          -DLLVM_ENABLE_PROJECTS="libcxx;libunwind;libcxxabi" \
++          -GNinja -DCMAKE_MAKE_PROGRAM="${NINJA}" \
++          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
++          -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
++          -DLLVM_LIT_ARGS="-sv --show-unsupported --xunit-xml-output test-results.xml --timeout=1500" \
++          -DLIBCXX_CXX_ABI=libcxxabi
++    check-runtimes
++;;
+ aarch64)
+     clean
+     generate-cmake -C "${MONOREPO_ROOT}/libcxx/cmake/caches/AArch64.cmake"
+diff --git a/llvm/CMakeLists.txt b/llvm/CMakeLists.txt
+index 4db8c458f923..d9987dca43de 100644
+--- a/llvm/CMakeLists.txt
++++ b/llvm/CMakeLists.txt
+@@ -123,7 +123,7 @@ endif()
+ # LLVM_EXTERNAL_${project}_SOURCE_DIR using LLVM_ALL_PROJECTS
+ # This allows an easy way of setting up a build directory for llvm and another
+ # one for llvm+clang+... using the same sources.
+-set(LLVM_ALL_PROJECTS "bolt;clang;clang-tools-extra;compiler-rt;cross-project-tests;libc;libclc;lld;lldb;mlir;openmp;polly;pstl")
++set(LLVM_ALL_PROJECTS "bolt;clang;clang-tools-extra;compiler-rt;cross-project-tests;libc;libclc;libcxx;libcxxabi;libunwind;lld;lldb;mlir;openmp;polly;pstl")
+ # The flang project is not yet part of "all" projects (see C++ requirements)
+ set(LLVM_EXTRA_PROJECTS "flang")
+ # List of all known projects in the mono repo
+@@ -136,7 +136,13 @@ if( LLVM_ENABLE_PROJECTS STREQUAL "all" )
+ endif()
+ foreach(proj ${LLVM_ENABLE_PROJECTS})
+   if (NOT proj STREQUAL "llvm" AND NOT "${proj}" IN_LIST LLVM_KNOWN_PROJECTS)
+-     MESSAGE(FATAL_ERROR "${proj} isn't a known project: ${LLVM_KNOWN_PROJECTS}. Did you mean to enable it as a runtime in LLVM_ENABLE_RUNTIMES?")
++     MESSAGE(FATAL_ERROR "${proj} isn't a known project: ${LLVM_KNOWN_PROJECTS}")
++  endif()
++endforeach()
++foreach(proj "libcxx" "libcxxabi" "libunwind")
++  if (${proj} IN_LIST LLVM_ENABLE_PROJECTS)
++    message(WARNING "Using LLVM_ENABLE_PROJECTS=${proj} is deprecated now, please use -DLLVM_ENABLE_RUNTIMES=${proj} or "
++                    "see the instructions at https://libcxx.llvm.org/BuildingLibcxx.html for building the runtimes.")
+   endif()
+ endforeach()
+ 
+-- 
+2.38.0.rc2.412.g84df46c1b4-goog
+
