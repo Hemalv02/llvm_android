@@ -1,6 +1,14 @@
 #!/bin/bash
 set -e
 
+function cleanup {
+  # Kokoro will rsync back everything created by the build. This can take up to 10
+  # minutes for our out directory. Clean up these files at the end.
+  rm -rf "${OUT}"
+}
+
+trap cleanup EXIT
+
 TOP=$(cd $(dirname $0)/../../.. && pwd)
 OUT=$TOP/out
 DIST=$TOP/dist
