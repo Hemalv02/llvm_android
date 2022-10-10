@@ -22,11 +22,11 @@ mkdir "${DIST}"
 
 if [ $LLVM_BUILD_TYPE == "TOT" ]; then
    OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-   $python_src/build.py --build-llvm-tot --create-tar --build-name "${KOKORO_BUILD_ID}" \
+   $python_src/build.py --build-llvm-tot --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
    --no-build=windows
 elif [ $LLVM_BUILD_TYPE == "AOSP" ]; then
    OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-   $python_src/build.py --lto --pgo --bolt --create-tar --build-name "${KOKORO_BUILD_ID}" \
+   $python_src/build.py --lto --pgo --bolt --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
    --no-build=windows
 else
    echo "Error: requires LLVM_BUILD_TYPE"
