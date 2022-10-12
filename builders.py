@@ -932,13 +932,12 @@ class DeviceSysrootsBuilder(base_builders.Builder):
             (dest_lib / 'libc++abi.a').unlink()
             (dest_lib / 'libc++_static.a').unlink()
             (dest_lib / 'libc++_shared.so').unlink()
-        # Each per-API-level directory has libc++.so, libc++.a, and libcompiler_rt-extras.a.
+        # Each per-API-level directory has libc++.so and libc++.a.
         for subdir in dest_lib.iterdir():
             if subdir.is_symlink() or not subdir.is_dir():
                 continue
             if not re.match(r'\d+$', subdir.name):
                 continue
-            (subdir / 'libcompiler_rt-extras.a').unlink()
             if platform:
                 (subdir / 'libc++.a').unlink()
                 (subdir / 'libc++.so').unlink()
