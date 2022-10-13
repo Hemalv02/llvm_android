@@ -432,7 +432,7 @@ class AndroidConfig(_BaseConfig):
     target_os: hosts.Host = hosts.Host.Android
 
     target_arch: hosts.Arch
-    _toolchain_path: Path
+    _toolchain_path: Optional[Path]
 
     static: bool = False
     platform: bool = False
@@ -456,6 +456,7 @@ class AndroidConfig(_BaseConfig):
             hosts.Arch.ARM: 'arm',
             hosts.Arch.AARCH64: 'arm64',
             hosts.Arch.I386: 'x86',
+            hosts.Arch.RISCV64: 'riscv64',
             hosts.Arch.X86_64: 'x86_64',
         }[self.target_arch]
 
@@ -487,9 +488,12 @@ class AndroidConfig(_BaseConfig):
     @property
     def cflags(self) -> List[str]:
         cflags = super().cflags
-        toolchain_bin = paths.GCC_ROOT / self._toolchain_path / 'bin'
         cflags.append(f'--target={self.llvm_triple}')
-        cflags.append(f'-B{toolchain_bin}')
+
+        if self._toolchain_path:
+            toolchain_bin = paths.GCC_ROOT / self._toolchain_path / 'bin'
+            cflags.append(f'-B{toolchain_bin}')
+
         cflags.append('-ffunction-sections')
         cflags.append('-fdata-sections')
         return cflags
@@ -523,6 +527,8 @@ class AndroidConfig(_BaseConfig):
     def api_level(self) -> int:
         if self.override_api_level:
             return self.override_api_level
+        if self.target_arch == hosts.Arch.RISCV64:
+            return 10000
         if self.static or self.platform:
             # Set API level for platform to to 29 since these runtimes can be
             # used for apexes targeting that API level.
@@ -546,7 +552,7 @@ class AndroidConfig(_BaseConfig):
 class AndroidARMConfig(AndroidConfig):
     """Configs for android arm targets."""
     target_arch: hosts.Arch = hosts.Arch.ARM
-    _toolchain_path: Path = Path('arm/arm-linux-androideabi-4.9/arm-linux-androideabi')
+    _toolchain_path: Optional[Path] = Path('arm/arm-linux-androideabi-4.9/arm-linux-androideabi')
 
     @property
     def cflags(self) -> List[str]:
@@ -558,7 +564,7 @@ class AndroidARMConfig(AndroidConfig):
 class AndroidAArch64Config(AndroidConfig):
     """Configs for android arm64 targets."""
     target_arch: hosts.Arch = hosts.Arch.AARCH64
-    _toolchain_path: Path = Path('aarch64/aarch64-linux-android-4.9/aarch64-linux-android')
+    _toolchain_path: Optional[Path] = Path('aarch64/aarch64-linux-android-4.9/aarch64-linux-android')
 
     @property
     def cflags(self) -> List[str]:
@@ -567,16 +573,29 @@ class AndroidAArch64Config(AndroidConfig):
         return cflags
 
 
+class AndroidRiscv64Config(AndroidConfig):
+    """Configs for android riscv64 targets."""
+    target_arch: hosts.Arch = hosts.Arch.RISCV64
+    _toolchain_path: Optional[Path] = None
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append(f'-isystem {self.sysroot}/usr/include/{self.ndk_sysroot_triple}')
+
+        return cflags
+
+
 class AndroidX64Config(AndroidConfig):
     """Configs for android x86_64 targets."""
     target_arch: hosts.Arch = hosts.Arch.X86_64
-    _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
+    _toolchain_path: Optional[Path] = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
 
 
 class AndroidI386Config(AndroidConfig):
     """Configs for android x86 targets."""
     target_arch: hosts.Arch = hosts.Arch.I386
-    _toolchain_path: Path = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
+    _toolchain_path: Optional[Path] = Path('x86/x86_64-linux-android-4.9/x86_64-linux-android')
 
     @property
     def cflags(self) -> List[str]:
@@ -605,6 +624,9 @@ def android_configs(platform: bool=True,
         AndroidI386Config(),
         AndroidX64Config(),
     ]
+    # There is no NDK for riscv64, only include it in platform configs.
+    if platform:
+        configs.append(AndroidRiscv64Config())
     for config in configs:
         config.static = static
         config.platform = platform

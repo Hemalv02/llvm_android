@@ -64,6 +64,8 @@ NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'in
 NDK_LIBCXXABI_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++abi' / 'include'
 NDK_SUPPORT_HEADERS: Path = NDK_BASE / 'sources' / 'android' / 'support' / 'include'
 
+RISCV64_ANDROID_SYSROOT: Path = TOOLCHAIN_DIR / 'prebuilts' / 'sysroot' / 'platform' / 'riscv64-linux-android'
+
 GCC_ROOT: Path = PREBUILTS_DIR / 'gcc' / hosts.build_host().os_tag
 GO_ROOT: Path = PREBUILTS_DIR / 'go' / hosts.build_host().os_tag
 MINGW_ROOT: Path = PREBUILTS_DIR / 'gcc' / 'linux-x86' / 'host' / 'x86_64-w64-mingw32-4.8' / 'x86_64-w64-mingw32'

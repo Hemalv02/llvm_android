@@ -294,6 +294,10 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def config_list(self) -> List[configs.Config]:
         result = configs.android_configs(platform=False)
+        # There is no NDK for riscv64, use the platform config instead.
+        riscv64 = configs.AndroidRiscv64Config()
+        riscv64.platform = True
+        result.append(riscv64)
         result.append(configs.BaremetalAArch64Config())
         # For arm32 and x86, build a special version of the builtins library
         # where the symbols are exported, not hidden. This version is needed
@@ -429,13 +433,14 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         # Still run `ninja install`.
         super().install_config()
 
+        lib_dir = self.install_dir / 'lib' / 'linux'
+
         # Install the fuzzer library to the old {arch}/libFuzzer.a path for
         # backwards compatibility.
         arch = self._config.target_arch
         sarch = 'i686' if arch == hosts.Arch.I386 else arch.value
         static_lib_filename = 'libclang_rt.fuzzer-' + sarch + '-android.a'
 
-        lib_dir = self.install_dir / 'lib' / 'linux'
         arch_dir = lib_dir / arch.value
         arch_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(lib_dir / static_lib_filename, arch_dir / 'libFuzzer.a')
@@ -571,14 +576,27 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
     #  - A copy targeting the platform with exported symbols.
     # Bionic's libc.so exports the unwinder, so it needs a copy with exported
     # symbols. Everything else uses the NDK copy.
-    config_list: List[configs.Config] = (
-        configs.android_configs(platform=True) +
-        configs.android_configs(platform=False)
-    )
+    @property
+    def config_list(self) -> List[configs.Config]:
+        result = configs.android_configs(platform=False)
+        for arch in configs.android_configs(platform=True):
+            arch.extra_config = {'is_exported': True}
+            result.append(arch)
+
+        # riscv64 needs a copy with hidden symbols for use while building
+        # the runtimes, but doesn't have an NDK sysroot.  Make a copy
+        # targeting the platform with hidden symbols.
+        riscv64 = configs.AndroidRiscv64Config()
+        riscv64.platform = True
+        riscv64.extra_config = {'is_exported': False}
+
+        result.append(riscv64)
+
+        return result
 
     @property
     def is_exported(self) -> bool:
-        return self._config.platform
+        return self._config.extra_config and self._config.extra_config.get('is_exported', False)
 
     @property
     def output_dir(self) -> Path:
@@ -911,15 +929,19 @@ class DeviceSysrootsBuilder(base_builders.Builder):
 
         # Copy the NDK prebuilt's sysroot, but for the platform variant, omit
         # the STL and android_support headers and libraries.
-        src_sysroot = paths.NDK_BASE / 'toolchains' / 'llvm' / 'prebuilt' / 'linux-x86_64' / 'sysroot'
+        if arch == hosts.Arch.RISCV64:
+            src_sysroot = paths.RISCV64_ANDROID_SYSROOT
+        else:
+            src_sysroot = paths.NDK_BASE / 'toolchains' / 'llvm' / 'prebuilt' / 'linux-x86_64' / 'sysroot'
 
         # Copy over usr/include.
         shutil.copytree(src_sysroot / 'usr' / 'include',
                         sysroot / 'usr' / 'include', symlinks=True)
 
         if platform:
-            # Remove the STL headers.
-            shutil.rmtree(sysroot / 'usr' / 'include' / 'c++')
+            if arch != hosts.Arch.RISCV64:
+                # Remove the STL headers.
+                shutil.rmtree(sysroot / 'usr' / 'include' / 'c++')
         else:
             # Add the android_support headers from usr/local/include.
             shutil.copytree(src_sysroot / 'usr' / 'local' / 'include',
@@ -931,9 +953,10 @@ class DeviceSysrootsBuilder(base_builders.Builder):
         shutil.copytree(src_lib, dest_lib, symlinks=True)
 
         # Remove the NDK's libcompiler_rt-extras.  For the platform, also remove
-        # the NDK libc++.
+        # the NDK libc++, except for the riscv64 sysroot which doesn't have
+        # these files.
         (dest_lib / 'libcompiler_rt-extras.a').unlink()
-        if platform:
+        if platform and arch != hosts.Arch.RISCV64:
             (dest_lib / 'libc++abi.a').unlink()
             (dest_lib / 'libc++_static.a').unlink()
             (dest_lib / 'libc++_shared.so').unlink()
@@ -943,7 +966,7 @@ class DeviceSysrootsBuilder(base_builders.Builder):
                 continue
             if not re.match(r'\d+$', subdir.name):
                 continue
-            if platform:
+            if platform and arch != hosts.Arch.RISCV64:
                 (subdir / 'libc++.a').unlink()
                 (subdir / 'libc++.so').unlink()
         # Verify that there aren't any extra copies somewhere else in the

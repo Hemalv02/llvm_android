@@ -432,5 +432,19 @@
             "from": 468909,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Enable targeting riscv64-linux-android"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Enable-targeting-riscv64-linux-android.patch",
+        "version_range": {
+            "from": 468909,
+            "until": null
+        }
     }
 ]
