@@ -10,8 +10,10 @@ function cleanup {
 trap cleanup EXIT
 
 # Set up system dependencies
-sudo apt update
-sudo apt install -y bison rsync
+if [ $LLVM_BUILD_TYPE == linux* ]; then
+  sudo apt update
+  sudo apt install -y bison rsync
+fi
 
 TOP=$(cd $(dirname $0)/../../.. && pwd)
 OUT=$TOP/out
@@ -21,17 +23,17 @@ python_src=$TOP/toolchain/llvm_android
 mkdir "${DIST}"
 
 if [ $LLVM_BUILD_TYPE == "linux-TOT" ]; then
-   OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-   $python_src/build.py --build-llvm-tot --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
-   --no-build=windows
+  OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
+  $python_src/build.py --build-llvm-tot --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
+  --no-build=windows
 elif [ $LLVM_BUILD_TYPE == "linux-master" ]; then
-   OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-   $python_src/build.py --lto --pgo --bolt --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
-   --no-build=windows
+  OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
+  $python_src/build.py --lto --pgo --bolt --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
+  --no-build=windows
 elif [ $LLVM_BUILD_TYPE == "darwin-master" ]; then
-   OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/darwin-x86/bin/python3 \
-   $python_src/build.py --lto --pgo --create-tar --build-name "${KOKORO_BUILD_NUMBER}"
+  OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/darwin-x86/bin/python3 \
+  $python_src/build.py --lto --pgo --create-tar --build-name "${KOKORO_BUILD_NUMBER}"
 else
-   echo "Error: requires LLVM_BUILD_TYPE"
+  echo "Error: requires LLVM_BUILD_TYPE"
 fi
 
