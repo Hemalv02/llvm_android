@@ -170,6 +170,48 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [MC] Also sort on IsBKeyFrame"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ab25678ca5aec3e106f87351eae20b57df5ee602.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 476601
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [MC] Consider IsMTETaggedFrame in CIEKey"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/42cdec1134cb85fef867e50bd66dac49338ab20d.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 476602
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [MC] only run ELF/AArch64 if supported"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2966acd1217afb26d7eafa92896d01cbd83ed63a.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 476609
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
