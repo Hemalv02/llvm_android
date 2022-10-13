@@ -170,6 +170,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [IVDescriptors] Before moving an instruction in SinkAfter checking if it is target of other instructions"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ded26bf6b9175201a0627f019e642bf74d2b48b1.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475612
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[DSE] Eliminate noop store even through has clobbering between LoadI and StoreI\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ae5733346f0cc86a82c19fcdc50ce8232fa4777a.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 476004
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [MC] Also sort on IsBKeyFrame"
         },
         "platforms": [
