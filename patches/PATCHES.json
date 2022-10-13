@@ -240,6 +240,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Fix clang version check in SARIF diagnostics test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/4e6b071509d6300db024d47c8c2791da71470b11.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 476721
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
