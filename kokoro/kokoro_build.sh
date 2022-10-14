@@ -10,7 +10,7 @@ function cleanup {
 trap cleanup EXIT
 
 # Set up system dependencies
-if [ $LLVM_BUILD_TYPE == linux* ]; then
+if [[ $LLVM_BUILD_TYPE == linux* ]]; then
   sudo apt update
   sudo apt install -y bison rsync
 fi
