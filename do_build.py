@@ -243,9 +243,9 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
 # is just one library, whose SONAME entry matches the actual name.
 def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Version) -> None:
     if host.is_linux:
-        libs = {'libLLVM': 'libLLVM-{version}git.so',
-                'libclang': 'libclang.so.{version}git',
-                'libclang-cpp': 'libclang-cpp.so.{version}git',
+        libs = {'libLLVM': 'libLLVM-{version}.so',
+                'libclang': 'libclang.so.{version}',
+                'libclang-cpp': 'libclang-cpp.so.{version}',
                 'libc++': 'libc++.so.{version}',
                 'libc++abi': 'libc++abi.so.{version}'
                }
@@ -274,7 +274,7 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         short_version, major = getVersions(libname)
 
         if libname == 'libclang':
-            soname = list(Path(libprefix).glob('libclang.so.*[0-9]'))
+            soname = list(Path(libprefix).glob('libclang.so.[0-9][0-9]'))
             if len(soname) == 1:
                 soname_version = str(soname[0]).split('.')[-1]
             else:
