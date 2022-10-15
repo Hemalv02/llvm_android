@@ -632,6 +632,8 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
+        defines['LLVM_ENABLE_ZSTD'] = 'OFF'
+
     def _install_dep_libs(self, lib_dir) -> None:
         for lib in (self.liblzma, self.libedit, self.libxml2, self.libncurses):
             if lib:
