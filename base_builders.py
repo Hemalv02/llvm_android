@@ -698,6 +698,11 @@ class LLVMBuilder(LLVMBaseBuilder):
         if not self._config.target_os.is_darwin:
             defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
+        if self._config.target_os.is_darwin:
+            defines['COMPILER_RT_ENABLE_IOS'] = 'OFF'
+            defines['COMPILER_RT_ENABLE_TVOS'] = 'OFF'
+            defines['COMPILER_RT_ENABLE_WATCHOS'] = 'OFF'
+
         return defines
 
     def install_config(self) -> None:
