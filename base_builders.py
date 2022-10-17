@@ -508,8 +508,10 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         # Don't depend on the host libatomic library.
         defines['LIBCXX_HAS_ATOMIC_LIB'] = 'NO'
 
-        if not self._config.target_os.is_darwin:
-            defines['LLVM_ENABLE_LLD'] = 'ON'
+        if self._config.target_os.is_darwin:
+            defines['LLVM_USE_LINKER'] = 'ld'
+        else:
+            defines['LLVM_USE_LINKER'] = 'lld'
 
         # Building llvm with tests needs python >= 3.6, which may not be available on build server.
         # So always use prebuilts python.
@@ -695,8 +697,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         if self.build_lldb:
             self._set_lldb_flags(self._config.target_os, defines)
 
-        if not self._config.target_os.is_darwin:
-            defines['CLANG_DEFAULT_LINKER'] = 'lld'
+        defines['CLANG_DEFAULT_LINKER'] = 'lld'
 
         return defines
 
