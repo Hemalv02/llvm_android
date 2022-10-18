@@ -13,9 +13,7 @@ TOP=$(cd $(dirname $0)/../../.. && pwd)
 OUT=$TOP/out
 DIST=$TOP/dist
 python_src=$TOP/toolchain/llvm_android
-clang_src=${KOKORO_GFILE_DIR}/prod/android-llvm/linux-tot/continuous/${KOKORO_BUILD_NUMBER}
-clang_prebuilt=`find $clang_src -name 'clang-*.tar.bz2'`
-clang_dir=`dirname $clang_src/$clang_prebuilt`
+clang_prebuilt=`find ${KOKORO_GFILE_DIR} -name 'clang-*.tar.bz2'`
 
 mkdir "${DIST}"
 
