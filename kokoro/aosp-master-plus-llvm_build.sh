@@ -19,6 +19,9 @@ clang_dir=`dirname $clang_src/$clang_prebuilt`
 
 mkdir "${DIST}"
 
-DIST_DIR="${DIST}" OUT_DIR="${OUT}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-python_src/test_compiler.py --build-only --target aosp_x86_64-userdebug --no-clean-built-target \
---module libart ./ --clang-package-path $clang_dir
+# TODO: Disabled for debugging
+# DIST_DIR="${DIST}" OUT_DIR="${OUT}" $TOP/prebuilts/python/linux-x86/bin/python3 \
+# python_src/test_compiler.py --build-only --target aosp_x86_64-userdebug --no-clean-built-target \
+# --module libart ./ --clang-package-path $clang_dir
+
+ls -a $clang_prebuilt
