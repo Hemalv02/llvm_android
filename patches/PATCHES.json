@@ -1094,5 +1094,145 @@
             "from": 450784,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Add extra fptoint_sat tests for larger than legal types. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/bb362d890f0d51c250818711d4a9b0b51cea7bc6.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Use simd mov to materialize big fp constants"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7a605ab7bfbc681c34335684f45b7da32d495db1.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Some tests to show reconstructing truncates. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/84ccd015e7dd3ca57c4a9366ecd2b9a7430f505d.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Turn truncating buildvectors into truncates."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d9633d149022054bdac90bd3d03a240dbdb46f7e.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Add tests with free shuffles for indexed fma variants."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/86617256864ebcbda03b6ce843deeb6a41a85800.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Add additional tests for sinking free shuffles for FMAs."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a9a012086a917dff367bb63de2d63782b23111fc.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTRREAM] [AArch64] Add support for FMA intrinsics to shouldSinkOperands."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/786c687810a5e3db4c64312018de25c65527c40c.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTRREAM] [AArch64] Add fcmp fast math tests"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a8de8cab7006bc885804e8a2c0a6902702521cfe.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTRREAM] [PATCH] [AArch64] Emit vector FP cmp when LE is used with fast-math"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/bf268a05cd9294854ffccc3158c0e673069bed4a.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[MERGED] [UPSTREAM] [AArch64] Set maximum VF with shouldMaximizeVectorBandwidth"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/Loop-Vectorizer-shouldMaximizeVectorBandwidth.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
     }
 ]

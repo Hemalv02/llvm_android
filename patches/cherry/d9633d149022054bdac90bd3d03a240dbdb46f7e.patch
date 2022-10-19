@@ -1,0 +1,408 @@
+From d9633d149022054bdac90bd3d03a240dbdb46f7e Mon Sep 17 00:00:00 2001
+From: David Green <david.green@arm.com>
+Date: Mon, 7 Mar 2022 09:42:54 +0000
+Subject: [PATCH] [AArch64] Turn truncating buildvectors into truncates
+
+When lowering large v16f32->v16i8 fp_to_si_sat, the fp_to_si_sat node is
+split several times, creating an illegal v4i8 concat that gets expanded
+into a BUILD_VECTOR. After some combining and other legalisation, it
+ends up the a buildvector that extracts from 4 vectors, looking like
+BUILDVECTOR(a0,a1,a2,a3,b0,b1,b2,b3,c0,c1,c2,c3,d0,d1,d2,d3). That is
+really an v16i32->v16i8 truncate in disguise.
+
+This adds a ReconstructTruncateFromBuildVector method to detect the
+pattern, converting it back into the legal "concat(trunc(concat(trunc(a),
+trunc(b))), trunc(concat(trunc(c), trunc(d))))" tree. The extracted
+nodes could also be v4i16, in which case the truncates are not needed.
+All those truncates and concats then become uzip1's, which is much
+better than expanding by moving vector lanes around.
+
+Differential Revision: https://reviews.llvm.org/D119469
+---
+ .../Target/AArch64/AArch64ISelLowering.cpp    |  56 ++++++++
+ .../test/CodeGen/AArch64/fptosi-sat-vector.ll |  57 ++------
+ .../test/CodeGen/AArch64/fptoui-sat-vector.ll |  51 ++-----
+ .../CodeGen/AArch64/neon-extracttruncate.ll   | 133 ++----------------
+ 4 files changed, 92 insertions(+), 205 deletions(-)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+index 51f17b37a8d6..dd421970e99f 100644
+--- a/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64ISelLowering.cpp
+@@ -9252,6 +9252,56 @@ static bool isSingletonEXTMask(ArrayRef<int> M, EVT VT, unsigned &Imm) {
+   return true;
+ }
+ 
++// Detect patterns of a0,a1,a2,a3,b0,b1,b2,b3,c0,c1,c2,c3,d0,d1,d2,d3 from
++// v4i32s. This is really a truncate, which we can construct out of (legal)
++// concats and truncate nodes.
++static SDValue ReconstructTruncateFromBuildVector(SDValue V, SelectionDAG &DAG) {
++  if (V.getValueType() != MVT::v16i8)
++    return SDValue();
++  assert(V.getNumOperands() == 16 && "Expected 16 operands on the BUILDVECTOR");
++
++  for (unsigned X = 0; X < 4; X++) {
++    // Check the first item in each group is an extract from lane 0 of a v4i32
++    // or v4i16.
++    SDValue BaseExt = V.getOperand(X * 4);
++    if (BaseExt.getOpcode() != ISD::EXTRACT_VECTOR_ELT ||
++        (BaseExt.getOperand(0).getValueType() != MVT::v4i16 &&
++         BaseExt.getOperand(0).getValueType() != MVT::v4i32) ||
++        !isa<ConstantSDNode>(BaseExt.getOperand(1)) ||
++        BaseExt.getConstantOperandVal(1) != 0)
++      return SDValue();
++    SDValue Base = BaseExt.getOperand(0);
++    // And check the other items are extracts from the same vector.
++    for (unsigned Y = 1; Y < 4; Y++) {
++      SDValue Ext = V.getOperand(X * 4 + Y);
++      if (Ext.getOpcode() != ISD::EXTRACT_VECTOR_ELT ||
++          Ext.getOperand(0) != Base ||
++          !isa<ConstantSDNode>(Ext.getOperand(1)) ||
++          Ext.getConstantOperandVal(1) != Y)
++        return SDValue();
++    }
++  }
++
++  // Turn the buildvector into a series of truncates and concates, which will
++  // become uzip1's. Any v4i32s we found get truncated to v4i16, which are
++  // concat together to produce 2 v8i16. These are both truncated and concat
++  // together.
++  SDLoc DL(V);
++  SDValue Trunc[4] = {
++      V.getOperand(0).getOperand(0), V.getOperand(4).getOperand(0),
++      V.getOperand(8).getOperand(0), V.getOperand(12).getOperand(0)};
++  for (int I = 0; I < 4; I++)
++    if (Trunc[I].getValueType() == MVT::v4i32)
++      Trunc[I] = DAG.getNode(ISD::TRUNCATE, DL, MVT::v4i16, Trunc[I]);
++  SDValue Concat0 =
++      DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i16, Trunc[0], Trunc[1]);
++  SDValue Concat1 =
++      DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v8i16, Trunc[2], Trunc[3]);
++  SDValue Trunc0 = DAG.getNode(ISD::TRUNCATE, DL, MVT::v8i8, Concat0);
++  SDValue Trunc1 = DAG.getNode(ISD::TRUNCATE, DL, MVT::v8i8, Concat1);
++  return DAG.getNode(ISD::CONCAT_VECTORS, DL, MVT::v16i8, Trunc0, Trunc1);
++}
++
+ /// Check if a vector shuffle corresponds to a DUP instructions with a larger
+ /// element width than the vector lane type. If that is the case the function
+ /// returns true and writes the value of the DUP instruction lane operand into
+@@ -10871,6 +10921,12 @@ SDValue AArch64TargetLowering::LowerBUILD_VECTOR(SDValue Op,
+     return SDValue();
+   }
+ 
++  // Detect patterns of a0,a1,a2,a3,b0,b1,b2,b3,c0,c1,c2,c3,d0,d1,d2,d3 from
++  // v4i32s. This is really a truncate, which we can construct out of (legal)
++  // concats and truncate nodes.
++  if (SDValue M = ReconstructTruncateFromBuildVector(Op, DAG))
++    return M;
++
+   // Empirical tests suggest this is rarely worth it for vectors of length <= 2.
+   if (NumElts >= 4) {
+     if (SDValue shuffle = ReconstructShuffle(Op, DAG))
+diff --git a/llvm/test/CodeGen/AArch64/fptosi-sat-vector.ll b/llvm/test/CodeGen/AArch64/fptosi-sat-vector.ll
+index ebfe8e4a20d0..244c65312e0e 100644
+--- a/llvm/test/CodeGen/AArch64/fptosi-sat-vector.ll
++++ b/llvm/test/CodeGen/AArch64/fptosi-sat-vector.ll
+@@ -3004,55 +3004,22 @@ define <16 x i8> @test_signed_v16f32_v16i8(<16 x float> %f) {
+ ; CHECK-LABEL: test_signed_v16f32_v16i8:
+ ; CHECK:       // %bb.0:
+ ; CHECK-NEXT:    movi v4.4s, #127
++; CHECK-NEXT:    fcvtzs v3.4s, v3.4s
++; CHECK-NEXT:    fcvtzs v2.4s, v2.4s
++; CHECK-NEXT:    fcvtzs v1.4s, v1.4s
+ ; CHECK-NEXT:    fcvtzs v0.4s, v0.4s
+ ; CHECK-NEXT:    mvni v5.4s, #127
+-; CHECK-NEXT:    fcvtzs v1.4s, v1.4s
+-; CHECK-NEXT:    fcvtzs v2.4s, v2.4s
+-; CHECK-NEXT:    smin v0.4s, v0.4s, v4.4s
+-; CHECK-NEXT:    smin v1.4s, v1.4s, v4.4s
++; CHECK-NEXT:    smin v3.4s, v3.4s, v4.4s
+ ; CHECK-NEXT:    smin v2.4s, v2.4s, v4.4s
+-; CHECK-NEXT:    smax v0.4s, v0.4s, v5.4s
+-; CHECK-NEXT:    smax v1.4s, v1.4s, v5.4s
+-; CHECK-NEXT:    smax v2.4s, v2.4s, v5.4s
+-; CHECK-NEXT:    xtn v6.4h, v0.4s
+-; CHECK-NEXT:    umov w8, v6.h[0]
+-; CHECK-NEXT:    umov w9, v6.h[1]
+-; CHECK-NEXT:    xtn v1.4h, v1.4s
+-; CHECK-NEXT:    fmov s0, w8
+-; CHECK-NEXT:    umov w8, v6.h[2]
+-; CHECK-NEXT:    mov v0.b[1], w9
+-; CHECK-NEXT:    mov v0.b[2], w8
+-; CHECK-NEXT:    umov w8, v6.h[3]
+-; CHECK-NEXT:    mov v0.b[3], w8
+-; CHECK-NEXT:    umov w8, v1.h[0]
+-; CHECK-NEXT:    mov v0.b[4], w8
+-; CHECK-NEXT:    umov w8, v1.h[1]
+-; CHECK-NEXT:    mov v0.b[5], w8
+-; CHECK-NEXT:    umov w8, v1.h[2]
+-; CHECK-NEXT:    mov v0.b[6], w8
+-; CHECK-NEXT:    umov w8, v1.h[3]
+-; CHECK-NEXT:    xtn v1.4h, v2.4s
+-; CHECK-NEXT:    fcvtzs v2.4s, v3.4s
+-; CHECK-NEXT:    mov v0.b[7], w8
+-; CHECK-NEXT:    umov w8, v1.h[0]
+-; CHECK-NEXT:    smin v2.4s, v2.4s, v4.4s
+-; CHECK-NEXT:    mov v0.b[8], w8
+-; CHECK-NEXT:    umov w8, v1.h[1]
++; CHECK-NEXT:    smin v1.4s, v1.4s, v4.4s
++; CHECK-NEXT:    smin v0.4s, v0.4s, v4.4s
++; CHECK-NEXT:    smax v3.4s, v3.4s, v5.4s
+ ; CHECK-NEXT:    smax v2.4s, v2.4s, v5.4s
+-; CHECK-NEXT:    mov v0.b[9], w8
+-; CHECK-NEXT:    umov w8, v1.h[2]
+-; CHECK-NEXT:    mov v0.b[10], w8
+-; CHECK-NEXT:    umov w8, v1.h[3]
+-; CHECK-NEXT:    xtn v1.4h, v2.4s
+-; CHECK-NEXT:    mov v0.b[11], w8
+-; CHECK-NEXT:    umov w8, v1.h[0]
+-; CHECK-NEXT:    mov v0.b[12], w8
+-; CHECK-NEXT:    umov w8, v1.h[1]
+-; CHECK-NEXT:    mov v0.b[13], w8
+-; CHECK-NEXT:    umov w8, v1.h[2]
+-; CHECK-NEXT:    mov v0.b[14], w8
+-; CHECK-NEXT:    umov w8, v1.h[3]
+-; CHECK-NEXT:    mov v0.b[15], w8
++; CHECK-NEXT:    smax v1.4s, v1.4s, v5.4s
++; CHECK-NEXT:    smax v0.4s, v0.4s, v5.4s
++; CHECK-NEXT:    uzp1 v2.8h, v2.8h, v3.8h
++; CHECK-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
++; CHECK-NEXT:    uzp1 v0.16b, v0.16b, v2.16b
+ ; CHECK-NEXT:    ret
+     %x = call <16 x i8> @llvm.fptosi.sat.v16f32.v16i8(<16 x float> %f)
+     ret <16 x i8> %x
+diff --git a/llvm/test/CodeGen/AArch64/fptoui-sat-vector.ll b/llvm/test/CodeGen/AArch64/fptoui-sat-vector.ll
+index cbb8b8a51126..d8d4b6f8b98c 100644
+--- a/llvm/test/CodeGen/AArch64/fptoui-sat-vector.ll
++++ b/llvm/test/CodeGen/AArch64/fptoui-sat-vector.ll
+@@ -2515,50 +2515,17 @@ define <16 x i8> @test_unsigned_v16f32_v16i8(<16 x float> %f) {
+ ; CHECK-LABEL: test_unsigned_v16f32_v16i8:
+ ; CHECK:       // %bb.0:
+ ; CHECK-NEXT:    movi v4.2d, #0x0000ff000000ff
+-; CHECK-NEXT:    fcvtzu v0.4s, v0.4s
+-; CHECK-NEXT:    fcvtzu v1.4s, v1.4s
++; CHECK-NEXT:    fcvtzu v3.4s, v3.4s
+ ; CHECK-NEXT:    fcvtzu v2.4s, v2.4s
+-; CHECK-NEXT:    umin v0.4s, v0.4s, v4.4s
+-; CHECK-NEXT:    umin v1.4s, v1.4s, v4.4s
+-; CHECK-NEXT:    umin v2.4s, v2.4s, v4.4s
+-; CHECK-NEXT:    xtn v5.4h, v0.4s
+-; CHECK-NEXT:    xtn v1.4h, v1.4s
+-; CHECK-NEXT:    umov w8, v5.h[0]
+-; CHECK-NEXT:    umov w9, v5.h[1]
+-; CHECK-NEXT:    fmov s0, w8
+-; CHECK-NEXT:    umov w8, v5.h[2]
+-; CHECK-NEXT:    mov v0.b[1], w9
+-; CHECK-NEXT:    mov v0.b[2], w8
+-; CHECK-NEXT:    umov w8, v5.h[3]
+-; CHECK-NEXT:    mov v0.b[3], w8
+-; CHECK-NEXT:    umov w8, v1.h[0]
+-; CHECK-NEXT:    mov v0.b[4], w8
+-; CHECK-NEXT:    umov w8, v1.h[1]
+-; CHECK-NEXT:    mov v0.b[5], w8
+-; CHECK-NEXT:    umov w8, v1.h[2]
+-; CHECK-NEXT:    mov v0.b[6], w8
+-; CHECK-NEXT:    umov w8, v1.h[3]
+-; CHECK-NEXT:    xtn v1.4h, v2.4s
+-; CHECK-NEXT:    fcvtzu v2.4s, v3.4s
+-; CHECK-NEXT:    mov v0.b[7], w8
+-; CHECK-NEXT:    umov w8, v1.h[0]
++; CHECK-NEXT:    fcvtzu v1.4s, v1.4s
++; CHECK-NEXT:    fcvtzu v0.4s, v0.4s
++; CHECK-NEXT:    umin v3.4s, v3.4s, v4.4s
+ ; CHECK-NEXT:    umin v2.4s, v2.4s, v4.4s
+-; CHECK-NEXT:    mov v0.b[8], w8
+-; CHECK-NEXT:    umov w8, v1.h[1]
+-; CHECK-NEXT:    mov v0.b[9], w8
+-; CHECK-NEXT:    umov w8, v1.h[2]
+-; CHECK-NEXT:    mov v0.b[10], w8
+-; CHECK-NEXT:    umov w8, v1.h[3]
+-; CHECK-NEXT:    xtn v1.4h, v2.4s
+-; CHECK-NEXT:    mov v0.b[11], w8
+-; CHECK-NEXT:    umov w8, v1.h[0]
+-; CHECK-NEXT:    mov v0.b[12], w8
+-; CHECK-NEXT:    umov w8, v1.h[1]
+-; CHECK-NEXT:    mov v0.b[13], w8
+-; CHECK-NEXT:    umov w8, v1.h[2]
+-; CHECK-NEXT:    mov v0.b[14], w8
+-; CHECK-NEXT:    umov w8, v1.h[3]
+-; CHECK-NEXT:    mov v0.b[15], w8
++; CHECK-NEXT:    umin v1.4s, v1.4s, v4.4s
++; CHECK-NEXT:    umin v0.4s, v0.4s, v4.4s
++; CHECK-NEXT:    uzp1 v2.8h, v2.8h, v3.8h
++; CHECK-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
++; CHECK-NEXT:    uzp1 v0.16b, v0.16b, v2.16b
+ ; CHECK-NEXT:    ret
+     %x = call <16 x i8> @llvm.fptoui.sat.v16f32.v16i8(<16 x float> %f)
+     ret <16 x i8> %x
+diff --git a/llvm/test/CodeGen/AArch64/neon-extracttruncate.ll b/llvm/test/CodeGen/AArch64/neon-extracttruncate.ll
+index 14cc333120c7..dd7dd44bedf7 100644
+--- a/llvm/test/CodeGen/AArch64/neon-extracttruncate.ll
++++ b/llvm/test/CodeGen/AArch64/neon-extracttruncate.ll
+@@ -84,43 +84,13 @@ entry:
+ define <16 x i8> @extract_4_v4i16(<4 x i16> %a, <4 x i16> %b, <4 x i16> %c, <4 x i16> %d) {
+ ; CHECK-LABEL: extract_4_v4i16:
+ ; CHECK:       // %bb.0: // %entry
+-; CHECK-NEXT:    // kill: def $d0 killed $d0 def $q0
+-; CHECK-NEXT:    umov w9, v0.h[0]
+-; CHECK-NEXT:    umov w10, v0.h[1]
+-; CHECK-NEXT:    // kill: def $d1 killed $d1 def $q1
+ ; CHECK-NEXT:    // kill: def $d2 killed $d2 def $q2
+-; CHECK-NEXT:    umov w8, v2.h[0]
++; CHECK-NEXT:    // kill: def $d0 killed $d0 def $q0
+ ; CHECK-NEXT:    // kill: def $d3 killed $d3 def $q3
+-; CHECK-NEXT:    fmov s4, w9
+-; CHECK-NEXT:    umov w9, v0.h[2]
+-; CHECK-NEXT:    mov v4.b[1], w10
+-; CHECK-NEXT:    umov w10, v0.h[3]
+-; CHECK-NEXT:    mov v4.b[2], w9
+-; CHECK-NEXT:    umov w9, v1.h[0]
+-; CHECK-NEXT:    mov v4.b[3], w10
+-; CHECK-NEXT:    umov w10, v1.h[1]
+-; CHECK-NEXT:    mov v4.b[4], w9
+-; CHECK-NEXT:    umov w9, v1.h[2]
+-; CHECK-NEXT:    mov v4.b[5], w10
+-; CHECK-NEXT:    umov w10, v1.h[3]
+-; CHECK-NEXT:    mov v4.b[6], w9
+-; CHECK-NEXT:    umov w9, v2.h[1]
+-; CHECK-NEXT:    mov v4.b[7], w10
+-; CHECK-NEXT:    mov v4.b[8], w8
+-; CHECK-NEXT:    umov w8, v2.h[2]
+-; CHECK-NEXT:    mov v4.b[9], w9
+-; CHECK-NEXT:    umov w9, v2.h[3]
+-; CHECK-NEXT:    mov v4.b[10], w8
+-; CHECK-NEXT:    umov w8, v3.h[0]
+-; CHECK-NEXT:    mov v4.b[11], w9
+-; CHECK-NEXT:    umov w9, v3.h[1]
+-; CHECK-NEXT:    mov v4.b[12], w8
+-; CHECK-NEXT:    umov w8, v3.h[2]
+-; CHECK-NEXT:    mov v4.b[13], w9
+-; CHECK-NEXT:    umov w9, v3.h[3]
+-; CHECK-NEXT:    mov v4.b[14], w8
+-; CHECK-NEXT:    mov v4.b[15], w9
+-; CHECK-NEXT:    mov v0.16b, v4.16b
++; CHECK-NEXT:    // kill: def $d1 killed $d1 def $q1
++; CHECK-NEXT:    mov v2.d[1], v3.d[0]
++; CHECK-NEXT:    mov v0.d[1], v1.d[0]
++; CHECK-NEXT:    uzp1 v0.16b, v0.16b, v2.16b
+ ; CHECK-NEXT:    ret
+ entry:
+   %a0 = extractelement <4 x i16> %a, i32 0
+@@ -177,36 +147,9 @@ entry:
+ define <16 x i8> @extract_4_v4i32(<4 x i32> %a, <4 x i32> %b, <4 x i32> %c, <4 x i32> %d) {
+ ; CHECK-LABEL: extract_4_v4i32:
+ ; CHECK:       // %bb.0: // %entry
+-; CHECK-NEXT:    mov w8, v0.s[1]
+-; CHECK-NEXT:    mov w9, v0.s[2]
+-; CHECK-NEXT:    mov w10, v0.s[3]
+-; CHECK-NEXT:    mov v0.b[1], w8
+-; CHECK-NEXT:    fmov w8, s1
+-; CHECK-NEXT:    mov v0.b[2], w9
+-; CHECK-NEXT:    mov w9, v1.s[1]
+-; CHECK-NEXT:    mov v0.b[3], w10
+-; CHECK-NEXT:    mov v0.b[4], w8
+-; CHECK-NEXT:    mov w8, v1.s[2]
+-; CHECK-NEXT:    mov v0.b[5], w9
+-; CHECK-NEXT:    mov w9, v1.s[3]
+-; CHECK-NEXT:    mov v0.b[6], w8
+-; CHECK-NEXT:    fmov w8, s2
+-; CHECK-NEXT:    mov v0.b[7], w9
+-; CHECK-NEXT:    mov w9, v2.s[1]
+-; CHECK-NEXT:    mov v0.b[8], w8
+-; CHECK-NEXT:    mov w8, v2.s[2]
+-; CHECK-NEXT:    mov v0.b[9], w9
+-; CHECK-NEXT:    mov w9, v2.s[3]
+-; CHECK-NEXT:    mov v0.b[10], w8
+-; CHECK-NEXT:    fmov w8, s3
+-; CHECK-NEXT:    mov v0.b[11], w9
+-; CHECK-NEXT:    mov w9, v3.s[1]
+-; CHECK-NEXT:    mov v0.b[12], w8
+-; CHECK-NEXT:    mov w8, v3.s[2]
+-; CHECK-NEXT:    mov v0.b[13], w9
+-; CHECK-NEXT:    mov w9, v3.s[3]
+-; CHECK-NEXT:    mov v0.b[14], w8
+-; CHECK-NEXT:    mov v0.b[15], w9
++; CHECK-NEXT:    uzp1 v2.8h, v2.8h, v3.8h
++; CHECK-NEXT:    uzp1 v0.8h, v0.8h, v1.8h
++; CHECK-NEXT:    uzp1 v0.16b, v0.16b, v2.16b
+ ; CHECK-NEXT:    ret
+ entry:
+   %a0 = extractelement <4 x i32> %a, i32 0
+@@ -263,41 +206,12 @@ entry:
+ define <16 x i8> @extract_4_mixed(<4 x i16> %a, <4 x i32> %b, <4 x i32> %c, <4 x i16> %d) {
+ ; CHECK-LABEL: extract_4_mixed:
+ ; CHECK:       // %bb.0: // %entry
+-; CHECK-NEXT:    // kill: def $d0 killed $d0 def $q0
+-; CHECK-NEXT:    umov w8, v0.h[0]
+-; CHECK-NEXT:    umov w9, v0.h[1]
++; CHECK-NEXT:    xtn v2.4h, v2.4s
+ ; CHECK-NEXT:    // kill: def $d3 killed $d3 def $q3
+-; CHECK-NEXT:    fmov s4, w8
+-; CHECK-NEXT:    umov w8, v0.h[2]
+-; CHECK-NEXT:    mov v4.b[1], w9
+-; CHECK-NEXT:    umov w9, v0.h[3]
+-; CHECK-NEXT:    mov v4.b[2], w8
+-; CHECK-NEXT:    fmov w8, s1
+-; CHECK-NEXT:    mov v4.b[3], w9
+-; CHECK-NEXT:    mov w9, v1.s[1]
+-; CHECK-NEXT:    mov v4.b[4], w8
+-; CHECK-NEXT:    mov w8, v1.s[2]
+-; CHECK-NEXT:    mov v4.b[5], w9
+-; CHECK-NEXT:    mov w9, v1.s[3]
+-; CHECK-NEXT:    mov v4.b[6], w8
+-; CHECK-NEXT:    fmov w8, s2
+-; CHECK-NEXT:    mov v4.b[7], w9
+-; CHECK-NEXT:    mov w9, v2.s[1]
+-; CHECK-NEXT:    mov v4.b[8], w8
+-; CHECK-NEXT:    mov w8, v2.s[2]
+-; CHECK-NEXT:    mov v4.b[9], w9
+-; CHECK-NEXT:    mov w9, v2.s[3]
+-; CHECK-NEXT:    mov v4.b[10], w8
+-; CHECK-NEXT:    umov w8, v3.h[0]
+-; CHECK-NEXT:    mov v4.b[11], w9
+-; CHECK-NEXT:    umov w9, v3.h[1]
+-; CHECK-NEXT:    mov v4.b[12], w8
+-; CHECK-NEXT:    umov w8, v3.h[2]
+-; CHECK-NEXT:    mov v4.b[13], w9
+-; CHECK-NEXT:    umov w9, v3.h[3]
+-; CHECK-NEXT:    mov v4.b[14], w8
+-; CHECK-NEXT:    mov v4.b[15], w9
+-; CHECK-NEXT:    mov v0.16b, v4.16b
++; CHECK-NEXT:    // kill: def $d0 killed $d0 def $q0
++; CHECK-NEXT:    xtn2 v0.8h, v1.4s
++; CHECK-NEXT:    mov v2.d[1], v3.d[0]
++; CHECK-NEXT:    uzp1 v0.16b, v0.16b, v2.16b
+ ; CHECK-NEXT:    ret
+ entry:
+   %a0 = extractelement <4 x i16> %a, i32 0
+@@ -440,25 +354,8 @@ entry:
+ define <16 x i8> @extract_4_v4i32_one(<4 x i32> %a) {
+ ; CHECK-LABEL: extract_4_v4i32_one:
+ ; CHECK:       // %bb.0: // %entry
+-; CHECK-NEXT:    mov w8, v0.s[1]
+-; CHECK-NEXT:    fmov w9, s0
+-; CHECK-NEXT:    mov w10, v0.s[2]
+-; CHECK-NEXT:    mov w11, v0.s[3]
+-; CHECK-NEXT:    mov v0.b[1], w8
+-; CHECK-NEXT:    mov v0.b[2], w10
+-; CHECK-NEXT:    mov v0.b[3], w11
+-; CHECK-NEXT:    mov v0.b[4], w9
+-; CHECK-NEXT:    mov v0.b[5], w8
+-; CHECK-NEXT:    mov v0.b[6], w10
+-; CHECK-NEXT:    mov v0.b[7], w11
+-; CHECK-NEXT:    mov v0.b[8], w9
+-; CHECK-NEXT:    mov v0.b[9], w8
+-; CHECK-NEXT:    mov v0.b[10], w10
+-; CHECK-NEXT:    mov v0.b[11], w11
+-; CHECK-NEXT:    mov v0.b[12], w9
+-; CHECK-NEXT:    mov v0.b[13], w8
+-; CHECK-NEXT:    mov v0.b[14], w10
+-; CHECK-NEXT:    mov v0.b[15], w11
++; CHECK-NEXT:    uzp1 v0.8h, v0.8h, v0.8h
++; CHECK-NEXT:    uzp1 v0.16b, v0.16b, v0.16b
+ ; CHECK-NEXT:    ret
+ entry:
+   %a0 = extractelement <4 x i32> %a, i32 0
+-- 
+2.34.1
+
