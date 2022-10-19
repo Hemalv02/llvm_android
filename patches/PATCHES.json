@@ -212,6 +212,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [llvm] [test] Add missing canonicalization of LLVM_ENABLE_ZSTD"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/bc4bcbcfc820b324f680e8f260691c38052eedc9.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475968
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CMake] Provide Findzstd module"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2d4fd0b6d5d5582ebb8b521d807104235d67aee4.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475988
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"[DSE] Eliminate noop store even through has clobbering between LoadI and StoreI\""
         },
         "platforms": [
@@ -221,6 +249,20 @@
         "version_range": {
             "from": 475365,
             "until": 476004
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [llvm] [cmake] Support finding both static and shared zstd via FindZstd"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/56f94ede2af9a327e59fe84dbf8cbbb7bb1dfa79.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 476483
         }
     },
     {
