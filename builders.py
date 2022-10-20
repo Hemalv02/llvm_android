@@ -30,6 +30,7 @@ import configs
 import constants
 import hosts
 import mapfile
+import multiprocessing
 import paths
 import utils
 
@@ -213,7 +214,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
             defines['LLVM_ENABLE_LTO'] = 'Thin'
 
             # Increase the ThinLTO link jobs limit to improve build speed.
-            defines['LLVM_PARALLEL_LINK_JOBS'] = 8
+            defines['LLVM_PARALLEL_LINK_JOBS'] = min(int(multiprocessing.cpu_count() / 2), 16)
 
         # Build libFuzzer here to be exported for the host fuzzer builds. libFuzzer
         # is not currently supported on Darwin.
