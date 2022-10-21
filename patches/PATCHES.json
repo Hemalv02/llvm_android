@@ -254,6 +254,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Verifier] Relieve intrinsics parameter alignment size constrain"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6ade6d25110f9dbe8c7fb2f8ce6af951a3c23bc2.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 477417
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
