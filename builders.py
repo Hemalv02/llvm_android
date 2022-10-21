@@ -789,7 +789,7 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         defines['LIBXML2_WITH_PYTHON'] = 'OFF'
-        defines['LIBXML2_WITH_PROGRAMS'] = 'OFF'
+        defines['LIBXML2_WITH_PROGRAMS'] = 'ON'
         defines['LIBXML2_WITH_LZMA'] = 'OFF'
         defines['LIBXML2_WITH_ICONV'] = 'OFF'
         defines['LIBXML2_WITH_ZLIB'] = 'OFF'
@@ -805,6 +805,10 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
             return []
         ext = 'so' if self._config.target_os.is_linux else 'dylib'
         return [self.install_dir / 'lib' / f'libxml2.{ext}']
+
+    @property
+    def install_tools(self) -> List[Path]:
+        return [self.install_dir / 'bin' / 'xmllint']
 
 
 class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):

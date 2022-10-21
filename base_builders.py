@@ -120,6 +120,11 @@ class LibInfo:
         return self.link_libraries
 
     @property
+    def install_tools(self) -> List[Path]:
+        """Path to tools to install."""
+        return []
+
+    @property
     def symlinks(self) -> List[Path]:
         """List of symlinks to the library that may need to be installed."""
         return []
@@ -636,7 +641,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         defines['LLVM_ENABLE_ZSTD'] = 'OFF'
 
-    def _install_dep_libs(self, lib_dir) -> None:
+    def _install_lib_deps(self, lib_dir, bin_dir=None) -> None:
         for lib in (self.liblzma, self.libedit, self.libxml2, self.libncurses):
             if lib:
                 for lib_file in lib.install_libraries:
@@ -646,18 +651,26 @@ class LLVMBuilder(LLVMBaseBuilder):
                     dest_file = lib_dir / link.name
                     dest_file.unlink(missing_ok=True)
                     shutil.copy2(link, dest_file, follow_symlinks=False)
+                if bin_dir:
+                    for tool in lib.install_tools:
+                        shutil.copy2(tool, bin_dir)
 
     def _install_deps(self) -> None:
-        lib_dir = self.install_dir / ('bin' if self._config.target_os.is_windows else 'lib')
-        lib_dir.mkdir(exist_ok=True, parents=True)
-
         if self.swig_executable:
             python_prebuilt_dir = paths.get_python_dir(self._config.target_os)
             python_dest_dir = self.install_dir / 'python3'
             shutil.copytree(python_prebuilt_dir, python_dest_dir, symlinks=True, dirs_exist_ok=True,
                             ignore=shutil.ignore_patterns('*.pyc', '__pycache__', 'Android.bp',
                                                           '.git', '.gitignore'))
-        self._install_dep_libs(lib_dir)
+
+        lib_dir = self.install_dir / ('bin' if self._config.target_os.is_windows else 'lib')
+        lib_dir.mkdir(exist_ok=True, parents=True)
+
+        self._install_lib_deps(lib_dir)
+        if self._config.target_os.is_linux:
+            # Force install of tool deps (that are needed for running tests) by
+            # passing a bin_dir parameter to _install_lib_deps.
+            self._install_lib_deps(self.output_dir / 'lib', self.output_dir / 'bin')
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -719,7 +732,7 @@ class LLVMBuilder(LLVMBaseBuilder):
         with timer.Timer(f'stage2_test'):
             # newer test tools like dexp, clang-query, c-index-test
             # need libedit.so.*, libxml2.so.*, etc. in stage2/lib.
-            self._install_dep_libs(self.output_dir / 'lib')
+            self._install_lib_deps(self.output_dir / 'lib')
             self._ninja(
                 ['check-clang', 'check-llvm', 'check-clang-tools', 'check-cxx'])
         # Known failed tests:
