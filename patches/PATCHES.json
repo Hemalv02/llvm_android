@@ -268,6 +268,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Fix LazyInitialization in tsan"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/1d31ea68c0cbc24d690a58c296b50b61595b6127.patch",
+        "version_range": {
+            "from": 468909,
+            "until": 477745
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
