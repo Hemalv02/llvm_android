@@ -170,6 +170,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Clang][AArch64] Support AArch64 target(..) attribute formats."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/781b491bba9d798e53f7784dced3c2be77c81dd4.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475490
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [IVDescriptors] Before moving an instruction in SinkAfter checking if it is target of other instructions"
         },
         "platforms": [
