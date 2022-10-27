@@ -352,6 +352,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert [clang] Improve diagnostics for expansion length mismatch"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch.patch",
+        "version_range": {
+            "from": 472431,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert [clang] fix missing initialization of original number of expansions"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-fix-missing-initialization-of-original-number-of-expansions.patch",
+        "version_range": {
+            "from": 470911,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Revert Enable IAS In Backend"
         },
         "platforms": [
