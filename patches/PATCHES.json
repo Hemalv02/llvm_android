@@ -198,6 +198,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [AArch64][KCFI] Define Size for KCFI_CHECK"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/43f4c215a1a2c12851853b1ed4cc0864387b5a74.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475913
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"[DSE] Eliminate noop store even through has clobbering between LoadI and StoreI\""
         },
         "platforms": [
