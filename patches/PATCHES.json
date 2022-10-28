@@ -388,6 +388,20 @@
         "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch.patch",
         "version_range": {
             "from": 472431,
+            "until": 475366
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert [clang] Improve diagnostics for expansion length mismatch"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch-v2.patch",
+        "version_range": {
+            "from": 475366,
             "until": null
         }
     },
