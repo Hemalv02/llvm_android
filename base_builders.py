@@ -640,6 +640,7 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
         defines['LLVM_ENABLE_ZSTD'] = 'OFF'
+        defines['LLDB_INCLUDE_TESTS'] = 'OFF'
 
     def _install_lib_deps(self, lib_dir, bin_dir=None) -> None:
         for lib in (self.liblzma, self.libedit, self.libxml2, self.libncurses):
