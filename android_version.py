@@ -20,10 +20,10 @@ _llvm_next = False
 _llvm_tot = False
 _version_read = False
 
-_patch_level = '3'
-_svn_revision = 'r468909b'
+_patch_level = '1'
+_svn_revision = 'r475365'
 _svn_revision_next = 'r468909b'
-_git_sha = '7bb1151ba21e26d91ddaa83177bb58b4d1c36710'
+_git_sha = 'df7606a066b75ce55ae4a186c785f996e0985db1'
 _git_sha_next = '7bb1151ba21e26d91ddaa83177bb58b4d1c36710'
 
 # the variable set for building liunx-tot on kokoro
