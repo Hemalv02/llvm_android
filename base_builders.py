@@ -215,8 +215,12 @@ class Builder:  # pylint: disable=too-few-public-methods
         """Environment variables used when building."""
         env = dict(utils.ORIG_ENV)
         env.update(self._config.env)
-        paths = [self._config.env.get('PATH'), utils.ORIG_ENV.get('PATH')]
-        env['PATH'] = os.pathsep.join(p for p in paths if p)
+        path_env = [
+            self._config.env.get('PATH'),
+            str(paths.get_python_dir(hosts.build_host()) / 'bin'),
+            utils.ORIG_ENV.get('PATH')
+        ]
+        env['PATH'] = os.pathsep.join(p for p in path_env if p)
         return env
 
     @property
