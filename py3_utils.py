@@ -22,16 +22,15 @@ import sys
 THIS_DIR = os.path.realpath(os.path.dirname(__file__))
 def get_host_tag():
     if sys.platform.startswith('linux'):
-        return "linux-x86"
-    elif sys.platform.startswith('darwin'):
-        return "darwin-x86"
-    else:
-        raise RuntimeError('Unsupported host: {}'.format(sys.platform))
+        return 'linux-x86'
+    if sys.platform.startswith('darwin'):
+        return 'darwin-x86'
+    raise RuntimeError(f'Unsupported host: {sys.platform}')
 
 
 def run_with_py3(script_name):
-    python_bin = os.path.join(THIS_DIR, "..", "..", "prebuilts", "python", get_host_tag(), 'bin', 'python3')
+    python_bin = os.path.join(THIS_DIR, '..', '..', 'prebuilts', 'build-tools',
+                              'path', get_host_tag(), 'python3')
     python_bin = os.path.abspath(python_bin)
     subprocess.check_call(
         [python_bin, os.path.join(THIS_DIR, script_name)] + sys.argv[1:])
-
