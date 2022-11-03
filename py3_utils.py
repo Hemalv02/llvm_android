@@ -25,7 +25,7 @@ def get_host_tag():
         return 'linux-x86'
     if sys.platform.startswith('darwin'):
         return 'darwin-x86'
-    raise RuntimeError(f'Unsupported host: {sys.platform}')
+    raise RuntimeError('Unsupported host: {}'.format(sys.platform))
 
 
 def run_with_py3(script_name):
