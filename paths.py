@@ -53,11 +53,12 @@ MAKE_BIN_PATH: Path = BUILD_TOOLS_DIR / hosts.build_host().os_tag / 'bin' / 'mak
 # problems with LD_LIBRARY_PATH causing ninja to use the wrong libc++.so.
 NINJA_BIN_PATH: Path = BUILD_TOOLS_DIR / hosts.build_host().os_tag_musl / 'bin' / 'ninja'
 
-LIBNCURSES_SRC_DIR: Path = EXTERNAL_DIR / 'libncurses'
 LIBEDIT_SRC_DIR: Path = EXTERNAL_DIR / 'libedit'
+LIBNCURSES_SRC_DIR: Path = EXTERNAL_DIR / 'libncurses'
+LIBXML2_SRC_DIR: Path = EXTERNAL_DIR / 'libxml2'
 SWIG_SRC_DIR: Path = EXTERNAL_DIR / 'swig'
 XZ_SRC_DIR: Path = TOOLCHAIN_DIR / 'xz'
-LIBXML2_SRC_DIR: Path = EXTERNAL_DIR / 'libxml2'
+ZSTD_SRC_DIR: Path = EXTERNAL_DIR / 'zstd'
 
 NDK_BASE: Path = TOOLCHAIN_DIR / 'prebuilts' /'ndk' / constants.NDK_VERSION
 NDK_LIBCXX_HEADERS: Path = NDK_BASE / 'sources' / 'cxx-stl' / 'llvm-libc++'/ 'include'

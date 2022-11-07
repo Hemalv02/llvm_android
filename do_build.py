@@ -99,6 +99,10 @@ def build_llvm_for_windows(enable_assertions: bool,
         libcxx_builder.enable_assertions = enable_assertions
         libcxx_builder.build()
 
+    libzstd_builder = builders.ZstdBuilder(config_list)
+    libzstd_builder.build()
+    win_builder.libzstd = libzstd_builder
+
     lldb_bins: Set[str] = set()
     libxml2_builder = builders.LibXml2Builder(config_list)
     libxml2_builder.build()
@@ -957,6 +961,10 @@ def main():
         stage2.bolt_optimize = args.bolt
         stage2.bolt_instrument = args.bolt_instrument
         stage2.profdata_file = profdata if profdata else None
+
+        libzstd_builder = builders.ZstdBuilder(host_configs)
+        libzstd_builder.build()
+        stage2.libzstd = libzstd_builder
 
         libxml2_builder = builders.LibXml2Builder(host_configs)
         libxml2_builder.build()

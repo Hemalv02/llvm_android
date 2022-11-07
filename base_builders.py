@@ -49,6 +49,7 @@ class LibInfo:
     _config: configs.Config
 
     static_lib: bool = False
+    with_lib_version: bool = True
 
     @property
     def lib_version(self) -> str:
@@ -97,9 +98,9 @@ class LibInfo:
         if self.static_lib:
             return '.a'
         if target_os.is_linux:
-            return f'.so.{self.lib_version}'
+            return f'.so.{self.lib_version}' if self.with_lib_version else '.so'
         elif target_os.is_darwin:
-            return f'.{self.lib_version}.dylib'
+            return f'.{self.lib_version}.dylib' if self.with_lib_version else '.dylib'
         elif target_os.is_windows:
             return '.dll.a'
         raise RuntimeError('Unknown target OS')
@@ -570,6 +571,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     svn_revision: str
     enable_assertions: bool = False
     toolchain_name: str
+    libzstd: Optional[LibInfo] = None
     # not a singleton because we'd build the 32-bit runtime in the future.
     runtimes_triples: Set[str] = set()
 
@@ -650,7 +652,15 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
-        defines['LLVM_ENABLE_ZSTD'] = 'OFF'
+        if self.libzstd:
+            defines['LLVM_ENABLE_ZSTD'] = 'FORCE_ON'
+            defines['LLVM_USE_STATIC_ZSTD'] = 'ON'
+            defines['zstd_LIBRARY'] = self.libzstd.link_libraries[0]
+            defines['zstd_STATIC_LIBRARY'] = self.libzstd.link_libraries[1]
+            defines['zstd_INCLUDE_DIR'] = self.libzstd.include_dir
+        else:
+            defines['LLVM_ENABLE_ZSTD'] = 'OFF'
+
         defines['LLDB_INCLUDE_TESTS'] = 'OFF'
 
     def _install_lib_deps(self, lib_dir, bin_dir=None) -> None:

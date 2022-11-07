@@ -756,6 +756,20 @@ class XzBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
             defines['CMAKE_RANLIB'] = '/usr/bin/ranlib'
         return defines
 
+
+class ZstdBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
+    name: str = 'libzstd'
+    src_dir: Path = paths.ZSTD_SRC_DIR / 'build' / 'cmake'
+    with_lib_version: bool = False
+
+    @property
+    def link_libraries(self) -> List[Path]:
+        # LLVM requires both dynamic and static libzstd.
+        libs = super().link_libraries
+        libs.append(self.install_dir / 'lib' / 'libzstd.a')
+        return libs
+
+
 class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
     name: str = 'libxml2'
     src_dir: Path = paths.LIBXML2_SRC_DIR
