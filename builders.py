@@ -107,13 +107,6 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
         defines['LLVM_BUILD_TOOLS'] = 'ON'
 
-        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-        # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-        if self._config.target_os.is_linux:
-            defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-
         # Do not build compiler-rt for Darwin.  We don't ship host (or any
         # prebuilt) runtimes for Darwin anyway.  Attempting to build these will
         # fail compilation of lib/builtins/atomic_*.c that only get built for
@@ -237,15 +230,6 @@ class Stage2Builder(base_builders.LLVMBuilder):
             defines['LLVM_PROFDATA'] = str(llvm_profdata)
         elif self.profdata_file:
             defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
-
-        # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-        # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-        # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-        if self._config.target_os.is_linux:
-            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-            defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-            defines['LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
-            defines['LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
 
         # Do not build compiler-rt for Darwin.  We don't ship host (or any
         # prebuilt) runtimes for Darwin anyway.  Attempting to build these will

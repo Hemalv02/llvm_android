@@ -514,9 +514,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         # To prevent cmake from checking libstdcxx version.
         defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
-        # Don't depend on the host libatomic library.
-        defines['LIBCXX_HAS_ATOMIC_LIB'] = 'NO'
-
         if self._config.target_os.is_darwin:
             defines['LLVM_USE_LINKER'] = 'ld'
         else:
@@ -765,6 +762,20 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['LLVM_RUNTIME_TARGETS'] = triple
             for arg in runtimes_passthrough_args:
                 defines[f'RUNTIMES_{triple}_{arg}'] = defines[arg]
+
+            # Don't depend on the host libatomic library.
+            defines[f'RUNTIMES_{triple}_LIBCXX_HAS_ATOMIC_LIB'] = 'NO'
+
+            # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+            # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+            # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+            defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+            defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+
+            # Set LIBCXX variables for compiler and linker flags for tests.
+            defines[f'RUNTIMES_{triple}_LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
+            defines[f'RUNTIMES_{triple}_LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
+
 
         return defines
 
