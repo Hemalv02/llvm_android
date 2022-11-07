@@ -736,6 +736,7 @@ class LLVMBuilder(LLVMBaseBuilder):
             self._set_lldb_flags(self._config.target_os, defines)
 
         defines['CLANG_DEFAULT_LINKER'] = 'lld'
+        defines['CLANG_DEFAULT_OBJCOPY'] = 'llvm-objcopy'
 
         if self._config.target_os.is_darwin:
             defines['COMPILER_RT_ENABLE_IOS'] = 'OFF'
