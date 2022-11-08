@@ -750,6 +750,10 @@ class ZstdBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         defines['ZSTD_BUILD_PROGRAMS'] = 'OFF'
+
+        # See XzBuilder above for reasoning.
+        if self._config.target_os.is_darwin:
+            defines['CMAKE_RANLIB'] = '/usr/bin/ranlib'
         return defines
 
     @property

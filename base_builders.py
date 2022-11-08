@@ -425,6 +425,9 @@ class CMakeBuilder(Builder):
             # Inhibit all of CMake's own NDK handling code.
             defines['CMAKE_SYSTEM_VERSION'] = '1'
         if self._config.target_os.is_darwin:
+            # This will be used to set -mmacosx-version-min. And helps to choose SDK.
+            # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
+            defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = constants.MAC_MIN_VERSION
             # Build universal binaries.
             defines['CMAKE_OSX_ARCHITECTURES'] = 'arm64;x86_64'
         if self._config.is_cross_compiling:
@@ -503,11 +506,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         defines['CLANG_REPOSITORY_STRING'] = (
             'https://android.googlesource.com/toolchain/llvm-project')
         defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
-
-        if self._config.target_os.is_darwin:
-            # This will be used to set -mmacosx-version-min. And helps to choose SDK.
-            # To specify a SDK, set CMAKE_OSX_SYSROOT or SDKROOT environment variable.
-            defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = constants.MAC_MIN_VERSION
 
         # http://b/111885871 - Disable building xray because of MacOS issues.
         defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
