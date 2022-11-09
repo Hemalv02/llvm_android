@@ -436,20 +436,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "Revert [clang] Improve diagnostics for expansion length mismatch"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch-v2.patch",
-        "version_range": {
-            "from": 475366,
-            "until": null
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "Revert [clang] fix missing initialization of original number of expansions"
         },
         "platforms": [
@@ -458,7 +444,7 @@
         "rel_patch_path": "Revert-clang-fix-missing-initialization-of-original-number-of-expansions.patch",
         "version_range": {
             "from": 470911,
-            "until": null
+            "until": 475366
         }
     },
     {
