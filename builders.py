@@ -789,6 +789,13 @@ class LibXml2Builder(base_builders.CMakeBuilder, base_builders.LibInfo):
                 super().build()
 
     @property
+    def ldflags(self) -> List[str]:
+        if self._config.target_os.is_linux:
+            # We do not enable all libxml2 features. Allow undefined symbols in the version script.
+            return super().ldflags + ['-Wl,--undefined-version']
+        return super().ldflags
+
+    @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         defines['LIBXML2_WITH_PYTHON'] = 'OFF'
