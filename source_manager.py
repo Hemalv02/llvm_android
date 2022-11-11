@@ -50,9 +50,7 @@ def apply_patches(source_dir, svn_version, patch_json, patch_dir,
         str(paths.TOOLCHAIN_UTILS_DIR / 'llvm_tools' / 'patch_manager.py'),
         '--svn_version', str(svn_version),
         '--patch_metadata_file', str(patch_json),
-        '--filesdir_path', str(patch_dir),
         '--src_path', str(source_dir),
-        '--use_src_head',
         '--failure_mode', failure_mode
     ]
 
