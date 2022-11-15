@@ -9,12 +9,6 @@ function cleanup {
 
 trap cleanup EXIT
 
-# Set up system dependencies
-if [[ $LLVM_BUILD_TYPE == linux* ]] || [[ $LLVM_BUILD_TYPE == windows* ]]; then
-  sudo apt update
-  sudo apt install -y bison rsync
-fi
-
 TOP=$(cd $(dirname $0)/../../.. && pwd)
 OUT=$TOP/out
 DIST=$TOP/dist
