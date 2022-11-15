@@ -352,6 +352,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Support] Use thread safe version of getpwuid and getpwnam."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/22339e52da4e88af499e232e452f4d8bb358fa05.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 479652
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
