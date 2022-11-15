@@ -184,6 +184,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "[clang][auto-init] Deprecate -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/aef03c9b3bed5cef5a1940774b80128aefcb4095.patch",
+        "version_range": {
+            "from": 465103,
+            "until": 475520
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [IVDescriptors] Before moving an instruction in SinkAfter checking if it is target of other instructions"
         },
         "platforms": [
