@@ -1080,5 +1080,19 @@
             "from": 412851,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[MERGED] [UPSTREAM] [AArch64] Use tbl in ZExts and vector truncates."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/AArch64-Use-Tbl.patch",
+        "version_range": {
+            "from": 450784,
+            "until": null
+        }
     }
 ]
