@@ -785,6 +785,8 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines[f'RUNTIMES_{triple}_LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
             defines[f'RUNTIMES_{triple}_LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
 
+            # Don't let libclang_rt.*_cxx.a depend on libc++abi.
+            defines[f'RUNTIMES_{triple}_SANITIZER_ALLOW_CXXABI'] = 'OFF'
 
         return defines
 
