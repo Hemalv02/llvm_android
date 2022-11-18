@@ -367,6 +367,48 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISCV] Rename lowerFTRUNC_FCEIL_FFLOOR_FROUND to lowerVectorFTRUNC_FCEIL_FFLOOR_FROUND. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/63ed3d0eeb561aa3ede1b6006c0a1a8830b469da.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 477750
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [RISCV] Move vector cost table lookup out of the switch in getIntrinsicInstrCost. NFC"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d4dc036e70330ac205a65e4cfbc82cc1dfeda3e8.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 477751
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [RISCV] Inline scalar ceil/floor/trunc/rint/round/roundeven."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/e94dc58dff1d693912904ba7ff743f67b3348d32.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 477968
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [Support] Use thread safe version of getpwuid and getpwnam."
         },
         "platforms": [
