@@ -493,6 +493,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert [clang] Only use major version in resource dir"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-Only-use-major-version-in-resource-dir.patch",
+        "version_range": {
+            "from": 479348,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Support dlclose as a noop in DynamicLibraryTest"
         },
         "platforms": [
