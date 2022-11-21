@@ -875,6 +875,12 @@ def parse_args():
         dest='musl',
         help="Don't Build against musl libc")
 
+    parser.add_argument(
+        '--sccache',
+        action='store_true',
+        default=False,
+        help='Use sccache to speed up development builds. (Do not use for release builds)')
+
     return parser.parse_args()
 
 
@@ -930,6 +936,7 @@ def main():
     stage1.build_lldb = build_lldb
     stage1.build_extra_tools = args.run_tests_stage1
     stage1.build_android_targets = args.debug or instrumented
+    stage1.use_sccache = args.sccache
     stage1.build()
     # stage1 test is off by default, turned on by --run-tests-stage1,
     # and suppressed by --skip-tests.
