@@ -566,6 +566,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     svn_revision: str
     enable_assertions: bool = False
     toolchain_name: str
+    use_sccache: bool = False
     libzstd: Optional[LibInfo] = None
     # not a singleton because we'd build the 32-bit runtime in the future.
     runtimes_triples: Set[str] = set()
@@ -704,6 +705,11 @@ class LLVMBuilder(LLVMBaseBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
+
+        if self.use_sccache:
+            defines['CMAKE_C_COMPILER_LAUNCHER'] = 'sccache'
+            defines['CMAKE_CXX_COMPILER_LAUNCHER'] = 'sccache'
+            defines['LLVM_PARALLEL_COMPILE_JOBS'] = int(multiprocessing.cpu_count()) * 10
 
         defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
         defines['LLVM_ENABLE_RUNTIMES'] = ';'.join(sorted(self.llvm_runtime_projects))
