@@ -5,7 +5,6 @@ Subject: [PATCH] Revert "[clang] Only use major version in resource dir"
 
 This reverts commit e1b88c8a09be25b86b13f98755a9bd744b4dbf14.
 ---
- clang/docs/ReleaseNotes.rst                              | 5 -----
  clang/include/clang/Basic/Version.inc.in                 | 1 -
  clang/lib/Driver/Driver.cpp                              | 2 +-
  clang/lib/Headers/CMakeLists.txt                         | 4 ++--
@@ -18,22 +17,6 @@ This reverts commit e1b88c8a09be25b86b13f98755a9bd744b4dbf14.
  polly/lib/External/isl/interface/extract_interface.cc    | 2 +-
  11 files changed, 16 insertions(+), 23 deletions(-)
 
-diff --git a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
-index 640c52096c4a..f506f00d371c 100644
---- a/clang/docs/ReleaseNotes.rst
-+++ b/clang/docs/ReleaseNotes.rst
-@@ -176,11 +176,6 @@ code bases.
-       g(42);
-     }
- 
--- Clang's resource dir used to include the full clang version. It will now
--  include only the major version. The new resource directory is
--  ``$prefix/lib/clang/$CLANG_MAJOR_VERSION`` and can be queried using
--  ``clang -print-resource-dir``, just like before.
--
- What's New in Clang |release|?
- ==============================
- Some of the major new features and improvements to Clang are listed
 diff --git a/clang/include/clang/Basic/Version.inc.in b/clang/include/clang/Basic/Version.inc.in
 index 370da8506d14..fd80af4b5110 100644
 --- a/clang/include/clang/Basic/Version.inc.in
