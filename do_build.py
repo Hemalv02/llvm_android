@@ -186,9 +186,6 @@ def build_runtimes(build_lldb_server: bool):
     builders.LibOMPBuilder().build()
     if build_lldb_server:
         builders.LldbServerBuilder().build()
-    # Bug: http://b/64037266. `strtod_l` is missing in NDK r15. This will break
-    # libcxx build.
-    # build_libcxx(toolchain, version)
     builders.SanitizerMapFileBuilder().build()
 
 
