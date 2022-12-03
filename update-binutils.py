@@ -19,18 +19,19 @@
 """ Update symlinks for binutils """
 
 import argparse
-import inspect
 import logging
-import os
-import paths
+from pathlib import Path
+import shutil
 import subprocess
-import sys
+from typing import Optional
+
+import paths
 import utils
+
 
 class ArgParser(argparse.ArgumentParser):
     def __init__(self):
-        super(ArgParser, self).__init__(
-            description=inspect.getdoc(sys.modules[__name__]))
+        super().__init__(description=__doc__)
 
         self.add_argument(
             'version', metavar='VERSION',
@@ -45,37 +46,38 @@ class ArgParser(argparse.ArgumentParser):
             help='Do not repo start a new branch for the update.')
 
 
-def update_binutils_symlink(prebuilt_dir, version):
-    binutils_dir = os.path.join(prebuilt_dir, 'llvm-binutils-stable')
-    binutils = os.listdir(binutils_dir)
+def update_binutils_symlink(prebuilt_dir: Path, version: str, use_cbr: bool):
+    if not use_cbr:
+        utils.unchecked_call(['repo', 'abandon', 'update-binutils-' + version, prebuilt_dir],
+                             stderr=subprocess.DEVNULL)
+        utils.check_call(['repo', 'start', 'update-binutils-' + version, prebuilt_dir])
+
+    binutils_dir = prebuilt_dir / 'llvm-binutils-stable'
+    binutils = [p.name for p in binutils_dir.iterdir()]
+    shutil.rmtree(binutils_dir)
+    binutils_dir.mkdir()
 
     for b in binutils:
-        symlink_path = os.path.join(binutils_dir, b)
-        util_rela_path = os.path.join('..', 'clang-' + version, 'bin', b)
-        if  os.path.islink(symlink_path):
-            os.remove(symlink_path)
-        os.symlink(util_rela_path, symlink_path)
+        symlink_path = binutils_dir / b
+        util_rela_path = Path('..') / ('clang-' + version) / 'bin' / b
+        symlink_path.symlink_to(util_rela_path)
 
-        if not os.path.exists(symlink_path):
+        if not symlink_path.exists():
             # check that the created link is valid
             raise RuntimeError(f'Created symlink, {symlink_path}, is broken')
 
 
-def do_commit(prebuilt_dir, use_cbr, version, bug_id):
-    if not use_cbr:
-        subprocess.call(['repo', 'abandon', 'update-binutils-' + version, prebuilt_dir])
-        subprocess.check_call(['repo', 'start', 'update-binutils-' + version, prebuilt_dir])
-
-    subprocess.check_call(['git', 'add', '.'], cwd=prebuilt_dir)
+def do_commit(prebuilt_dir: Path, version: str, bug_id: Optional[str]):
+    utils.check_call(['git', 'add', 'llvm-binutils-stable'], cwd=prebuilt_dir)
 
     message_lines = []
-    message_lines.append('Update LLVM binutils to {}.'.format(version))
+    message_lines.append(f'Update LLVM binutils to {version}.')
     message_lines.append('')
     message_lines.append('Test: N/A')
     if bug_id is not None:
-        message_lines.append('Bug: http://b/{}'.format(bug_id))
+        message_lines.append(f'Bug: http://b/{bug_id}')
     message = '\n'.join(message_lines)
-    subprocess.check_call(['git', 'commit', '-m', message], cwd=prebuilt_dir)
+    utils.check_call(['git', 'commit', '-m', message], cwd=prebuilt_dir)
 
 
 def main():
@@ -89,8 +91,8 @@ def main():
 
     for host in hosts:
         prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
-        update_binutils_symlink(prebuilt_dir, version)
-        do_commit(prebuilt_dir, use_cbr, version, bug_id)
+        update_binutils_symlink(prebuilt_dir, version, use_cbr)
+        do_commit(prebuilt_dir, version, bug_id)
 
     return 0
 
