@@ -14,6 +14,8 @@ OUT=$TOP/out
 DIST=$TOP/dist
 python_src=$TOP/toolchain/llvm_android
 
+git config --global --add safe.directory /tmpfs/src/git/external/toolchain-utils
+
 mkdir "${DIST}"
 
 if [ $LLVM_BUILD_TYPE == "linux-TOT" ]; then
@@ -34,4 +36,3 @@ elif [ $LLVM_BUILD_TYPE == "windows-master" ]; then
 else
   echo "Error: requires LLVM_BUILD_TYPE"
 fi
-
