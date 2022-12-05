@@ -170,6 +170,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Clang] Don't warn if deferencing void pointers in unevaluated context"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/89e56e732d5e89d8715a501158793ac305bc4b70.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475050
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [Clang][AArch64] Support AArch64 target(..) attribute formats."
         },
         "platforms": [
@@ -208,6 +222,20 @@
         "version_range": {
             "from": 475365,
             "until": 475612
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [Clang] fix -Wvoid-ptr-dereference for gnu89"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2dbfd06f2a8ba6cd7cc3f587808f1ea2c61ad2c7.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475762
         }
     },
     {
