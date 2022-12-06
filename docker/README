@@ -1,7 +1,13 @@
-Docker image to build the Android LLVM toolchain.
+Docker image that builds the Android LLVM toolchain.
 
 # Build using the production Docker image
 Run prod_env.sh
+
+If you see gcloud permission errors, run
+
+  gcloud auth login && gcloud auth configure-docker us-west1-docker.pkg.dev
+
+to set up gcloud Docker authentication.
 
 # Test a new Docker image
 Make your changes and run test_env.sh.
