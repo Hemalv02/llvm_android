@@ -285,6 +285,9 @@ def build_target(android_base: Path, clang_version: version.Version,
     env['LLVM_RELEASE_VERSION'] = clang_version.long_version()
     env['LLVM_NEXT'] = 'true'
 
+    # TODO(b/260809113): Remove this when the bug is fixed
+    env['BUILD_BROKEN_DISABLE_BAZEL'] = '1'
+
     if with_tidy:
         env['WITH_TIDY'] = '1'
 
