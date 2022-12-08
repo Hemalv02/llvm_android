@@ -25,7 +25,7 @@ from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional
 
-from android_version import get_svn_revision_number, set_llvm_next
+from android_version import get_svn_revision_number
 from merge_from_upstream import fetch_upstream, sha_to_revision
 import paths
 import source_manager
@@ -38,7 +38,7 @@ def parse_args():
     parser.add_argument('--sha', nargs='+', help='sha of patches to cherry pick')
     parser.add_argument(
         '--start-version', default='llvm',
-        help="""svn revision to start applying patches. 'llvm' and 'llvm-next' can also be used.""")
+        help="""svn revision to start applying patches. 'llvm' can also be used.""")
     parser.add_argument('--verify-merge', action='store_true',
                         help='check if patches can be applied cleanly')
     parser.add_argument('--create-cl', action='store_true', help='create a CL')
@@ -49,8 +49,7 @@ def parse_args():
 
 
 def parse_start_version(start_version: str) -> int:
-    if start_version in ['llvm', 'llvm-next']:
-        set_llvm_next(start_version == 'llvm-next')
+    if start_version == 'llvm']:
         return int(get_svn_revision_number())
     m = re.match(r'r?(\d+)', start_version)
     assert m, f'invalid start_version: {start_version}'

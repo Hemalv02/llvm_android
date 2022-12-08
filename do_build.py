@@ -842,17 +842,11 @@ def parse_args():
         help='Don\'t build toolchain components or platforms.  Choices: ' + \
             known_components_str)
 
-    llvm_revision_group = parser.add_mutually_exclusive_group()
-    llvm_revision_group.add_argument(
+    parser.add_argument(
         '--build-llvm-next',
         action='store_true',
         default=False,
-        help='Build next LLVM revision (android_version.py:svn_revision_next)')
-    llvm_revision_group.add_argument(
-        '--build-llvm-tot',
-        action='store_true',
-        default=False,
-        help='Build tot LLVM revision (android_version.py:svn_revision_tot)')
+        help='Build TOT LLVM revision (android_version.py:svn_revision_next)')
 
     parser.add_argument(
         '--windows-sdk',
@@ -901,14 +895,13 @@ def main():
     do_runtimes = not args.skip_runtimes
     do_package = not args.skip_package
     do_strip = not args.no_strip
-    do_strip_host_package = do_strip and not args.debug and not (args.build_llvm_next or args.build_llvm_tot)
+    do_strip_host_package = do_strip and not args.debug and not (args.build_llvm_next)
     build_lldb = 'lldb' not in args.no_build
     musl = args.musl
 
     host_configs = [configs.host_config(musl)]
 
     android_version.set_llvm_next(args.build_llvm_next)
-    android_version.set_llvm_tot(args.build_llvm_tot)
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
@@ -998,7 +991,7 @@ def main():
         if clang_bolt_fdata is None:
             stage2_tags.append('NO BOLT PROFILE')
         # Annotate the version string if this is an llvm-next build.
-        if args.build_llvm_next or args.build_llvm_tot:
+        if args.build_llvm_next:
             stage2_tags.append('ANDROID_LLVM_NEXT')
         stage2.build_tags = stage2_tags
 
@@ -1046,7 +1039,7 @@ def main():
             stage2,
             strip=do_strip_host_package,
             create_tar=args.create_tar,
-            llvm_next=args.build_llvm_next or args.build_llvm_tot)
+            llvm_next=args.build_llvm_next)
 
     if do_package and need_windows:
         package_toolchain(
