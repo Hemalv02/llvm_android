@@ -208,7 +208,7 @@ def main():
     patch_list.save_to_file()
     if args.verify_merge:
         print('verify merge...')
-        source_manager.setup_sources(source_dir=paths.LLVM_PATH)
+        source_manager.setup_sources()
     if args.create_cl:
         if not args.reason:
             print('error: --create-cl requires --reason')
