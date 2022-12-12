@@ -115,40 +115,53 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
         outfile.write('\n'.join(output))
 
 
-def setup_sources(source_dir, skip_apply_patches=False):
-    """Setup toolchain sources into source_dir.
+def setup_sources(llvm_rev=None, skip_apply_patches=False):
+    """Setup toolchain sources into paths.LLVM_PATH.
 
-    Copy toolchain/llvm-project into source_dir.
+    Copy toolchain/llvm-project into paths.LLVM_PATH or clone from upstream.
     Apply patches per the specification in
     toolchain/llvm_android/patches/PATCHES.json.  The function overwrites
-    source_dir only if necessary to avoid recompiles during incremental builds.
+    paths.LLVM_PATH only if necessary to avoid recompiles during incremental builds.
     """
 
-    copy_from = paths.TOOLCHAIN_LLVM_PATH
-
-    # Copy llvm source tree to a temporary directory.
+    source_dir = paths.LLVM_PATH
     tmp_source_dir = source_dir.parent / (source_dir.name + '.tmp')
     if os.path.exists(tmp_source_dir):
         shutil.rmtree(tmp_source_dir)
 
-    # mkdir parent of tmp_source_dir if necessary - so we can call 'cp' below.
+    # mkdir parent of tmp_source_dir if necessary.
     tmp_source_parent = os.path.dirname(tmp_source_dir)
     if not os.path.exists(tmp_source_parent):
         os.makedirs(tmp_source_parent)
 
-    # Use 'cp' instead of shutil.copytree.  The latter uses copystat and retains
-    # timestamps from the source.  We instead use rsync below to only update
-    # changed files into source_dir.  Using 'cp' will ensure all changed files
-    # get a newer timestamp than files in $source_dir.
-    # Note: Darwin builds don't copy symlinks with -r.  Use -R instead.
-    reflink = '--reflink=auto' if hosts.build_host().is_linux else '-c'
-    try:
-      cmd = ['cp', '-Rf', reflink, copy_from, tmp_source_dir]
-      subprocess.check_call(cmd)
-    except subprocess.CalledProcessError:
-      # Fallback to normal copy.
-      cmd = ['cp', '-Rf', copy_from, tmp_source_dir]
-      subprocess.check_call(cmd)
+    if not llvm_rev:
+        # Copy llvm source tree to a temporary directory.
+        copy_from = paths.TOOLCHAIN_LLVM_PATH
+        # Use 'cp' instead of shutil.copytree.  The latter uses copystat and retains
+        # timestamps from the source.  We instead use rsync below to only update
+        # changed files into source_dir.  Using 'cp' will ensure all changed files
+        # get a newer timestamp than files in $source_dir.
+        # Note: Darwin builds don't copy symlinks with -r.  Use -R instead.
+        reflink = '--reflink=auto' if hosts.build_host().is_linux else '-c'
+        try:
+          cmd = ['cp', '-Rf', reflink, copy_from, tmp_source_dir]
+          subprocess.check_call(cmd)
+        except subprocess.CalledProcessError:
+          # Fallback to normal copy.
+          cmd = ['cp', '-Rf', copy_from, tmp_source_dir]
+          subprocess.check_call(cmd)
+    else:
+        if not os.path.exists(tmp_source_dir):
+            os.makedirs(tmp_source_dir)
+        with utils.chdir_context(tmp_source_dir):
+            cmd = ['git', 'init']
+            subprocess.check_call(cmd)
+            cmd = ['git', 'remote', 'add', 'origin', 'https://github.com/llvm/llvm-project.git']
+            subprocess.check_call(cmd)
+            cmd = ['git', 'fetch', '--depth=1', 'origin', llvm_rev]
+            subprocess.check_call(cmd)
+            cmd = ['git', 'reset', '--hard', 'FETCH_HEAD']
+            subprocess.check_call(cmd)
 
     # patch source tree
     patch_dir = paths.SCRIPTS_DIR / 'patches'
