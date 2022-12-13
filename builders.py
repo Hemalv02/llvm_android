@@ -667,6 +667,13 @@ class LibOMPBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LIBOMP_ENABLE_SHARED'] = 'TRUE' if self.is_shared else 'FALSE'
         return defines
 
+    @property
+    def ldflags(self) -> List[str]:
+        # Workaround for undefined version symbols in libomp.
+        # https://reviews.llvm.org/D135402
+        # http://b/258377285
+        return ["-Wl,--undefined-version"]
+
     def install_config(self) -> None:
         # We need to install libomp manually.
         libname = 'libomp.' + ('so' if self.is_shared else 'a')
