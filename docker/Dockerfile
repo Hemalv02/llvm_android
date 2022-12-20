@@ -19,5 +19,8 @@ ENV TENSORFLOW_INSTALL=/usr/local/lib/python3.10/dist-packages/tensorflow
 # Install sccache
 RUN cargo install --root /usr/local --no-default-features --features=gcs sccache
 
+# Set up git user identity, as required by repo
+RUN printf '[user]\n  name = Builder\n  email = android-llvm+kokoro@google.com' > /etc/gitconfig
+
 # Clean up temp files
 RUN rm -rf /var/lib/apt/lists/* /root/.cargo
