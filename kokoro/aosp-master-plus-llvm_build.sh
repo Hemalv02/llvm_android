@@ -14,7 +14,7 @@ trap cleanup EXIT
 
 # Fetch aosp-plus-llvm-master repo
 (cd $TOP; \
-  repo init -u https://android.googlesource.com/platform/manifest -b master-plus-llvm --depth=1 < /dev/null; \
+  repo init -u https://android.googlesource.com/platform/manifest -b master --depth=1 < /dev/null; \
   repo sync -c -j8)
 
 mkdir "${DIST}"
