@@ -5,12 +5,13 @@ RUN apt-get update \
   build-essential \
   cargo \
   git \
+  libssl-dev \
+  pkg-config \
   python3 \
   python3-pip \
   repo \
   rsync \
-  libssl-dev \
-  pkg-config \
+  ssh \
 && rm -rf /var/lib/apt/lists/*
 
 # Install TensorFlow
