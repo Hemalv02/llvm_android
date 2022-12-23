@@ -348,8 +348,7 @@ def test_device(android_base: Path, clang_version: version.Version, device: List
 
 def extract_packaged_clang(package_path: Path) -> Path:
     # Find package to extract
-    tarballs: List[Path] = [f for f in package_path.iterdir()
-                            if f.name.endswith('.tar.bz2') and 'linux' in f.name]
+    tarballs: List[Path] = sorted(package_path.rglob('*-linux-*.tar.bz2'))
     if len(tarballs) != 1:
         raise RuntimeError(
             f'No clang packages (.tar.bz2) found in {package_path}')
