@@ -6,6 +6,8 @@ RUN apt-get update \
   cargo \
   git \
   libssl-dev \
+  # clang-3289846 uses host libncurses5
+  libncurses5 \
   pkg-config \
   python3 \
   python3-pip \
