@@ -21,9 +21,10 @@ import collections
 import dataclasses
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from android_version import get_svn_revision_number
 from merge_from_upstream import fetch_upstream, sha_to_revision
@@ -96,31 +97,25 @@ class PatchItem:
     def start_version(self) -> Optional[int]:
         return self.version_range.get('from', None)
 
+    @property
+    def sort_key(item: PatchItem) -> Tuple:
+        # Keep local patches at the end of the list, and don't change the
+        # relative order between two local patches.
+        if item.is_local_patch:
+            return (True,)
+
+        # Just before local patches, include patches with no end_version. Sort
+        # them by start_version.
+        if item.end_version is None:
+            return (False, math.inf, item.start_version)
+
+        # At the front of the list, sort upstream patches by ascending order of
+        # end_version. Don't reorder patches with the same end_version.
+        return (False, item.end_version)
+
     def __lt__(self, other: PatchItem) -> bool:
-        """ Used to sort patches in PatchList:
-            1. Sort upstream patches by their end_version in increasing order.
-            2. Keep local patches at the end of the list, and don't change the relative order
-               between two local patches.
-        """
-        if self.is_local_patch or other.is_local_patch:
-            if not self.is_local_patch:
-                return True
-            return False
-        if self.end_version is None:
-            if other.end_version is None:
-                # Both None end_versions, fall back to start_versions
-                if self.start_version is None:
-                    if other.start_version is None:
-                        # Both None start_versions, equal
-                        return False
-                    return True
-                if other.start_version is None:
-                    return False
-                return self.start_version < other.start_version
-            return False
-        if other.end_version is None:
-            return True
-        return self.end_version < other.end_version
+        """Used to sort patches in PatchList"""
+        return self.sort_key < other.sort_key
 
 
 class PatchList(list):
