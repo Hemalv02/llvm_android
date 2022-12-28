@@ -49,7 +49,7 @@ def parse_args():
 
 
 def parse_start_version(start_version: str) -> int:
-    if start_version == 'llvm']:
+    if start_version == 'llvm':
         return int(get_svn_revision_number())
     m = re.match(r'r?(\d+)', start_version)
     assert m, f'invalid start_version: {start_version}'
