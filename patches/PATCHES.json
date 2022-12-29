@@ -466,6 +466,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"[Driver] Remove Joined -X\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/7f8bd8ac0658b5e75049fd5c04fcf8c31352f397.patch",
+        "version_range": {
+            "from": 472596,
+            "until": 483835
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
@@ -643,21 +658,6 @@
         "version_range": {
             "from": 468909,
             "until": null
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert \"[Driver] Remove Joined -X\""
-        },
-        "platforms": [
-            "android",
-            "chromiumos"
-        ],
-        "rel_patch_path": "cherry/7f8bd8ac0658b5e75049fd5c04fcf8c31352f397.patch",
-        "version_range": {
-            "from": 472596,
-            "until": 483835
         }
     }
 ]
