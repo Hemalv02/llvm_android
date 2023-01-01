@@ -15,6 +15,7 @@ RUN apt-get update \
   rsync \
   ssh \
   unzip \
+  zip \
 && rm -rf /var/lib/apt/lists/*
 
 # Install TensorFlow
