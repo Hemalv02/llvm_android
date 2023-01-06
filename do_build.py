@@ -129,6 +129,14 @@ def build_llvm_for_windows(enable_assertions: bool,
 
     return (win_builder, lldb_bins)
 
+def add_header_links(stage: str, host_config: configs.Config):
+    # b/251003274 We also need to copy __config_site from a triple-specific
+    # location until we have a copy for each target separately.
+    llvm_triple = host_config.llvm_triple
+    dst = paths.OUT_DIR / f'{stage}-install' / 'include' / 'c++' / 'v1' / '__config_site'
+    src = f'../../{llvm_triple}/c++/v1/__config_site'
+    dst.unlink(missing_ok=True)
+    dst.symlink_to(src)
 
 def add_lib_links(stage: str, host_config: configs.Config):
     # FIXME: b/245395722. When all dependent scripts and .bp rules are changed
@@ -164,13 +172,6 @@ def add_lib_links(stage: str, host_config: configs.Config):
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
 
-    # b/251003274 We also need to copy __config_site from a triple-specific
-    # location until we have a copy for each target separately.
-    dst = paths.OUT_DIR / f'{stage}-install' / 'include' / 'c++' / 'v1' / '__config_site'
-    src = f'../../{llvm_triple}/c++/v1/__config_site'
-    dst.unlink(missing_ok=True)
-    dst.symlink_to(src)
-
 def build_runtimes(build_lldb_server: bool, stage: str, host_config: configs.Config):
     builders.DeviceSysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
@@ -182,6 +183,7 @@ def build_runtimes(build_lldb_server: bool, stage: str, host_config: configs.Con
     if hosts.build_host().is_linux:
         builders.CompilerRTHostI386Builder().build()
         add_lib_links(stage, host_config)
+        add_header_links(stage, host_config)
         builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
     if build_lldb_server:
@@ -939,6 +941,7 @@ def main():
     stage1.build_android_targets = args.debug or instrumented
     stage1.use_sccache = args.sccache
     stage1.build()
+    add_header_links('stage1', host_config=configs.host_config(musl))
     # stage1 test is off by default, turned on by --run-tests-stage1,
     # and suppressed by --skip-tests.
     if not args.skip_tests and args.run_tests_stage1:

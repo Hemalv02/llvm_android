@@ -507,9 +507,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
             'https://android.googlesource.com/toolchain/llvm-project')
         defines['BUG_REPORT_URL'] = 'https://github.com/android-ndk/ndk/issues'
 
-        # http://b/111885871 - Disable building xray because of MacOS issues.
-        defines['COMPILER_RT_BUILD_XRAY'] = 'OFF'
-
         # To prevent cmake from checking libstdcxx version.
         defines['LLVM_ENABLE_LIBCXX'] = 'ON'
 
