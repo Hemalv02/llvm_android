@@ -130,14 +130,15 @@ def build_llvm_for_windows(enable_assertions: bool,
     return (win_builder, lldb_bins)
 
 
-def add_lib_links(stage: str):
+def add_lib_links(stage: str, host_config: configs.Config):
     # FIXME: b/245395722. When all dependent scripts and .bp rules are changed
     # to use the new lib names and location. These lib links won't be necessary.
     # Libraries in ./stage2-install/lib/clang/*/lib/linux/*-x86_64.* are now
     # built into ./stage2-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*
     # Add symbolic links from linux/*-x86_64.* to ../x86_64-unknown-linux-gnu/*.*
     # b/245614328, stage1-install/lib has the same issue.
-    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/clang/*/lib/x86_64-unknown-linux-gnu/*.*'
+    llvm_triple = host_config.llvm_triple
+    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/clang/*/lib/{llvm_triple}/*.*'
     for file in glob.glob(srcglob):
         dirname = os.path.dirname(file)
         filename = os.path.basename(file)
@@ -151,27 +152,26 @@ def add_lib_links(stage: str):
         dst_dir = Path(dirname) / '..' / 'linux'
         dst_dir.mkdir(parents=True, exist_ok=True)
         dst = dst_dir / (stem + '-x86_64' + suffix)
-        src = f'../x86_64-unknown-linux-gnu/{filename}'
+        src = f'../{llvm_triple}/{filename}'
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
     # Add symbolic links from lib/* to lib/x86_64-unknown-linux-gnu/*
-    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/x86_64-unknown-linux-gnu/*'
+    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/{llvm_triple}/*'
     for file in glob.glob(srcglob):
         filename = os.path.basename(file)
-        src = f'x86_64-unknown-linux-gnu/{filename}'
+        src = f'{llvm_triple}/{filename}'
         dst = paths.OUT_DIR / f'{stage}-install/lib' / filename
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
 
     # b/251003274 We also need to copy __config_site from a triple-specific
     # location until we have a copy for each target separately.
-    dst = paths.OUT_DIR / 'stage2-install' / 'include' / 'c++' / 'v1' / '__config_site'
-    src = '../../x86_64-unknown-linux-gnu/c++/v1/__config_site'
+    dst = paths.OUT_DIR / f'{stage}-install' / 'include' / 'c++' / 'v1' / '__config_site'
+    src = f'../../{llvm_triple}/c++/v1/__config_site'
     dst.unlink(missing_ok=True)
     dst.symlink_to(src)
 
-
-def build_runtimes(build_lldb_server: bool):
+def build_runtimes(build_lldb_server: bool, stage: str, host_config: configs.Config):
     builders.DeviceSysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
     builders.LibUnwindBuilder().build()
@@ -181,7 +181,7 @@ def build_runtimes(build_lldb_server: bool):
     # Build musl runtimes and 32-bit glibc for Linux
     if hosts.build_host().is_linux:
         builders.CompilerRTHostI386Builder().build()
-        add_lib_links('stage2')
+        add_lib_links(stage, host_config)
         builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
     if build_lldb_server:
@@ -1017,7 +1017,7 @@ def main():
 
         Builder.output_toolchain = stage2.installed_toolchain
         if hosts.build_host().is_linux and do_runtimes:
-            build_runtimes(build_lldb_server=build_lldb)
+            build_runtimes(build_lldb_server=build_lldb, stage='stage2', host_config=configs.host_config(musl))
 
     if need_windows:
         # Host sysroots are currently setup only for Windows
