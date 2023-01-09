@@ -761,10 +761,12 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['RUNTIMES_CMAKE_ARGS'] = ';'.join(sorted(runtimes_cmake_args))
 
         if self._config.target_os.is_linux:
+            triple = self._config.llvm_triple
+            defines['LLVM_BUILTIN_TARGETS'] = triple
+
             # We need to explicitly propagate some CMake flags to the runtimes
             # CMake invocation that builds compiler-rt, libcxx, and other
             # runtimes for the host.
-            triple = self._config.llvm_triple
             runtimes_passthrough_args = [
                     'CMAKE_C_FLAGS',
                     'CMAKE_CXX_FLAGS',
