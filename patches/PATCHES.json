@@ -142,6 +142,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [CodeGen] Don't zero callee-save registers with zero-call-used-regs (PR57692)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b4309800e9dc53a84222a6b57c8615d4a3084988.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 473999
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [libunwind] Handle G in personality string"
         },
         "platforms": [
@@ -461,6 +475,20 @@
         "version_range": {
             "from": 475365,
             "until": 479652
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [X86] Don't zero out %eax if both %al and %ah are used"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/14d4cddc5506fb0fd3c4ac556b4edd970aa151eb.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 483437
         }
     },
     {
