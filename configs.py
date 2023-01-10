@@ -167,6 +167,10 @@ class DarwinConfig(_BaseConfig):
         cflags.append('-Werror=unguarded-availability')
         return cflags
 
+    @property
+    def llvm_triple(self) -> str:
+        # x86_64-apple-darwin is another choice
+        return 'arm64-apple-darwin'
 
 class _GccConfig(_BaseConfig):  # pylint: disable=abstract-method
     """Base config to use gcc libs."""
