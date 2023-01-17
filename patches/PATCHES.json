@@ -212,6 +212,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Foward declare ParsedTargetAttr as a struct."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6dc5f3ec89748f2aa7cface6698bdcd27c8b329e.patch",
+        "version_range": {
+            "from": 475365,
+            "until": 475493
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[clang][auto-init] Deprecate -enable-trivial-auto-var-init-zero-knowing-it-will-be-removed-from-clang"
         },
         "platforms": [
