@@ -269,6 +269,51 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"[mlir][sparse] Restore case coverage warning fix\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/0df37528ebe495c2974e755be464722d0a8bfda1.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 475870
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[compiler-rt][test] Heed COMPILER_RT_DEBUG when compiling unittests\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/68f4ceaf9b4e68c111e3cccc3cc09ea7783fdf0d.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 475871
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[flang] Add -fpass-plugin option to Flang frontend\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/4d1460c77d0095fb5eb974b42d96ca4f4567a7cd.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 475884
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [AArch64][KCFI] Define Size for KCFI_CHECK"
         },
         "platforms": [
@@ -278,6 +323,21 @@
         "version_range": {
             "from": 475365,
             "until": 475913
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"Revert \"[clang][Lex] Fix a crash on malformed string literals\"\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/36f77e20d9aaaf93a9b00ec1bd6b7e3ceb4918b9.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 475952
         }
     },
     {
@@ -325,6 +385,51 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"[DSE] Eliminate noop store even through has clobbering between LoadI and StoreI\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/ae5733346f0cc86a82c19fcdc50ce8232fa4777a-modified.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 476004
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[lld/mac] Port typo correction for undefined symbols from ELF port\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/317b5582b813c51d1fb6723fd44b227b7f274bc7.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 476119
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[gn build] Don't set LLVM_UNREACHABLE_OPTIMIZE when llvm_enable_assertions\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/b8e71766c835603b6353827dc54939e1740f4867.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 476343
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [llvm] [cmake] Support finding both static and shared zstd via FindZstd"
         },
         "platforms": [
@@ -334,6 +439,21 @@
         "version_range": {
             "from": 475365,
             "until": 476483
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[AArch64] Add support for 128-bit non temporal loads.\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/1e723b7ab30360fcf70c3a66dadcc4d5bbb2ace9.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 476506
         }
     },
     {
@@ -451,6 +571,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "[clang][driver] Remove dynamic gcc-toolset/devtoolset logic"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/4a5184f4c357eeafcced3371cd8539fa0ac9f24d.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 477879
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISCV] Inline scalar ceil/floor/trunc/rint/round/roundeven."
         },
         "platforms": [
@@ -489,6 +624,36 @@
         "version_range": {
             "from": 475365,
             "until": 479652
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"Reapply: Add an error message to the default SIGPIPE handler\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/4787efa38066adb51e2c049499d25b3610c0877b.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 480208
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[Orc][examples] Temporarily re-enable tests for the C API and keep an eye on sanitizer bots"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/bb7b937fad4093493ff862f2207cc1aef73adb84.patch",
+        "version_range": {
+            "from": 475826,
+            "until": 481022
         }
     },
     {
