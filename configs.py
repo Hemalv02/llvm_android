@@ -576,8 +576,6 @@ class AndroidConfig(_BaseConfig):
             # Set API level for platform to to 29 since these runtimes can be
             # used for apexes targeting that API level.
             return 29
-        if self.target_arch in [hosts.Arch.ARM, hosts.Arch.I386]:
-            return 19
         return 21
 
     def __str__(self) -> str:
