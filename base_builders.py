@@ -384,13 +384,10 @@ class CMakeBuilder(Builder):
 
             'CMAKE_ADDR2LINE': str(self.toolchain.addr2line),
             'CMAKE_AR': str(self.toolchain.ar),
-            'CMAKE_LIPO': str(self.toolchain.lipo),
             'CMAKE_NM': str(self.toolchain.nm),
             'CMAKE_OBJCOPY': str(self.toolchain.objcopy),
             'CMAKE_OBJDUMP': str(self.toolchain.objdump),
             'CMAKE_RANLIB': str(self.toolchain.ranlib),
-            'CMAKE_RC_COMPILER': str(self.toolchain.rc),
-            'CMAKE_RC_FLAGS': f'-I {paths.MINGW_ROOT}/include/',
             'CMAKE_READELF': str(self.toolchain.readelf),
             'CMAKE_STRIP': str(self.toolchain.strip),
             'CMAKE_MT': str(self.toolchain.mt),
@@ -430,6 +427,10 @@ class CMakeBuilder(Builder):
             defines['CMAKE_OSX_DEPLOYMENT_TARGET'] = constants.MAC_MIN_VERSION
             # Build universal binaries.
             defines['CMAKE_OSX_ARCHITECTURES'] = 'arm64;x86_64'
+            defines['CMAKE_LIPO'] = str(self.toolchain.lipo)
+        if self._config.target_os.is_windows:
+            defines['CMAKE_RC_COMPILER'] = str(self.toolchain.rc)
+            defines['CMAKE_RC_FLAGS'] = f'-I {paths.MINGW_ROOT}/include/'
         if self._config.is_cross_compiling:
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
@@ -499,7 +500,6 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
         # https://github.com/android-ndk/ndk/issues/574 - Don't depend on libtinfo.
         defines['LLVM_ENABLE_TERMINFO'] = 'OFF'
         defines['LLVM_ENABLE_THREADS'] = 'ON'
-        defines['LLVM_USE_NEWPM'] = 'ON'
         if patch_level := android_version.get_patch_level():
             defines['LLVM_VERSION_PATCH'] = patch_level
         defines['LLVM_VERSION_SUFFIX'] = ""
