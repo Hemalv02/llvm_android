@@ -772,6 +772,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert [clang] Improve diagnostics for expansion length mismatch"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch-v3.patch",
+        "version_range": {
+            "from": 475366,
+            "until": 486420
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Revert [clang] fix missing initialization of original number of expansions"
         },
         "platforms": [
@@ -781,6 +795,20 @@
         "version_range": {
             "from": 470911,
             "until": 475366
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert [clang] fix missing initialization of original number of expansions"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-fix-missing-initialization-of-original-number-of-expansions-v3.patch",
+        "version_range": {
+            "from": 475366,
+            "until": 486420
         }
     },
     {
@@ -864,6 +892,20 @@
         "rel_patch_path": "Enable-targeting-riscv64-linux-android.patch",
         "version_range": {
             "from": 468909,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert [clang][Headers] Do not define varargs macros for __need___va_list"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-clang-Headers-Do-not-define-varargs-macros-for-__need___va_list.patch",
+        "version_range": {
+            "from": 479185,
             "until": null
         }
     }
