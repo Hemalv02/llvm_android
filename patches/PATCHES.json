@@ -894,19 +894,5 @@
             "from": 468909,
             "until": null
         }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert [clang][Headers] Do not define varargs macros for __need___va_list"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-clang-Headers-Do-not-define-varargs-macros-for-__need___va_list.patch",
-        "version_range": {
-            "from": 479185,
-            "until": null
-        }
     }
 ]
