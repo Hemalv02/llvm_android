@@ -566,8 +566,8 @@ class LLVMBuilder(LLVMBaseBuilder):
     toolchain_name: str
     use_sccache: bool = False
     libzstd: Optional[LibInfo] = None
-    # not a singleton because we'd build the 32-bit runtime in the future.
-    runtimes_triples: Set[str] = set()
+    runtimes_triples: List[str] = list()
+    build_32bit_runtimes: bool = False
 
     # lldb options.
     build_lldb: bool = True
@@ -758,42 +758,76 @@ class LLVMBuilder(LLVMBaseBuilder):
             defines['RUNTIMES_CMAKE_ARGS'] = ';'.join(sorted(runtimes_cmake_args))
 
         if self._config.target_os.is_linux:
-            triple = self._config.llvm_triple
-            defines['LLVM_BUILTIN_TARGETS'] = triple
+            runtime_configs = [self._config]
+            if self.build_32bit_runtimes:
+                if self._config.is_musl:
+                    runtime_configs.append(configs.LinuxMuslHostConfig(hosts.Arch.I386))
+                else:
+                    runtime_configs.append(configs.LinuxConfig(is_32_bit=True))
+
+            self.runtimes_triples = list(_config.llvm_triple for _config in runtime_configs)
+            triples = ';'.join(self.runtimes_triples)
+            defines['LLVM_BUILTIN_TARGETS'] = triples
+            defines['LLVM_RUNTIME_TARGETS'] = triples
+
+            # With per-target runtime dirs, clang no longer links the builtins
+            # for the glibc triple when targetting musl.  In the glibc
+            # configuration, build the musl builtins as well.
+            if self.build_32bit_runtimes and not self._config.is_musl:
+                defines['LLVM_BUILTIN_TARGETS'] = triples + ';x86_64-unknown-linux-musl;i686-unknown-linux-musl'
 
             # We need to explicitly propagate some CMake flags to the runtimes
             # CMake invocation that builds compiler-rt, libcxx, and other
             # runtimes for the host.
             runtimes_passthrough_args = [
-                    'CMAKE_C_FLAGS',
-                    'CMAKE_CXX_FLAGS',
-                    'CMAKE_EXE_LINKER_FLAGS',
-                    'CMAKE_MODULE_LINKER_FLAGS',
                     'CMAKE_POSITION_INDEPENDENT_CODE',
-                    'CMAKE_SHARED_LINKER_FLAGS',
                     'LLVM_ENABLE_LIBCXX',
             ]
 
-            self.runtimes_triples.add(triple)
-            defines['LLVM_RUNTIME_TARGETS'] = triple
-            for arg in runtimes_passthrough_args:
-                defines[f'RUNTIMES_{triple}_{arg}'] = defines[arg]
+            for _config in runtime_configs:
+                triple = _config.llvm_triple
+                cflags = _config.cflags + self.cflags
+                cxxflags = _config.cxxflags + self.cxxflags
+                ldflags = _config.ldflags + self.ldflags
 
-            # Don't depend on the host libatomic library.
-            defines[f'RUNTIMES_{triple}_LIBCXX_HAS_ATOMIC_LIB'] = 'NO'
+                if _config.sysroot:
+                    cflags.append(f'--sysroot={_config.sysroot}')
 
-            # Make libc++.so a symlink to libc++.so.x instead of a linker script that
-            # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-            # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
-            defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
-            defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+                cflags_str = ' '.join(cflags)
+                cxxflags_str = ' '.join(cxxflags)
+                ldflags_str = ' '.join(ldflags)
 
-            # Set LIBCXX variables for compiler and linker flags for tests.
-            defines[f'RUNTIMES_{triple}_LIBCXX_TEST_COMPILER_FLAGS'] = defines['CMAKE_CXX_FLAGS']
-            defines[f'RUNTIMES_{triple}_LIBCXX_TEST_LINKER_FLAGS'] = defines['CMAKE_EXE_LINKER_FLAGS']
+                if _config.sysroot:
+                    defines[f'RUNTIMES_{triple}_CMAKE_SYSROOT'] = _config.sysroot
+                defines[f'RUNTIMES_{triple}_CMAKE_C_FLAGS'] = cflags_str
+                defines[f'RUNTIMES_{triple}_CMAKE_CXX_FLAGS'] = cxxflags_str
+                defines[f'RUNTIMES_{triple}_CMAKE_EXE_LINKER_FLAGS'] = ldflags_str
+                defines[f'RUNTIMES_{triple}_CMAKE_SHARED_LINKER_FLAGS'] = ldflags_str
+                defines[f'RUNTIMES_{triple}_CMAKE_MODULE_LINKER_FLAGS'] = ldflags_str
 
-            # Don't let libclang_rt.*_cxx.a depend on libc++abi.
-            defines[f'RUNTIMES_{triple}_SANITIZER_ALLOW_CXXABI'] = 'OFF'
+                # clang generates call to builtin functions when building
+                # compiler-rt for musl.  Allow use of the builtins library.
+                if _config.is_musl and _config.target_arch == hosts.Arch.I386:
+                    defines[f'RUNTIMES_{triple}_COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
+
+                for arg in runtimes_passthrough_args:
+                    defines[f'RUNTIMES_{triple}_{arg}'] = defines[arg]
+
+                # Don't depend on the host libatomic library.
+                defines[f'RUNTIMES_{triple}_LIBCXX_HAS_ATOMIC_LIB'] = 'NO'
+
+                # Make libc++.so a symlink to libc++.so.x instead of a linker script that
+                # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
+                # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+                defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
+                defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
+
+                # Set LIBCXX variables for compiler and linker flags for tests.
+                defines[f'RUNTIMES_{triple}_LIBCXX_TEST_COMPILER_FLAGS'] = cxxflags_str
+                defines[f'RUNTIMES_{triple}_LIBCXX_TEST_LINKER_FLAGS'] = ldflags_str
+
+                # Don't let libclang_rt.*_cxx.a depend on libc++abi.
+                defines[f'RUNTIMES_{triple}_SANITIZER_ALLOW_CXXABI'] = 'OFF'
 
         if self.enable_mlgo:
             defines['TENSORFLOW_AOT_PATH'] = os.getenv('TENSORFLOW_INSTALL')

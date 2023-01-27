@@ -146,6 +146,7 @@ def add_lib_links(stage: str, host_config: configs.Config):
     # Add symbolic links from linux/*-x86_64.* to ../x86_64-unknown-linux-gnu/*.*
     # b/245614328, stage1-install/lib has the same issue.
     llvm_triple = host_config.llvm_triple
+    arch = llvm_triple.split('-')[0]
     srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/clang/*/lib/{llvm_triple}/*.*'
     for file in glob.glob(srcglob):
         dirname = os.path.dirname(file)
@@ -157,22 +158,30 @@ def add_lib_links(stage: str, host_config: configs.Config):
             suffix1 = Path(stem).suffix
             stem = Path(stem).stem
             suffix = suffix1 + suffix
+
         dst_dir = Path(dirname) / '..' / 'linux'
         dst_dir.mkdir(parents=True, exist_ok=True)
-        dst = dst_dir / (stem + '-x86_64' + suffix)
+        dst = dst_dir / (stem + '-' + arch + suffix)
         src = f'../{llvm_triple}/{filename}'
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
-    # Add symbolic links from lib/* to lib/x86_64-unknown-linux-gnu/*
-    srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/{llvm_triple}/*'
-    for file in glob.glob(srcglob):
-        filename = os.path.basename(file)
-        src = f'{llvm_triple}/{filename}'
-        dst = paths.OUT_DIR / f'{stage}-install/lib' / filename
-        dst.unlink(missing_ok=True)
-        dst.symlink_to(src)
 
-def build_runtimes(build_lldb_server: bool, stage: str, host_config: configs.Config):
+    if not host_config.is_32_bit:
+        # Add symbolic links from lib/* to lib/x86_64-unknown-linux-gnu/*.  These
+        # symlinks are needed for 64-bit and not 32-bit
+        srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/{llvm_triple}/*'
+        for file in glob.glob(srcglob):
+            filename = os.path.basename(file)
+            src = f'{llvm_triple}/{filename}'
+            dst = paths.OUT_DIR / f'{stage}-install/lib' / filename
+            dst.unlink(missing_ok=True)
+            dst.symlink_to(src)
+
+
+def build_runtimes(build_lldb_server: bool,
+                   stage: str,
+                   host_config: configs.Config,
+                   host_32bit_config: configs.Config):
     builders.DeviceSysrootsBuilder().build()
     builders.BuiltinsBuilder().build()
     builders.LibUnwindBuilder().build()
@@ -181,8 +190,8 @@ def build_runtimes(build_lldb_server: bool, stage: str, host_config: configs.Con
     builders.TsanBuilder().build()
     # Build musl runtimes and 32-bit glibc for Linux
     if hosts.build_host().is_linux:
-        builders.CompilerRTHostI386Builder().build()
         add_lib_links(stage, host_config)
+        add_lib_links(stage, host_32bit_config)
         add_header_links(stage, host_config)
         builders.MuslHostRuntimeBuilder().build()
     builders.LibOMPBuilder().build()
@@ -244,7 +253,10 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
 
 # Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
 # is just one library, whose SONAME entry matches the actual name.
-def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Version) -> None:
+def normalize_llvm_host_libs(install_dir: Path,
+                             host: hosts.Host,
+                             version: Version,
+                             host_config: configs.Config) -> None:
     if host.is_linux:
         libs = {'libLLVM': 'libLLVM-{version}.so',
                 'libclang': 'libclang.so.{version}',
@@ -265,12 +277,15 @@ def normalize_llvm_host_libs(install_dir: Path, host: hosts.Host, version: Versi
         else:
             return '1.0', '1'
 
+    no_llvm_libs = host_config.is_32_bit
     libdir = os.path.join(install_dir, 'lib')
     for libname, libformat in libs.items():
         if libformat.startswith('libc++'):
-            libprefix = os.path.join(libdir, 'x86_64-unknown-linux-gnu')
+            libprefix = os.path.join(libdir, host_config.llvm_triple)
             if not os.path.exists(libprefix):
                 libprefix = libdir
+        elif no_llvm_libs:
+            continue
         else:
             libprefix = libdir
 
@@ -412,7 +427,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                       strip=True, create_tar=True, llvm_next=False):
     dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     build_dir = toolchain_builder.install_dir
-    host = toolchain_builder.config_list[0].target_os
+    host_config = toolchain_builder.config_list[0]
+    host = host_config.target_os
     build_name = toolchain_builder.build_name
     version = toolchain_builder.installed_toolchain.version
 
@@ -567,7 +583,11 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         install_wrappers(install_dir, llvm_next)
 
     if not host.is_windows:
-        normalize_llvm_host_libs(install_dir, host, version)
+        normalize_llvm_host_libs(install_dir, host, version, host_config)
+        if host.is_linux:
+            # We also need to normalize the 32-bit libc++, libc++abi
+            normalize_llvm_host_libs(install_dir, host, version,
+                                     configs.host_32bit_config(host_config.is_musl))
 
     # Check necessary lib files exist.
     for necessary_lib_file in necessary_lib_files:
@@ -974,6 +994,7 @@ def main():
         stage2.bolt_optimize = args.bolt
         stage2.bolt_instrument = args.bolt_instrument
         stage2.profdata_file = profdata if profdata else None
+        stage2.build_32bit_runtimes = hosts.build_host().is_linux
 
         libzstd_builder = builders.ZstdBuilder(host_configs)
         libzstd_builder.build()
@@ -1021,7 +1042,10 @@ def main():
 
         Builder.output_toolchain = stage2.installed_toolchain
         if hosts.build_host().is_linux and do_runtimes:
-            build_runtimes(build_lldb_server=build_lldb, stage='stage2', host_config=configs.host_config(musl))
+            build_runtimes(build_lldb_server=build_lldb,
+                           stage='stage2',
+                           host_config=configs.host_config(musl),
+                           host_32bit_config=configs.host_32bit_config(musl))
 
     if need_windows:
         # Host sysroots are currently setup only for Windows

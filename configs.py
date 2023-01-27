@@ -215,10 +215,25 @@ class LinuxConfig(_GccConfig):
     gcc_triple: str = 'x86_64-linux'
     gcc_ver: str = '4.8.3'
     is_cross_compiling: bool = False
+    is_musl: bool = False
 
     @property
     def llvm_triple(self) -> str:
-        return 'x86_64-unknown-linux-gnu'
+        return 'i386-unknown-linux-gnu' if self.is_32_bit else 'x86_64-unknown-linux-gnu'
+
+    @property
+    def cflagsS(self) -> List[str]:
+        cflags = super().cflags
+        if self.is_32_bit and not self.is_musl:
+            # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
+            # Add __STDC_FORMAT_MACROS so their definition gets included from
+            # inttypes.h.  This explicit flag is only needed here.  64-bit host runtimes
+            # are built in stage1/stage2 and get it from the LLVM CMake configuration.
+            # These are defined unconditionaly in bionic and newer glibc
+            # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
+            cflags.append('-D__STDC_FORMAT_MACROS')
+            cflags.append('-march=i686')
+
 
     @property
     def ldflags(self) -> List[str]:
@@ -232,6 +247,7 @@ class LinuxMuslConfig(LinuxConfig):
     target_os: hosts.Host = hosts.Host.Linux
     target_arch: hosts.Arch
     is_cross_compiling: bool
+    is_musl: bool = True
 
     def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64, is_cross_compiling: bool = True):
         self.triple = arch.llvm_arch + '-unknown-linux-musl'
@@ -239,6 +255,10 @@ class LinuxMuslConfig(LinuxConfig):
             self.triple += 'eabihf'
         self.target_arch = arch
         self.is_cross_compiling = is_cross_compiling
+
+    @property
+    def is_32_bit(self):
+        return self.target_arch in [hosts.Arch.ARM, hosts.Arch.I386]
 
     @property
     def llvm_triple(self) -> str:
@@ -323,14 +343,15 @@ class LinuxMuslConfig(LinuxConfig):
 
 class LinuxMuslHostConfig(LinuxMuslConfig):
     """Config for Musl as the host"""
-    def __init__(self):
-        super().__init__(is_cross_compiling=False)
+    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64):
+        super().__init__(arch=arch, is_cross_compiling=False)
 
     @property
     def env(self) -> Dict[str, str]:
         env = super().env
         env['LD_LIBRARY_PATH'] = str(self.sysroot / 'lib')
         return env
+
 
 class MinGWConfig(_GccConfig):
     """Configuration for MinGW targets."""
@@ -619,6 +640,16 @@ def host_config(musl: bool=False) -> Config:
         hosts.Host.Darwin: DarwinConfig,
         hosts.Host.Windows: MinGWConfig
     }[hosts.build_host()]()
+
+def host_32bit_config(musl: bool=False) -> Config:
+    if hosts.build_host().is_darwin:
+        raise RuntimeError("host_32bit config only needed for Windows or Linux")
+    if musl:
+        return LinuxMuslHostConfig(hosts.Arch.I386)
+    if hosts.build_host().is_windows:
+        return MinGWConfig(is_32_bit=True)
+    else:
+        return LinuxConfig(is_32_bit=True)
 
 
 def android_configs(platform: bool=True,
