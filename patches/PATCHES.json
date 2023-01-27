@@ -688,6 +688,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[C2x] reject type definitions in offsetof\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/596f76a799c933927eec4d8ac8a83c44efff9854.patch",
+        "version_range": {
+            "from": 486419,
+            "until": 486533
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
