@@ -82,7 +82,8 @@ def extract_profiles() -> Profile:
 def build_llvm_for_windows(enable_assertions: bool,
                            build_name: str,
                            build_lldb: bool,
-                           swig_builder: Optional[builders.SwigBuilder]):
+                           swig_builder: Optional[builders.SwigBuilder],
+                           full_build: bool):
     config_list: List[configs.Config]
     if win_sdk.is_enabled():
         config_list = [configs.MSVCConfig()]
@@ -95,37 +96,45 @@ def build_llvm_for_windows(enable_assertions: bool,
 
     if not win_sdk.is_enabled():
         # Build and install libcxxabi and libcxx and use them to build Clang.
-        libcxx_builder = builders.LibCxxBuilder(config_list)
+        libcxx_builder = builders.WinLibCxxBuilder(config_list)
         libcxx_builder.enable_assertions = enable_assertions
         libcxx_builder.build()
 
-    libzstd_builder = builders.ZstdBuilder(config_list)
-    libzstd_builder.build()
-    win_builder.libzstd = libzstd_builder
+        # Also build a 32-bit Windows libc++ for use with the platform
+        # adb/fastboot.
+        libcxx32_builder = builders.WinLibCxxBuilder([configs.MinGWConfig(is_32_bit=True)])
+        libcxx32_builder.enable_assertions = enable_assertions
+        libcxx32_builder.build()
 
     lldb_bins: Set[str] = set()
-    libxml2_builder = builders.LibXml2Builder(config_list)
-    libxml2_builder.build()
-    win_builder.libxml2 = libxml2_builder
-    for lib in libxml2_builder.install_libraries:
-        lldb_bins.add(lib.name)
 
-    win_builder.build_lldb = build_lldb
-    if build_lldb:
-        assert swig_builder is not None
-        win_builder.libedit = None
-        win_builder.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
+    if full_build:
+        libzstd_builder = builders.ZstdBuilder(config_list)
+        libzstd_builder.build()
+        win_builder.libzstd = libzstd_builder
 
-        xz_builder = builders.XzBuilder(config_list)
-        xz_builder.build()
-        win_builder.liblzma = xz_builder
+        libxml2_builder = builders.LibXml2Builder(config_list)
+        libxml2_builder.build()
+        win_builder.libxml2 = libxml2_builder
+        for lib in libxml2_builder.install_libraries:
+            lldb_bins.add(lib.name)
 
-        lldb_bins.add('liblldb.dll')
+        win_builder.build_lldb = build_lldb
+        if build_lldb:
+            assert swig_builder is not None
+            win_builder.libedit = None
+            win_builder.swig_executable = swig_builder.install_dir / 'bin' / 'swig'
 
-    win_builder.build_name = build_name
-    win_builder.svn_revision = android_version.get_svn_revision()
-    win_builder.enable_assertions = enable_assertions
-    win_builder.build()
+            xz_builder = builders.XzBuilder(config_list)
+            xz_builder.build()
+            win_builder.liblzma = xz_builder
+
+            lldb_bins.add('liblldb.dll')
+
+        win_builder.build_name = build_name
+        win_builder.svn_revision = android_version.get_svn_revision()
+        win_builder.enable_assertions = enable_assertions
+        win_builder.build()
 
     return (win_builder, lldb_bins)
 
@@ -422,6 +431,11 @@ def bolt_instrument(toolchain_builder: LLVMBuilder):
     os.makedirs(clang_afdo_path, exist_ok=True)
 
 
+def verify_file_exists(lib_dir: Path, name: str):
+    if not (lib_dir / name).is_file():
+        raise RuntimeError(f'Did not find {name} in {lib_dir}')
+
+
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
                       strip=True, create_tar=True, llvm_next=False):
@@ -591,16 +605,20 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Check necessary lib files exist.
     for necessary_lib_file in necessary_lib_files:
-        if not host.is_windows and necessary_lib_file.startswith('libc++'):
-            libprefix = lib_dir / 'x86_64-unknown-linux-gnu'
-            if not os.path.exists(libprefix):
-                libprefix = lib_dir / 'x86_64-unknown-linux-musl'
-            if not os.path.exists(libprefix):
-                libprefix = lib_dir
+        if necessary_lib_file.startswith('libc++') and (host.is_linux or host.is_windows):
+            verify_file_exists(lib_dir / 'i686-w64-windows-gnu', necessary_lib_file)
+            verify_file_exists(lib_dir / 'x86_64-w64-windows-gnu', necessary_lib_file)
+            if host.is_linux:
+                if host_config.is_musl:
+                    verify_file_exists(lib_dir, necessary_lib_file)
+                    verify_file_exists(lib_dir / 'i686-unknown-linux-musl', necessary_lib_file)
+                    verify_file_exists(lib_dir / 'x86_64-unknown-linux-musl', necessary_lib_file)
+                else:
+                    verify_file_exists(lib_dir, necessary_lib_file)
+                    verify_file_exists(lib_dir / 'i386-unknown-linux-gnu', necessary_lib_file)
+                    verify_file_exists(lib_dir / 'x86_64-unknown-linux-gnu', necessary_lib_file)
         else:
-            libprefix = lib_dir
-        if not (libprefix / necessary_lib_file).is_file():
-            raise RuntimeError(f'Did not find {necessary_lib_file} in {lib_dir}')
+            verify_file_exists(lib_dir, necessary_lib_file)
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
     libc_include_path = paths.ANDROID_DIR / 'bionic' / 'libc' / 'include'
@@ -944,6 +962,7 @@ def main():
     android_version.set_llvm_next(args.build_llvm_next)
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
+    need_windows_libcxx = hosts.build_host().is_linux
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
 
     logging.basicConfig(level=logging.DEBUG)
@@ -1055,7 +1074,7 @@ def main():
                            host_config=configs.host_config(musl),
                            host_32bit_config=configs.host_32bit_config(musl))
 
-    if need_windows:
+    if need_windows_libcxx:
         # Host sysroots are currently setup only for Windows
         builders.HostSysrootsBuilder().build()
         if args.windows_sdk:
@@ -1064,7 +1083,8 @@ def main():
             enable_assertions=args.enable_assertions,
             build_name=args.build_name,
             build_lldb=build_lldb,
-            swig_builder=swig_builder)
+            swig_builder=swig_builder,
+            full_build=need_windows)
 
     # stage2 test is on when stage2 is enabled unless --skip-tests or
     # on instrumented builds.
