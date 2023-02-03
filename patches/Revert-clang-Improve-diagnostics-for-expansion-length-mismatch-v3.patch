@@ -8,7 +8,6 @@ This reverts commit 3a0309c53674be56b5cfce038d78a0c2c6e2a98c.
 
 Change-Id: I6713ffe3a9b9f71e6f79948f899bd96eb8c81fbe
 ---
- clang/docs/ReleaseNotes.rst                   |   2 -
  clang/include/clang/Sema/Sema.h               |   7 +-
  clang/include/clang/Sema/SemaInternal.h       |   4 +-
  clang/lib/Sema/SemaTemplateDeduction.cpp      |   7 +-
@@ -18,19 +17,6 @@ Change-Id: I6713ffe3a9b9f71e6f79948f899bd96eb8c81fbe
  clang/test/SemaTemplate/pack-deduction.cpp    |   6 +-
  8 files changed, 126 insertions(+), 140 deletions(-)
 
-diff --git a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
-index 4ba28f5df5dc..6c89b612217b 100644
---- a/clang/docs/ReleaseNotes.rst
-+++ b/clang/docs/ReleaseNotes.rst
-@@ -352,8 +352,6 @@ Improvements to Clang's diagnostics
- - Correctly diagnose a future keyword if it exist as a keyword in the higher
-   language version and specifies in which version it will be a keyword. This
-   supports both c and c++ language.
--- When diagnosing multi-level pack expansions of mismatched lengths, Clang will
--  now, in most cases, be able to point to the relevant outer parameter.
- - ``no_sanitize("...")`` on a global variable for known but not relevant
-   sanitizers is now just a warning. It now says that this will be ignored
-   instead of incorrectly saying no_sanitize only applies to functions and
 diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
 index 67ba41ffa846..49f9e349d7d2 100644
 --- a/clang/include/clang/Sema/Sema.h
