@@ -787,7 +787,10 @@ class ZstdBuilder(base_builders.CMakeBuilder, base_builders.LibInfo):
     @property
     def link_libraries(self) -> List[Path]:
         # LLVM requires both dynamic and static libzstd.
-        libs = super().link_libraries
+        if self._config.target_os.is_windows:
+            libs = [self.install_dir / 'bin' / 'libzstd.dll']
+        else:
+            libs = super().link_libraries
         libs.append(self.install_dir / 'lib' / 'libzstd.a')
         return libs
 
