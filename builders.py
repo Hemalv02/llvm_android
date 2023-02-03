@@ -290,6 +290,10 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         riscv64.platform = True
         result.append(riscv64)
         result.append(configs.BaremetalAArch64Config())
+        result.append(configs.BaremetalArmv6MConfig())
+        result.append(configs.BaremetalArmv8MBaseConfig())
+        for fpu in hosts.Armv81MMainFpu:
+            result.append(configs.BaremetalArmv81MMainConfig(fpu))
         # For arm32 and x86, build a special version of the builtins library
         # where the symbols are exported, not hidden. This version is needed
         # to continue exporting builtins from libc.so and libm.so.
@@ -330,7 +334,10 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         # For CMake feature testing, create an archive instead of an executable,
         # because we can't link an executable until builtins have been built.
         defines['CMAKE_TRY_COMPILE_TARGET_TYPE'] = 'STATIC_LIBRARY'
-        defines['COMPILER_RT_EXCLUDE_ATOMIC_BUILTIN'] = 'OFF'
+        # Baremetal Armv6-M does not support atomics and the build
+        # fails with a static assert if they are included.
+        if not isinstance(self._config, configs.BaremetalArmv6MConfig):
+            defines['COMPILER_RT_EXCLUDE_ATOMIC_BUILTIN'] = 'OFF'
         defines['COMPILER_RT_OS_DIR'] = self._config.target_os.crt_dir
         return defines
 
@@ -344,21 +351,35 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
         filename = 'libclang_rt.builtins-' + sarch
         filename += '-android.a' if self._config.target_os.is_android else '.a'
         filename_exported = 'libclang_rt.builtins-' + sarch + '-android-exported.a'
-        src_path = self.output_dir / 'lib' / self._config.target_os.crt_dir / filename
+        if isinstance(self._config, configs.BaremetalArmMultilibConfig):
+            # For ARM targets, compiler-rt uses the triple to decide which sources to include,
+            # however the triple also affects the library suffix (e.g. -armv6m.a vs -arm.a).
+            # In order to ensure the correct sources are used, we have to include the subarch in
+            # the triple, but we keep the suffix as just 'arm' in the final output to support
+            # the commonly used 'arm-none-eabi[hf]' triple.
+            src_filename = 'libclang_rt.builtins-' + self._config.llvm_triple.split('-')[0] + '.a'
+            src_path = self.output_dir / 'lib' / self._config.target_os.crt_dir / src_filename
+            # Copy libs into separate multilib directories to prevent name conflicts.
+            out_res_dir = self.output_resource_dir / self._config.multilib_name / 'lib'
+            res_dir = self.resource_dir / self._config.multilib_name / 'lib'
+        else:
+            src_path = self.output_dir / 'lib' / self._config.target_os.crt_dir / filename
+            out_res_dir = self.output_resource_dir
+            res_dir = self.resource_dir
 
-        self.output_resource_dir.mkdir(parents=True, exist_ok=True)
+        out_res_dir.mkdir(parents=True, exist_ok=True)
         if self.is_exported:
             # This special copy exports its symbols and is only intended for use
             # in Bionic's libc.so.
-            shutil.copy2(src_path, self.output_resource_dir / filename_exported)
+            shutil.copy2(src_path, out_res_dir / filename_exported)
         else:
-            shutil.copy2(src_path, self.output_resource_dir / filename)
+            shutil.copy2(src_path, out_res_dir / filename)
 
             # Also install to self.resource_dir, if it's different,
             # for use when building target libraries.
-            if self.resource_dir != self.output_resource_dir:
-                self.resource_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(src_path, self.resource_dir / filename)
+            if res_dir != out_res_dir:
+                res_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src_path, res_dir / filename)
 
             # Make a copy for the NDK.
             if self._config.target_os.is_android:
