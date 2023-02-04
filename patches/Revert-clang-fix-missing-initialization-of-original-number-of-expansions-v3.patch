@@ -8,24 +8,10 @@ This reverts commit b8a1b698afb2fc84819c7596090aabf4d826b436.
 
 Change-Id: I10a1027092682e5b45bca18a37b85eb07136b568
 ---
- clang/docs/ReleaseNotes.rst                   |  2 --
  clang/lib/Sema/TreeTransform.h                |  1 -
  .../CXX/temp/temp.decls/temp.variadic/p5.cpp  | 22 -------------------
  3 files changed, 25 deletions(-)
 
-diff --git a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
-index 6c89b612217b..a427e5f7c0df 100644
---- a/clang/docs/ReleaseNotes.rst
-+++ b/clang/docs/ReleaseNotes.rst
-@@ -226,8 +226,6 @@ Bug Fixes
- - Fix `#57008 <https://github.com/llvm/llvm-project/issues/57008>`_ - Builtin
-   C++ language extension type traits instantiated by a template with unexpected
-   number of arguments cause an assertion fault.
--- Fix multi-level pack expansion of undeclared function parameters.
--  This fixes `Issue 56094 <https://github.com/llvm/llvm-project/issues/56094>`_.
- - Fix `#57151 <https://github.com/llvm/llvm-project/issues/57151>`_.
-   ``-Wcomma`` is emitted for void returning functions.
- - ``-Wtautological-compare`` missed warnings for tautological comparisons
 diff --git a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
 index 36450892f948..1753bc574074 100644
 --- a/clang/lib/Sema/TreeTransform.h
