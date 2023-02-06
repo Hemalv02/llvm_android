@@ -543,6 +543,11 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     lib64_dir = install_dir / 'lib64'
     lib64_dir.symlink_to('lib')
 
+    # Symlink lib/clang/major_version/ to lib/clang/long_verion/
+    # TODO: Remove this once all users moved to the new directory.
+    long_ver_dir = install_dir / 'lib' / 'clang' / version.long_version()
+    long_ver_dir.symlink_to(version.major_version())
+
     # FIXME: check that all libs under lib/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
         if not (bin_dir / necessary_bin_file).is_file():
@@ -584,7 +589,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
 
     # Next, we copy over stdatomic.h and bits/stdatomic.h from bionic.
     libc_include_path = paths.ANDROID_DIR / 'bionic' / 'libc' / 'include'
-    header_path = lib_dir / 'clang' / version.long_version() / 'include'
+    header_path = lib_dir / 'clang' / version.major_version() / 'include'
 
     shutil.copy2(libc_include_path / 'stdatomic.h', header_path)
 
@@ -658,9 +663,9 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                             'lld\n'
                             'ld64.lld\n'
                             'ld.lld\n'
-                            f'../lib/clang/{version.long_version()}/share\n'
-                            f'../lib/clang/{version.long_version()}/lib/linux\n'
-                            f'../lib/clang/{version.long_version()}/include\n'
+                            f'../lib/clang/{version.major_version()}/share\n'
+                            f'../lib/clang/{version.major_version()}/lib/linux\n'
+                            f'../lib/clang/{version.major_version()}/include\n'
                             f'../lib/libxml2.so.{toolchain_builder.libxml2.lib_version}\n'
                            )
             inputs_file.write(dependencies)
