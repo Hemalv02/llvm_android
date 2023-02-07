@@ -270,25 +270,6 @@ def install_clang_directory(extract_subdir: str, install_subdir: str, overwrite:
     os.rename(extract_subdir, install_subdir)
 
 
-def repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
-    prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
-    if hashtag:
-        hashtag = hashtag + ',' + topic
-    else:
-        hashtag = topic
-    cmd = ['repo', 'upload', '.',
-           '--current-branch',
-           '--yes', # Answer yes to all safe prompts
-           '--verify', # Run upload hooks without prompting.
-           '-o', 'uploadvalidator~skip', # Ignore blocked keyword checker
-           f'--push-option=topic={topic}',
-           f'--hashtag={hashtag}',]
-    if is_testing:
-        # -2 a testing prebuilt so we don't accidentally submit it.
-        cmd.append('--label=Code-Review-2')
-    utils.check_output(cmd, cwd=prebuilt_dir)
-
-
 def main():
     args = ArgParser().parse_args()
     logging.basicConfig(level=logging.DEBUG)
@@ -348,7 +329,7 @@ def main():
                 topic = topic.replace('prebuilt', 'testing-prebuilt')
 
             for host in hosts:
-                repo_upload(host, topic, args.hashtag, is_testing)
+                utils.prebuilt_repo_upload(host, topic, args.hashtag, is_testing)
     finally:
         if do_cleanup:
             shutil.rmtree(download_dir)
