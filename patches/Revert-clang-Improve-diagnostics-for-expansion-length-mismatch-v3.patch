@@ -132,21 +132,21 @@ index 3326b93c085c..747dcfcc13f1 100644
    if (UnexpandedParms.empty())
      return false;
 @@ -691,95 +673,109 @@ bool Sema::CheckParameterPacksForExpansion(
-     bool &RetainExpansion, Optional<unsigned> &NumExpansions) {
+     bool &RetainExpansion, std::optional<unsigned> &NumExpansions) {
    ShouldExpand = true;
    RetainExpansion = false;
 -  std::pair<const IdentifierInfo *, SourceLocation> FirstPack;
--  Optional<std::pair<unsigned, SourceLocation>> PartialExpansion;
--  Optional<unsigned> CurNumExpansions;
+-  std::optional<std::pair<unsigned, SourceLocation>> PartialExpansion;
+-  std::optional<unsigned> CurNumExpansions;
 +  std::pair<IdentifierInfo *, SourceLocation> FirstPack;
 +  bool HaveFirstPack = false;
-+  Optional<unsigned> NumPartialExpansions;
++  std::optional<unsigned> NumPartialExpansions;
 +  SourceLocation PartiallySubstitutedPackLoc;
  
 -  for (auto [P, Loc] : Unexpanded) {
 +  for (UnexpandedParameterPack ParmPack : Unexpanded) {
      // Compute the depth and index for this parameter pack.
--    Optional<std::pair<unsigned, unsigned>> Pos;
+-    std::optional<std::pair<unsigned, unsigned>> Pos;
 +    unsigned Depth = 0, Index = 0;
 +    IdentifierInfo *Name;
 +    bool IsVarDeclPack = false;
@@ -324,10 +324,10 @@ index 3326b93c085c..747dcfcc13f1 100644
    }
  
    return false;
-@@ -813,48 +808,47 @@ Optional<unsigned> Sema::getNumArgumentsInExpansion(QualType T,
+@@ -813,48 +808,47 @@ std::optional<unsigned> Sema::getNumArgumentsInExpansion(QualType T,
    CollectUnexpandedParameterPacksVisitor(Unexpanded).TraverseType(Pattern);
  
-   Optional<unsigned> Result;
+   std::optional<unsigned> Result;
 -  auto setResultSz = [&Result](unsigned Size) {
 -    assert((!Result || *Result == Size) && "inconsistent pack sizes");
 -    Result = Size;

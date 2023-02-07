@@ -703,6 +703,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[LoopVectorize] Enable integer Mul and Add as select reduction patterns\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/4468e27d9fff153af9826eaf12e0044e67a701a8.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 487849
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CMake] Support undefined LLVM_NATIVE_ARCH in llvm_map_components_to_libnames()."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2e3153059c268700d4b399a8cbba28e9c2514e09.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 487897
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
@@ -795,7 +823,7 @@
         "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch-v3.patch",
         "version_range": {
             "from": 475366,
-            "until": 486420
+            "until": 487748
         }
     },
     {
@@ -823,7 +851,7 @@
         "rel_patch_path": "Revert-clang-fix-missing-initialization-of-original-number-of-expansions-v3.patch",
         "version_range": {
             "from": 475366,
-            "until": 486420
+            "until": 487748
         }
     },
     {

@@ -19,9 +19,9 @@ import re
 _llvm_next = False
 _version_read = False
 
-_patch_level = '3'
-_svn_revision = 'r486419'
-_git_sha = 'f952255907a5a10925a565948f2ca8a61a826d92'
+_patch_level = '0'
+_svn_revision = 'r487747'
+_git_sha = 'c4c5e79dd4b4c78eee7cffd9b0d7394b5bedcf12'
 
 # Psudo revision for top of trunk LLVM.
 _svn_revision_next = 'r99999999'
