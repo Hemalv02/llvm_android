@@ -731,6 +731,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISCV] Allow mismatched SmallDataLimit and use Min for conflicting values"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/af128791464810123bcd60a6d9d0902b5c550aef.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 489130
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
