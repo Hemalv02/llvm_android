@@ -745,6 +745,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [MTE stack] fix incorrect offset for st2g"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a4ab294bc01c8f538951ec223b81bfc1b2c2af6b.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 489310
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
