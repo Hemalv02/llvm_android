@@ -21,12 +21,11 @@ import logging
 import os
 from pathlib import Path
 import shlex
-import shutil
-import stat
 import subprocess
 from typing import Dict, List
 
 import constants
+import paths
 
 
 ORIG_ENV = dict(os.environ)
@@ -109,3 +108,23 @@ def chdir_context(directory):
         yield
     finally:
         os.chdir(prev_dir)
+
+
+def prebuilt_repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
+    """ Upload CL in a prebuilt clang dir. """
+    prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
+    if hashtag:
+        hashtag = hashtag + ',' + topic
+    else:
+        hashtag = topic
+    cmd = ['repo', 'upload', '.',
+           '--current-branch',
+           '--yes', # Answer yes to all safe prompts
+           '--verify', # Run upload hooks without prompting.
+           '-o', 'uploadvalidator~skip', # Ignore blocked keyword checker
+           f'--push-option=topic={topic}',
+           f'--hashtag={hashtag}',]
+    if is_testing:
+        # -2 a testing prebuilt so we don't accidentally submit it.
+        cmd.append('--label=Code-Review-2')
+    check_output(cmd, cwd=prebuilt_dir)
