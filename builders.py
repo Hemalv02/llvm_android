@@ -445,50 +445,6 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         os.symlink('libclang_rt.hwasan-aarch64-android.a', symlink_path)
 
 
-class CompilerRTHostI386Builder(base_builders.LLVMRuntimeBuilder):
-    name: str = 'compiler-rt-i386-host'
-    src_dir: Path = paths.LLVM_PATH / 'compiler-rt'
-    config_list: List[configs.Config] = [configs.LinuxConfig(is_32_bit=True)]
-
-    @property
-    def install_dir(self) -> Path:
-        return self.output_toolchain.clang_lib_dir
-
-    @property
-    def cmake_defines(self) -> Dict[str, str]:
-        defines = super().cmake_defines
-        # Due to CMake and Clang oddities, we need to explicitly set
-        # CMAKE_C_COMPILER_TARGET and use march=i686 in cflags below instead of
-        # relying on auto-detection from the Compiler-rt CMake files.
-        defines['CMAKE_C_COMPILER_TARGET'] = 'i386-linux-gnu'
-        defines['COMPILER_RT_INCLUDE_TESTS'] = 'ON'
-        defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
-        defines['SANITIZER_CXX_ABI'] = 'libstdc++'
-        return defines
-
-    @property
-    def cflags(self) -> List[str]:
-        cflags = super().cflags
-        # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
-        # Add __STDC_FORMAT_MACROS so their definition gets included from
-        # inttypes.h.  This explicit flag is only needed here.  64-bit host runtimes
-        # are built in stage1/stage2 and get it from the LLVM CMake configuration.
-        # These are defined unconditionaly in bionic and newer glibc
-        # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
-        cflags.append('-D__STDC_FORMAT_MACROS')
-        cflags.append('--target=i386-linux-gnu')
-        cflags.append('-march=i686')
-        return cflags
-
-    def _build_config(self) -> None:
-        # Also remove the "stamps" created for the libcxx included in libfuzzer so
-        # CMake runs the configure again (after the cmake caches are deleted).
-        stamp_path = self.output_dir / 'lib' / 'fuzzer' / 'libcxx_fuzzer_i386-stamps'
-        if stamp_path.exists():
-            shutil.rmtree(stamp_path)
-        super()._build_config()
-
-
 class MuslHostRuntimeBuilder(base_builders.LLVMRuntimeBuilder):
     name: str = 'compiler-rt-linux-musl'
     src_dir: Path = paths.LLVM_PATH / 'runtimes'
