@@ -166,7 +166,7 @@ def add_lib_links(stage: str, host_config: configs.Config):
         dst.unlink(missing_ok=True)
         dst.symlink_to(src)
 
-    if not host_config.is_32_bit:
+    if host_config.target_os.is_linux and not host_config.is_32_bit:
         # Add symbolic links from lib/* to lib/x86_64-unknown-linux-gnu/*.  These
         # symlinks are needed for 64-bit and not 32-bit
         srcglob = f'{paths.OUT_DIR}/{stage}-install/lib/{llvm_triple}/*'
@@ -277,7 +277,7 @@ def normalize_llvm_host_libs(install_dir: Path,
         else:
             return '1.0', '1'
 
-    no_llvm_libs = host_config.is_32_bit
+    no_llvm_libs = host_config.target_os.is_linux and host_config.is_32_bit
     libdir = os.path.join(install_dir, 'lib')
     for libname, libformat in libs.items():
         if libformat.startswith('libc++'):
