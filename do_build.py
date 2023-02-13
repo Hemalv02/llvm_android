@@ -935,6 +935,7 @@ def main():
     build_lldb = 'lldb' not in args.no_build
     mlgo = args.mlgo
     musl = args.musl
+    sccache = args.sccache
 
     host_configs = [configs.host_config(musl)]
 
@@ -948,6 +949,9 @@ def main():
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r bolt=%r musl=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
                   do_runtimes, do_package, need_windows, args.lto, args.bolt, args.musl))
+
+    if sccache:
+        utils.check_call(['sccache', '--zero-stats'])
 
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:
@@ -964,7 +968,7 @@ def main():
     stage1.enable_mlgo = mlgo
     stage1.build_extra_tools = args.run_tests_stage1
     stage1.build_android_targets = args.debug or instrumented
-    stage1.use_sccache = args.sccache
+    stage1.use_sccache = sccache
     stage1.build()
     if hosts.build_host().is_linux:
         add_header_links('stage1', host_config=configs.host_config(musl))
@@ -1092,6 +1096,9 @@ def main():
             necessary_bin_files=win_lldb_bins,
             strip=do_strip,
             create_tar=args.create_tar)
+
+    if sccache:
+        utils.check_call(['sccache', '--show-stats'])
 
     return 0
 
