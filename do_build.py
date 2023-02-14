@@ -554,11 +554,6 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 else:
                     utils.check_call([strip_cmd, binary])
 
-    # Symlink lib64 to lib.
-    # TODO: Remove this once all users moved to the new directory.
-    lib64_dir = install_dir / 'lib64'
-    lib64_dir.symlink_to('lib')
-
     # Symlink lib/clang/major_version/ to lib/clang/long_verion/
     # TODO: Remove this once all users moved to the new directory.
     long_ver_dir = install_dir / 'lib' / 'clang' / version.long_version()
