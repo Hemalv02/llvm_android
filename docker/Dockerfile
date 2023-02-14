@@ -4,6 +4,8 @@ RUN apt-get update \
   bison \
   build-essential \
   cargo \
+  # Necessary to test 32-bit runtimes.
+  g++-i686-linux-gnu \
   git \
   libssl-dev \
   # clang-3289846 uses host libncurses5
