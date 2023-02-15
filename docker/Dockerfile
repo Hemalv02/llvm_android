@@ -4,12 +4,8 @@ RUN apt-get update \
   bison \
   build-essential \
   cargo \
-  # Necessary to test 32-bit runtimes.
-  g++-i686-linux-gnu \
   git \
   libssl-dev \
-  # clang-3289846 uses host libncurses5
-  libncurses5 \
   pkg-config \
   python3 \
   python3-pip \
@@ -18,6 +14,11 @@ RUN apt-get update \
   ssh \
   unzip \
   zip \
+  # clang-3289846 uses host libncurses5
+  libncurses5 \
+  # Necessary to test 32-bit runtimes.
+  gcc-multilib \
+  libc6-dev-i386-cross \
 && rm -rf /var/lib/apt/lists/*
 
 # Install TensorFlow
