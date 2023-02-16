@@ -852,6 +852,12 @@ class LLVMBuilder(LLVMBaseBuilder):
         """Gets the built Toolchain."""
         return toolchains.Toolchain(self.install_dir, self.output_dir)
 
+    def build(self) -> None:
+        super().build()
+        if self.use_sccache:
+            utils.check_call(['sccache', '--show-stats'])
+
+
     def test(self) -> None:
         with timer.Timer(f'stage2_test'):
             # newer test tools like dexp, clang-query, c-index-test

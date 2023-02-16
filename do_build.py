@@ -945,9 +945,6 @@ def main():
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
                   do_runtimes, do_package, need_windows, args.lto, args.bolt, args.musl))
 
-    if sccache:
-        utils.check_call(['sccache', '--zero-stats'])
-
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:
         source_manager.setup_sources(llvm_rev=args.llvm_rev, skip_apply_patches=args.skip_apply_patches)
@@ -1091,9 +1088,6 @@ def main():
             necessary_bin_files=win_lldb_bins,
             strip=do_strip,
             create_tar=args.create_tar)
-
-    if sccache:
-        utils.check_call(['sccache', '--show-stats'])
 
     return 0
 
