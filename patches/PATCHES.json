@@ -759,6 +759,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [HWASAN][LSAN] Only initialize Symbolizer if leak checking is enabled"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7b7db789ff3d8750d1098dcc84aa29d11877d610.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 490743
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
@@ -953,17 +967,17 @@
         }
     },
     {
-	"metadata": {
-	    "info": [],
-	    "title": "Add -wasm-omit-64-bit-function-pointer-cast flag"
-	},
-	"platforms": [
-	    "android"
-	],
-	"rel_patch_path": "Wasm-omit-64-bit-function-pointer-cast.patch",
-	"version_range": {
-	    "from": 487747,
-	    "until": null
-	}
+        "metadata": {
+            "info": [],
+            "title": "Add -wasm-omit-64-bit-function-pointer-cast flag"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Wasm-omit-64-bit-function-pointer-cast.patch",
+        "version_range": {
+            "from": 487747,
+            "until": null
+        }
     }
 ]
