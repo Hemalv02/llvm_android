@@ -759,6 +759,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Clear read_fd_set if EINTR received"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d8bd179a173876a7a9ee11828b63efffe145356c.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 490683
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [HWASAN][LSAN] Only initialize Symbolizer if leak checking is enabled"
         },
         "platforms": [
