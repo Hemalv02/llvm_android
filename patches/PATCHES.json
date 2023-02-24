@@ -951,5 +951,19 @@
             "from": 468909,
             "until": null
         }
+    },
+    {
+	"metadata": {
+	    "info": [],
+	    "title": "Add -wasm-omit-64-bit-function-pointer-cast flag"
+	},
+	"platforms": [
+	    "android"
+	],
+	"rel_patch_path": "Wasm-omit-64-bit-function-pointer-cast.patch",
+	"version_range": {
+	    "from": 487747,
+	    "until": null
+	}
     }
 ]
