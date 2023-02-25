@@ -969,7 +969,7 @@ def main():
     stage1.build_android_targets = args.debug or instrumented
     stage1.use_sccache = sccache
     stage1.build()
-    if hosts.build_host().is_linux:
+    if hosts.build_host().is_linux and not args.single_stage:
         add_header_links('stage1', host_config=configs.host_config(musl))
     # stage1 test is off by default, turned on by --run-tests-stage1,
     # and suppressed by --skip-tests.
