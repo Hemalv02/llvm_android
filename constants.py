@@ -27,7 +27,8 @@ CLANG_PREBUILT_VERSION: str = 'clang-r475365b'
 NDK_VERSION: str = 'r25'
 
 # Targets for host.
-HOST_TARGETS: Set[str] = set(['X86', 'AArch64'])
+HOST_TARGETS: Set[str] = set(['X86'])
+DARWIN_HOST_TARGETS: Set[str] = set(['X86', 'AArch64'])
 
 # Targets for Android.
 ANDROID_TARGETS: Set[str] = set(['AArch64', 'ARM', 'BPF', 'RISCV', 'WebAssembly', 'X86'])

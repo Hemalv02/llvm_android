@@ -68,7 +68,10 @@ class Stage1Builder(base_builders.LLVMBuilder):
         if self.build_android_targets:
             return constants.HOST_TARGETS | constants.ANDROID_TARGETS
         else:
-            return constants.HOST_TARGETS
+            if self._config.target_os.is_darwin:
+                return constants.DARWIN_HOST_TARGETS
+            else:
+                return constants.HOST_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:
