@@ -22,6 +22,7 @@ import argparse
 import inspect
 import logging
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
@@ -219,6 +220,16 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "*/lib/*/libc++.so*",
             "*/lib/libc_musl.so"])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
+
+        kleaf_parent = pathlib.Path("kleaf") / "parent"
+        os.makedirs(kleaf_parent, exist_ok=True)
+        try:
+            os.unlink(kleaf_parent / install_subdir)
+        except FileNotFoundError:
+            pass
+        os.symlink(
+            os.path.relpath(install_subdir, kleaf_parent),
+            kleaf_parent / install_subdir)
 
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
     # coverage instrumentation and rely on the driver to pick the correct
