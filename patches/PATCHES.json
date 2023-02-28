@@ -983,6 +983,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert [Driver] Allow target override containing . in executable name"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-Driver-Allow-target-override-containing-.-in-executable-name.patch",
+        "version_range": {
+            "from": 477979,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add -wasm-omit-64-bit-function-pointer-cast flag"
         },
         "platforms": [
