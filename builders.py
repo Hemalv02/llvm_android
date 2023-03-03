@@ -24,7 +24,6 @@ import shutil
 import textwrap
 import timer
 
-import android_version
 import base_builders
 import configs
 import constants
@@ -263,8 +262,12 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def test(self) -> None:
         if isinstance(self._config, configs.LinuxMuslConfig):
             # musl cannot run check-cxx yet
-            with timer.Timer(f'stage2_test'):
-                self._ninja(['check-clang', 'check-llvm', 'check-clang-tools'])
+            with timer.Timer('stage2_test'):
+                self._ninja(['check-clang', 'check-llvm'])
+                # TUSchedulerTests.PreambleThrottle is flaky on buildbots for musl build.
+                # So disable it.
+                self._ninja(['check-clang-tools'],
+                            {'GTEST_FILTER': '-TUSchedulerTests.PreambleThrottle'})
         else:
             super().test()
 
