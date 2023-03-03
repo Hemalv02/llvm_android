@@ -11,7 +11,7 @@ WORK_DIR=/tmpfs/src/git/
 echo build:x:${LOCAL_UID}:${LOCAL_GID}:Build:${WORK_DIR}:/bin/bash > /tmp/passwd.docker
 echo build:*:${LOCAL_GID}: > /tmp/group.docker
 
-docker build -t llvm-ubuntu-dev --quiet ${SCRIPT_DIR}
+docker build -t llvm-ubuntu-dev ${SCRIPT_DIR}
 docker run -it \
   --rm \
   --user ${LOCAL_UID}:${LOCAL_GID} \
