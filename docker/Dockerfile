@@ -22,9 +22,10 @@ RUN apt-get update \
 && rm -rf /var/lib/apt/lists/*
 
 # Install TensorFlow
+COPY requirements.txt /tmp/requirements.txt
 RUN pip install --upgrade pip \
-&& pip install tensorflow-cpu \
-&& rm -rf /root/.cache/pip
+&& pip install --require-hashes -r /tmp/requirements.txt \
+&& rm -rf /root/.cache/pip /tmp/requirements.txt
 ENV TENSORFLOW_INSTALL=/usr/local/lib/python3.10/dist-packages/tensorflow
 
 # Install sccache
