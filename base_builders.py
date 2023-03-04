@@ -452,9 +452,19 @@ class CMakeBuilder(Builder):
             if 'CMakeFiles' in dirs:
                 shutil.rmtree(os.path.join(dirpath, 'CMakeFiles'))
 
-    def _ninja(self, args: list[str]) -> None:
+    def _ninja(self, args: list[str], add_env: Optional[Dict[str, str]] = None) -> None:
+        """ Build ninja targets.
+            Args:
+                args: ninja targets to build
+                add_env: additional environment variables
+        """
         ninja_cmd = [str(paths.NINJA_BIN_PATH)] + args
-        utils.check_call(ninja_cmd, cwd=self.output_dir, env=self.env)
+        if add_env:
+            ninja_env = self.env.copy()
+            ninja_env.update(add_env)
+        else:
+            ninja_env = self.env
+        utils.check_call(ninja_cmd, cwd=self.output_dir, env=ninja_env)
 
     def _build_config(self) -> None:
         if self.remove_cmake_cache:
