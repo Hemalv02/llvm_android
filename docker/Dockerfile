@@ -23,8 +23,7 @@ RUN apt-get update \
 
 # Install TensorFlow
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --upgrade pip \
-&& pip install --require-hashes -r /tmp/requirements.txt \
+RUN pip install --require-hashes -r /tmp/requirements.txt \
 && rm -rf /root/.cache/pip /tmp/requirements.txt
 ENV TENSORFLOW_INSTALL=/usr/local/lib/python3.10/dist-packages/tensorflow
 
