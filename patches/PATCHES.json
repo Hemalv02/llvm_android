@@ -1007,5 +1007,19 @@
             "from": 487747,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[compiler-rt] Allow finding LLVMConfig if CMAKE_FIND_ROOT_PATH_MODE_PACKAGE is set to ONLY"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "compiler-rt-Allow-finding-LLVMConfig-if-CMAKE_FIND_ROOT_PATH_MODE_PACKAGE-is-set-to-ONLY.patch",
+        "version_range": {
+            "from": 487747,
+            "until": null
+        }
     }
 ]
