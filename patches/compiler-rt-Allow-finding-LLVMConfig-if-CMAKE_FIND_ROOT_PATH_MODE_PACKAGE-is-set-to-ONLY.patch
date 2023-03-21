@@ -1,0 +1,33 @@
+From 89c4d006d28e94689ec011b92d5c0e75d6908f55 Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Tue, 21 Mar 2023 11:56:27 +0900
+Subject: [PATCH] [compiler-rt] Allow finding LLVMConfig if
+ CMAKE_FIND_ROOT_PATH_MODE_PACKAGE is set to ONLY
+
+MAKE_FIND_ROOT_PATH_MODE_PACKAGE can be set to ONLY for cross
+compilation. However we need to find LLVMConfig from the host compiler,
+which is outside of the root path.
+
+Set CMAKE_FIND_ROOT_PATH_BOTH when finding the LLVMConfig package.
+
+Change-Id: I1cc2107d8c86251d12dde86626fa44e0ab690bf6
+---
+ compiler-rt/cmake/Modules/CompilerRTUtils.cmake | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/compiler-rt/cmake/Modules/CompilerRTUtils.cmake b/compiler-rt/cmake/Modules/CompilerRTUtils.cmake
+index 4c85551d7766..f89534f0c541 100644
+--- a/compiler-rt/cmake/Modules/CompilerRTUtils.cmake
++++ b/compiler-rt/cmake/Modules/CompilerRTUtils.cmake
+@@ -300,7 +300,7 @@ macro(load_llvm_config)
+       "You are not using the monorepo layout. This configuration is DEPRECATED.")
+   endif()
+ 
+-  find_package(LLVM HINTS "${LLVM_CMAKE_DIR}")
++  find_package(LLVM HINTS "${LLVM_CMAKE_DIR}" CMAKE_FIND_ROOT_PATH_BOTH)
+   if (NOT LLVM_FOUND)
+      message(WARNING "UNSUPPORTED COMPILER-RT CONFIGURATION DETECTED: "
+                      "LLVM cmake package not found.\n"
+-- 
+2.40.0.rc1.284.g88254d51c5-goog
+
