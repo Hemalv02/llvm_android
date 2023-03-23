@@ -230,6 +230,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         os.symlink(
             os.path.relpath(install_subdir, kleaf_parent),
             kleaf_parent / install_subdir)
+        utils.check_call(['git', 'add', kleaf_parent])
 
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
     # coverage instrumentation and rely on the driver to pick the correct
