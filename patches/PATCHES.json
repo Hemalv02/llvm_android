@@ -787,6 +787,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [llvm-objdump] Fix help message for --print-imm-hex"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/3d65cd405d64afd86a59c1f58098dfe891841271.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 493488
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
