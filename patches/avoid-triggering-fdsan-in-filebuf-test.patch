@@ -1,0 +1,39 @@
+From 3e1d93e40a974d04d4522fdf226e36eed39cda3b Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Thu, 28 Apr 2022 16:19:19 -0700
+Subject: [PATCH] [libc++][Android] Avoid triggering fdsan in filebuf test
+
+The fd is opened by std::filebuf, which uses stdio (FILE*). Attempting
+to close the fd directly with close() would trigger fdsan.
+
+Differential Revision: https://reviews.llvm.org/D137129
+---
+ .../file.streams/fstreams/filebuf.members/close.pass.cpp    | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/libcxx/test/std/input.output/file.streams/fstreams/filebuf.members/close.pass.cpp b/libcxx/test/std/input.output/file.streams/fstreams/filebuf.members/close.pass.cpp
+index b545041e4283..a99e26664e9d 100644
+--- a/libcxx/test/std/input.output/file.streams/fstreams/filebuf.members/close.pass.cpp
++++ b/libcxx/test/std/input.output/file.streams/fstreams/filebuf.members/close.pass.cpp
+@@ -42,12 +42,18 @@ int main(int, char**)
+         // Use the internal method to create filebuf from the file descriptor.
+         assert(f.__open(fd, std::ios_base::out) != 0);
+         assert(f.is_open());
++
++        // With Bionic, fdsan aborts the process when close() is called on an fd
++        // belonging to a FILE*, so disable this part of the test. See
++        // https://github.com/android/ndk/issues/1626.
++#if !defined(__BIONIC__)
+         // Close the file descriptor directly to force filebuf::close to fail.
+         assert(close(fd) == 0);
+         // Ensure that filebuf::close handles the failure.
+         assert(f.close() == nullptr);
+         assert(!f.is_open());
+         assert(f.close() == nullptr);
++#endif
+     }
+ #endif
+     std::remove(temp.c_str());
+-- 
+2.39.0.314.g84b9a713c41-goog
+

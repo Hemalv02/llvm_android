@@ -1035,5 +1035,117 @@
             "from": 487747,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] enable-libcxx-testing-using-adb.patch"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "enable-libcxx-testing-using-adb.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++abi] Optionally move __cxa_demangle into libc++demangle.a"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "move-cxa-demangle-into-libcxxdemangle.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] Avoid triggering fdsan in filebuf test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "avoid-triggering-fdsan-in-filebuf-test.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] Hide locale Lit features for Bionic"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "hide-locale-lit-features-for-bionic.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++] Android temp dir is /data/local/tmp, enable Windows test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "android-temp-dir-is-data-local-tmp.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] Bionic also includes + for NAN"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "bionic-includes-plus-sign-for-nan.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] Disable test_no_resolve_symlink_on_symlink on Android"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "disable-symlink-resolve-test-on-android.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] fs tests: avoid fifo/socket/hardlink SELinux denials"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "avoid-fifo-socket-hardlink-in-libcxx-tests.patch",
+        "version_range": {
+            "from": 475365,
+            "until": null
+        }
     }
 ]
