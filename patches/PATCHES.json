@@ -991,7 +991,7 @@
         "rel_patch_path": "Enable-targeting-riscv64-linux-android.patch",
         "version_range": {
             "from": 468909,
-            "until": null
+            "until": 493545
         }
     },
     {
