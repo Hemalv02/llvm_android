@@ -507,11 +507,6 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 else:
                     utils.check_call([strip_cmd, binary])
 
-    # Symlink lib/clang/major_version/ to lib/clang/long_verion/
-    # TODO: Remove this once all users moved to the new directory.
-    long_ver_dir = install_dir / 'lib' / 'clang' / version.long_version()
-    long_ver_dir.symlink_to(version.major_version())
-
     # FIXME: check that all libs under lib/clang/<version>/ are created.
     for necessary_bin_file in necessary_bin_files:
         if not (bin_dir / necessary_bin_file).is_file():
