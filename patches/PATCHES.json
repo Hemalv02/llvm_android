@@ -688,6 +688,156 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"LTO: always parse modules in opaque pointer mode.\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/3a5426f5724350bfbd970fe85ef0d0e45b50b2ee.patch",
+        "version_range": {
+            "from": 483520,
+            "until": 484198
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert D139181 \"[lld][Alignment][NFC] Use Align instead of log2 of alignment in Wasm Sections\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/1565317287728d38618519674623551fbf1410af.patch",
+        "version_range": {
+            "from": 481785,
+            "until": 484234
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"Reland \"[SimplifyCFG] `FoldBranchToCommonDest()`: deal with mismatched IV's in PHI's in common successor block\"\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/3a8e009f97d2ed4b751365e514e0bf7131c7ab11.patch",
+        "version_range": {
+            "from": 483920,
+            "until": 484270
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[InstCombine] Fold nested selects\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/d73383c145ea83d25063246e0c34f5a41fd35293.patch",
+        "version_range": {
+            "from": 483013,
+            "until": 484271
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[clang] Don't spuriously pass -stdlib=libc++ to CC1 on Darwin\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/49dd02bd081901db6011bdbe676573bfd5482627.patch",
+        "version_range": {
+            "from": 484180,
+            "until": 484276
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[Bazel] Remove define HAVE_LSEEK64 to match cmake config.\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/9f6f9488dd054399bc1e29e7dff48f60e433debc.patch",
+        "version_range": {
+            "from": 484066,
+            "until": 484310
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[AMDGPU][SILowerSGPRSpills] Spill SGPRs to virtual VGPRs\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/a3028239a75157d517baf17d58a1f1e3ee1c24cb.patch",
+        "version_range": {
+            "from": 483950,
+            "until": 484378
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"Reland \"[pgo] Avoid introducing relocations by using private alias\"\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/fd0ca2c4e935cb2d8de95f016d7a08229af695da.patch",
+        "version_range": {
+            "from": 484159,
+            "until": 484407
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert D138179 \"MIPS: fix build from IR files, nan2008 and FpAbi\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/c348abce68ac422bf3842de3943ca7463e3a814f.patch",
+        "version_range": {
+            "from": 483640,
+            "until": 484568
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"Emit unwind information in the .debug_frame section when the .cfi_sections .debug_frame directive is used.\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/b27e0b2e6703710c140aefd2990091f1779841ac.patch",
+        "version_range": {
+            "from": 483611,
+            "until": 484591
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"[C2x] reject type definitions in offsetof\""
         },
         "platforms": [
@@ -698,6 +848,21 @@
         "version_range": {
             "from": 486419,
             "until": 486533
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[clang] Instantiate concepts with sugared template arguments\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/12cb1cb3720de8d164196010123ce1a8901d8122.patch",
+        "version_range": {
+            "from": 477993,
+            "until": 486676
         }
     },
     {
@@ -787,6 +952,21 @@
     {
         "metadata": {
             "info": [],
+            "title": "Revert \"[Clang] Implement fix for DR2628\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/3b6c88331bcd0531d627fe27de5dbd0ac3165300.patch",
+        "version_range": {
+            "from": 475827,
+            "until": 490699
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [HWASAN][LSAN] Only initialize Symbolizer if leak checking is enabled"
         },
         "platforms": [
@@ -796,6 +976,21 @@
         "version_range": {
             "from": 487747,
             "until": 490743
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[Darwin] Apply workaround to make symbolication in iOS simulators work\"\n"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/d8b8911d58dba73fd7a28210d8d3e780ae881179.patch",
+        "version_range": {
+            "from": 475827,
+            "until": 490770
         }
     },
     {
