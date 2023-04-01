@@ -745,6 +745,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISCV] Fix miscompile in SExtWRemoval due to early return ignoring other sources"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/db6bee5fec0d7fdfc18005c5c5ccd15f1ede945d.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 489208
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [MTE stack] fix incorrect offset for st2g"
         },
         "platforms": [
