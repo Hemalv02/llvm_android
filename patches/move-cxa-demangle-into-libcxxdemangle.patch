@@ -1,0 +1,87 @@
+From 6b29a55c864587e80cc26014b73f19f5c7910cff Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Mon, 25 Jul 2022 18:05:30 -0700
+Subject: [PATCH] [libc++abi] Optionally move __cxa_demangle into
+ libc++demangle.a
+
+The motivation is to reduce the size of libc++.so on Android. The flag
+is always used with LIBCXXABI_NON_DEMANGLING_TERMINATE.
+
+Differential Revision: https://reviews.llvm.org/D139493
+---
+ libcxxabi/CMakeLists.txt     |  8 ++++++++
+ libcxxabi/src/CMakeLists.txt | 25 ++++++++++++++++++++++++-
+ 2 files changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/libcxxabi/CMakeLists.txt b/libcxxabi/CMakeLists.txt
+index 8f48d402bc22..d7f4719c895b 100644
+--- a/libcxxabi/CMakeLists.txt
++++ b/libcxxabi/CMakeLists.txt
+@@ -130,6 +130,14 @@ option(LIBCXXABI_SILENT_TERMINATE "Set this to make the terminate handler defaul
+ option(LIBCXXABI_NON_DEMANGLING_TERMINATE "Set this to make the terminate handler
+ avoid demangling" OFF)
+ 
++# Omit __cxa_demangle to reduce the size of libc++[abi].so. Package it into a
++# separate static library for when it is actually needed.
++option(LIBCXXABI_STATIC_DEMANGLE_LIBRARY "Put __cxa_demangle into a separate static library" OFF)
++
++if (LIBCXXABI_STATIC_DEMANGLE_LIBRARY AND NOT LIBCXXABI_NON_DEMANGLING_TERMINATE)
++  message(FATAL_ERROR "libc++demangle is only supported when libc++abi doesn't use demangling")
++endif()
++
+ if (NOT LIBCXXABI_ENABLE_SHARED AND NOT LIBCXXABI_ENABLE_STATIC)
+   message(FATAL_ERROR "libc++abi must be built as either a shared or static library.")
+ endif()
+diff --git a/libcxxabi/src/CMakeLists.txt b/libcxxabi/src/CMakeLists.txt
+index 58df59a5725a..4c16850a863c 100644
+--- a/libcxxabi/src/CMakeLists.txt
++++ b/libcxxabi/src/CMakeLists.txt
+@@ -3,7 +3,6 @@ set(LIBCXXABI_SOURCES
+   # C++ABI files
+   cxa_aux_runtime.cpp
+   cxa_default_handlers.cpp
+-  cxa_demangle.cpp
+   cxa_exception_storage.cpp
+   cxa_guard.cpp
+   cxa_handlers.cpp
+@@ -19,6 +18,12 @@ set(LIBCXXABI_SOURCES
+   private_typeinfo.cpp
+ )
+ 
++if (NOT LIBCXXABI_STATIC_DEMANGLE_LIBRARY)
++  list(APPEND LIBCXXABI_SOURCES
++    cxa_demangle.cpp
++  )
++endif()
++
+ if (LIBCXXABI_ENABLE_NEW_DELETE_DEFINITIONS)
+   list(APPEND LIBCXXABI_SOURCES
+     stdlib_new_delete.cpp
+@@ -158,6 +163,24 @@ if (NOT TARGET pstl::ParallelSTL)
+   message(STATUS "Could not find ParallelSTL, libc++abi will not attempt to use it but the build may fail if the libc++ in use needs it to be available.")
+ endif()
+ 
++if (LIBCXXABI_STATIC_DEMANGLE_LIBRARY)
++  add_library(cxxabi_demangle_static STATIC cxa_demangle.cpp ${LIBCXXABI_HEADERS})
++  target_link_libraries(cxxabi_demangle_static PRIVATE cxx-headers cxxabi-headers)
++  set_target_properties(cxxabi_demangle_static
++    PROPERTIES
++      CXX_EXTENSIONS OFF
++      CXX_STANDARD 20
++      CXX_STANDARD_REQUIRED OFF
++      COMPILE_FLAGS "${LIBCXXABI_COMPILE_FLAGS}"
++      LINK_FLAGS "${LIBCXXABI_LINK_FLAGS}"
++      OUTPUT_NAME "c++demangle"
++    )
++  list(APPEND LIBCXXABI_BUILD_TARGETS "cxxabi_demangle_static")
++  if (LIBCXXABI_INSTALL_STATIC_LIBRARY)
++    list(APPEND LIBCXXABI_INSTALL_TARGETS "cxxabi_demangle_static")
++  endif()
++endif()
++
+ # Build the shared library.
+ add_library(cxxabi_shared_objects OBJECT EXCLUDE_FROM_ALL ${LIBCXXABI_SOURCES} ${LIBCXXABI_HEADERS})
+ if (LIBCXXABI_USE_LLVM_UNWINDER)
+-- 
+2.39.0.314.g84b9a713c41-goog
+

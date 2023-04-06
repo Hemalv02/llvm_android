@@ -867,7 +867,7 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
 
 class HostSysrootsBuilder(base_builders.Builder):
     name: str = 'host-sysroots'
-    config_list: List[configs.Config] = (configs.MinGWConfig(),)
+    config_list: List[configs.Config] = (configs.MinGWConfig(), configs.MinGWConfig(is_32_bit=True))
 
     def _build_config(self) -> None:
         config = self._config
@@ -877,23 +877,24 @@ class HostSysrootsBuilder(base_builders.Builder):
             shutil.rmtree(sysroot)
         sysroot.parent.mkdir(parents=True, exist_ok=True)
 
-        # copy sysroot and add libgcc* to it.
+        # Copy the sysroot.
         shutil.copytree(config.gcc_root / config.gcc_triple,
                         sysroot, symlinks=True)
+
+        if config.target_arch == hosts.Arch.I386:
+            shutil.rmtree(sysroot / 'lib')
+            (sysroot / 'lib64').unlink()
+            (sysroot / 'lib32').rename(sysroot / 'lib')
+        elif config.target_arch == hosts.Arch.X86_64:
+            shutil.rmtree(sysroot / 'lib32')
+
+        # Add libgcc* to the sysroot.
         shutil.copytree(config.gcc_lib_dir, sysroot_lib, dirs_exist_ok=True)
 
         # b/237425904 cleanup: uncomment to remove libstdc++ after toolchain defaults to
         # libc++
         # (sysroot_lib / 'libstdc++.a').unlink()
         # shutil.rmtree(sysroot / 'include' / 'c++' / '4.8.3')
-
-        # copy libc++ libs and headers from bootstrap prebuilts.  This is needed
-        # for the libcxx builder to pass CMake configuration.  The libcxx
-        # builder will subsequently overwrite these.
-        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib' / 'libc++.a', sysroot_lib)
-        shutil.copy(paths.WINDOWS_CLANG_PREBUILT_DIR / 'lib' / 'libc++abi.a', sysroot_lib)
-        shutil.copytree(paths.WINDOWS_CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1',
-                        sysroot / 'include' / 'c++' / 'v1')
 
 
 class DeviceSysrootsBuilder(base_builders.Builder):
@@ -1038,18 +1039,24 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
                 f.write('INPUT(-lc++)')
 
 
-class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
-    name = 'libcxx'
+class WinLibCxxBuilder(base_builders.LLVMRuntimeBuilder):
+    name = 'win-libcxx'
     src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
     @property
     def install_dir(self):
-        return paths.OUT_DIR / 'windows-x86-64-install'
+        if self._config.target_arch == hosts.Arch.I386:
+            return paths.OUT_DIR / 'windows-libcxx-i686-install'
+        elif self._config.target_arch == hosts.Arch.X86_64:
+            return paths.OUT_DIR / 'windows-libcxx-x86-64-install'
+        else:
+            raise NotImplementedError()
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LLVM_ENABLE_RUNTIMES'] ='libcxx;libcxxabi'
+        defines['LLVM_ENABLE_RUNTIMES'] = 'libcxx;libcxxabi'
+        defines['LLVM_ENABLE_PER_TARGET_RUNTIME_DIR'] = 'ON'
 
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         defines['LIBCXX_ENABLE_NEW_DELETE_DEFINITIONS'] = 'ON'
@@ -1075,30 +1082,65 @@ class LibCxxBuilder(base_builders.LLVMRuntimeBuilder):
     def install_config(self) -> None:
         super().install_config()
 
-        # Copy to sysroot in addition to install_dir
-        sysroot = self._config.sysroot
-        (sysroot / 'lib' / 'libc++.a').unlink()
-        (sysroot / 'lib' / 'libc++abi.a').unlink()
-        shutil.rmtree(sysroot / 'include' / 'c++' / 'v1')
+        # The per-target directory uses '-w64-' instead of '-pc-'.
+        if self._config.target_arch == hosts.Arch.X86_64:
+            triple_dir = 'x86_64-w64-windows-gnu'
+        else:
+            triple_dir = 'i686-w64-windows-gnu'
 
-        shutil.copy(self.install_dir / 'lib' / 'libc++.a', sysroot / 'lib')
-        shutil.copy(self.install_dir / 'lib' / 'libc++abi.a', sysroot / 'lib')
-        shutil.copytree(self.install_dir / 'include' / 'c++' / 'v1',
-                        sysroot / 'include' / 'c++' / 'v1', dirs_exist_ok=True)
+        win_install_dir = WindowsToolchainBuilder.install_dir
+
+        if self._config.target_arch == hosts.Arch.X86_64:
+            # Copy the x86-64 library and the non-target-specific headers to the sysroot. Clang
+            # doesn't automatically find __config_site in a per-triple include directory, so copy
+            # that header to the non-specific directory.
+            sysroot = self._config.sysroot
+            shutil.copy(self.install_dir / 'lib' / triple_dir / 'libc++.a', sysroot / 'lib')
+            shutil.copy(self.install_dir / 'lib' / triple_dir / 'libc++abi.a', sysroot / 'lib')
+            shutil.copytree(self.install_dir / 'include' / 'c++' / 'v1',
+                            sysroot / 'include' / 'c++' / 'v1', dirs_exist_ok=True)
+            shutil.copy(self.install_dir / 'include' / triple_dir / 'c++' / 'v1' / '__config_site',
+                        sysroot / 'include' / 'c++' / 'v1')
+
+            # Copy the non-target-specific headers into the output Windows toolchain.
+            shutil.copytree(self.install_dir / 'include' / 'c++' / 'v1',
+                            win_install_dir / 'include' / 'c++' / 'v1',
+                            dirs_exist_ok=True)
+
+            # Copy the libraries into the output Windows toolchain.
+            # TODO: Maybe we don't need these, because there are per-triple libraries, but I'm not
+            # sure who might be using them.
+            lib_dir = win_install_dir / 'lib'
+            lib_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(self.install_dir / 'lib' / triple_dir / 'libc++.a', lib_dir)
+            shutil.copy(self.install_dir / 'lib' / triple_dir / 'libc++abi.a', lib_dir)
+
+            # Place the x86-64 __config_site header into the non-target-specific include directory.
+            # TODO: Maybe we don't need this header either.
+            shutil.copy(self.install_dir / 'include' / triple_dir / 'c++' / 'v1' / '__config_site',
+                        win_install_dir / 'include' / 'c++' / 'v1')
+
+        # Copy the per-triple libraries and __config_site header to per-triple
+        # lib/include directories in both the generated Linux and Windows toolchains.
+        for host_dir in [win_install_dir, Stage2Builder.install_dir]:
+            lib_dir = host_dir / 'lib' / triple_dir
+            lib_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(self.install_dir / 'lib' / triple_dir / 'libc++.a', lib_dir)
+            shutil.copy(self.install_dir / 'lib' / triple_dir / 'libc++abi.a', lib_dir)
+            include_dir = host_dir / 'include' / triple_dir / 'c++' / 'v1'
+            include_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy(self.install_dir / 'include' / triple_dir / 'c++' / 'v1' / '__config_site', include_dir)
 
 
 class WindowsToolchainBuilder(base_builders.LLVMBuilder):
     name: str = 'windows-x86-64'
+    install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
     toolchain_name: str = 'stage1'
     build_lldb: bool = True
 
     @property
     def _is_msvc(self) -> bool:
         return isinstance(self._config, configs.MSVCConfig)
-
-    @property
-    def install_dir(self) -> Path:
-        return paths.OUT_DIR / 'windows-x86-64-install'
 
     @property
     def llvm_targets(self) -> Set[str]:

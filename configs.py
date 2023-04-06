@@ -353,6 +353,8 @@ class LinuxMuslHostConfig(LinuxMuslConfig):
         return env
 
 
+# TODO: We should kill off 32-bit Windows support, but we still need it because
+# we have a single 32-bit DLL for USB stuff for adb.exe/fastboot.exe.
 class MinGWConfig(_GccConfig):
     """Configuration for MinGW targets."""
 
@@ -360,11 +362,22 @@ class MinGWConfig(_GccConfig):
     gcc_root: Path = (paths.GCC_ROOT / 'host' / 'x86_64-w64-mingw32-4.8')
     gcc_triple: str = 'x86_64-w64-mingw32'
     gcc_ver: str = '4.8.3'
-    sysroot: Optional[Path] = paths.SYSROOTS / gcc_triple
+
+    @property
+    def target_arch(self) -> hosts.Arch:
+        return hosts.Arch.I386 if self.is_32_bit else hosts.Arch.X86_64
 
     @property
     def llvm_triple(self) -> str:
-        return 'x86_64-pc-windows-gnu'
+        return 'i686-pc-windows-gnu' if self.is_32_bit else 'x86_64-pc-windows-gnu'
+
+    @property
+    def sysroot(self) -> Optional[Path]:
+        return paths.SYSROOTS / ('i686-w64-mingw32' if self.is_32_bit else 'x86_64-w64-mingw32')
+
+    @property
+    def output_suffix(self) -> str:
+        return '-windows32' if self.is_32_bit else '-windows'
 
     @property
     def cflags(self) -> List[str]:
@@ -380,10 +393,11 @@ class MinGWConfig(_GccConfig):
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
-        ldflags.append('-Wl,--dynamicbase')
-        ldflags.append('-Wl,--nxcompat')
-        ldflags.append('-Wl,--high-entropy-va')
-        ldflags.append('-Wl,--Xlink=-Brepro')
+        if not self.is_32_bit:
+            ldflags.append('-Wl,--dynamicbase')
+            ldflags.append('-Wl,--nxcompat')
+            ldflags.append('-Wl,--high-entropy-va')
+            ldflags.append('-Wl,--Xlink=-Brepro')
         return ldflags
 
     @property
