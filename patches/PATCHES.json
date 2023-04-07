@@ -1312,6 +1312,20 @@
         "rel_patch_path": "android-temp-dir-is-data-local-tmp.patch",
         "version_range": {
             "from": 475365,
+            "until": 490301
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++] Android temp dir is /data/local/tmp, enable Windows test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "android-temp-dir-is-data-local-tmp-v2.patch",
+        "version_range": {
+            "from": 490301,
             "until": null
         }
     },
