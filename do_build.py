@@ -641,7 +641,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         svn_revision = android_version.get_svn_revision()
         version_file.write(f'based on {svn_revision}\n')
         version_file.write('for additional information on LLVM revision and '
-                           'cherry-picks, see clang_source_info.md')
+                           'cherry-picks, see clang_source_info.md\n')
 
     clang_source_info_file = paths.OUT_DIR / 'clang_source_info.md'
     manifest = list(Path(dist_dir).glob('manifest_*.xml'))
@@ -1063,12 +1063,12 @@ def main():
             stage2.libedit = libedit_builder
 
         stage2_tags = []
-        # Annotate the version string if there is no profdata.
-        if profdata is None:
-            stage2_tags.append('NO PGO PROFILE')
-        if clang_bolt_fdata is None:
-            stage2_tags.append('NO BOLT PROFILE')
-        # Annotate the version string if this is an llvm-next build.
+        # Annotate the version string with build options.
+        to_tag = lambda c, tag : ('+' if c else '-') + tag
+        stage2_tags.append(to_tag(profdata, 'pgo'))
+        stage2_tags.append(to_tag(clang_bolt_fdata, 'bolt'))
+        stage2_tags.append(to_tag(stage2.lto, 'lto'))
+        stage2_tags.append(to_tag(stage2.enable_mlgo, 'mlgo'))
         if args.build_llvm_next:
             stage2_tags.append('ANDROID_LLVM_NEXT')
         stage2.build_tags = stage2_tags
