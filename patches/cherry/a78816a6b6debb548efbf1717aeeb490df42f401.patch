@@ -1,0 +1,79 @@
+From a78816a6b6debb548efbf1717aeeb490df42f401 Mon Sep 17 00:00:00 2001
+From: Paul Kirth <paulkirth@google.com>
+Date: Mon, 13 Feb 2023 18:18:33 +0000
+Subject: [PATCH] [clang][driver] Pass `-femulated-tls` through to the linker
+ in LTO mode
+
+Currently the driver does not propagate the `-f[no-]emulated-tls` flags
+to the linker under LTO. This can be surprising when the platform
+defaults differ from the flags being passed. A related discussion can be
+found in https://reviews.llvm.org/D143619. While the focus there was
+RISC-V support, the root cause was that setting `-femualted-tls` and
+`-flto` when compiling with Clang resulted in missing symbols because
+the platform defaults for Android differed from the flags being passed
+to Clang.
+
+This patch changes the Clang driver's behavior to pass the emulated-tls
+flags through to the linker when compiling with LTO/ThinLTO.
+
+Reviewed By: phosek, vit9696
+
+Differential Revision: https://reviews.llvm.org/D147834
+---
+ clang/lib/Driver/ToolChains/CommonArgs.cpp |  7 +++++++
+ clang/test/Driver/emulated-tls.cpp         | 17 +++++++++++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/clang/lib/Driver/ToolChains/CommonArgs.cpp b/clang/lib/Driver/ToolChains/CommonArgs.cpp
+index 6190c9d65ddb..2f3450432ba2 100644
+--- a/clang/lib/Driver/ToolChains/CommonArgs.cpp
++++ b/clang/lib/Driver/ToolChains/CommonArgs.cpp
+@@ -764,6 +764,13 @@ void tools::addLTOOptions(const ToolChain &ToolChain, const ArgList &Args,
+       D.Diag(clang::diag::warn_drv_fjmc_for_elf_only);
+   }
+ 
++  if (Arg *A = Args.getLastArg(options::OPT_femulated_tls,
++                               options::OPT_fno_emulated_tls)) {
++    bool Enable = A->getOption().getID() == options::OPT_femulated_tls;
++    CmdArgs.push_back(Args.MakeArgString(
++        Twine(PluginOptPrefix) + "-emulated-tls=" + (Enable ? "1" : "0")));
++  }
++
+   if (Args.hasFlag(options::OPT_fstack_size_section,
+                    options::OPT_fno_stack_size_section, false))
+     CmdArgs.push_back(
+diff --git a/clang/test/Driver/emulated-tls.cpp b/clang/test/Driver/emulated-tls.cpp
+index 20abad181128..edc68e0f29f5 100644
+--- a/clang/test/Driver/emulated-tls.cpp
++++ b/clang/test/Driver/emulated-tls.cpp
+@@ -29,6 +29,16 @@
+ // RUN: %clang -### -target i686-pc-openbsd %s -femulated-tls -fno-emulated-tls 2>&1 \
+ // RUN: | FileCheck -check-prefix=NOEMU %s
+ 
++// Test that when lto is used any -emualted-tls flags are passed to the linker
++// LINUX and Android have different defaults for EmulatedTLS
++// RUN: %clang -### -flto --target=riscv64-linux -fno-emulated-tls %s 2>&1 \
++// RUN: | FileCheck %s --check-prefix=LTO_NOEMUTLS
++// RUN: %clang -### -flto --target=riscv64-linux-android10000 -femulated-tls %s 2>&1 \
++// RUN: | FileCheck %s --check-prefix=LTO_EMUTLS
++// RUN: %clang -### -flto --target=riscv64-linux -femulated-tls %s 2>&1 \
++// RUN: | FileCheck %s --check-prefix=LTO_EMUTLS
++// RUN: %clang -### -flto --target=riscv64-linux-android10000 -fno-emulated-tls %s 2>&1 \
++// RUN: | FileCheck %s --check-prefix=LTO_NOEMUTLS
+ 
+ // Default without -f[no-]emulated-tls, will be decided by the target triple.
+ // DEFAULT-NOT: "-cc1" {{.*}}"-femulated-tls"
+@@ -40,3 +50,10 @@
+ 
+ // NOEMU: "-cc1" {{.*}}"-fno-emulated-tls"
+ // NOEMU-NOT: "-cc1" {{.*}}"-femulated-tls"
++
++// LTO related checks
++// LTO_NOEMUTLS: plugin-opt=-emulated-tls=0
++// LTO_NOEMUTLS-NOT: plugin-opt=-emulated-tls=1
++
++// LTO_EMUTLS: plugin-opt=-emulated-tls=1
++// LTO_EMUTLS-NOT: plugin-opt=-emulated-tls=0
+-- 
+2.40.0.634.g4ca3ef3211-goog
+

@@ -1010,6 +1010,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [clang][driver] Pass `-femulated-tls` through to the linker in LTO mode"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a78816a6b6debb548efbf1717aeeb490df42f401.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495214
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
