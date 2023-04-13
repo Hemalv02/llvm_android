@@ -1024,6 +1024,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [StackProtector] don't check stack protector before calling nounwind functions"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/fc4494dffa5422b2be5442c235554e76bed79c8a.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495641
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
