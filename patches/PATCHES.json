@@ -1038,6 +1038,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [PATCH] [codegen][riscv] Emit CFI directives when using shadow call stack"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ade336d6e14140134728b9991be8e4e68d6205ea.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495214
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [PATCH] [CodeGen][RISCV] Change Shadow Call Stack Register to X3"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/aa1d2693c25622ea4a8ee2b622ba2a617e18ef88.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495214
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
