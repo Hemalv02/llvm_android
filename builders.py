@@ -557,8 +557,9 @@ class LibUnwindBuilder(base_builders.LLVMRuntimeBuilder):
         # Override the default -unwindlib=libunwind. libunwind.a doesn't exist
         # when libunwind is built, and libunwind can't use
         # CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY because
-        # LIBUNWIND_HAS_PTHREAD_LIB must be set to false.
-        return super().ldflags + ['-unwindlib=none']
+        # LIBUNWIND_HAS_PTHREAD_LIB must be set to false. Also avoid linking the
+        # STL because it too does not exist yet.
+        return super().ldflags + ['-unwindlib=none', '-nostdlib++']
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -907,7 +908,6 @@ class DeviceSysrootsBuilder(base_builders.Builder):
     def _build_config(self) -> None:
         config: configs.AndroidConfig = cast(configs.AndroidConfig, self._config)
         arch = config.target_arch
-        platform = config.platform
         sysroot = config.sysroot
         if sysroot.exists():
             shutil.rmtree(sysroot)
@@ -924,25 +924,19 @@ class DeviceSysrootsBuilder(base_builders.Builder):
         shutil.copytree(src_sysroot / 'usr' / 'include',
                         sysroot / 'usr' / 'include', symlinks=True)
 
-        if platform:
-            if arch != hosts.Arch.RISCV64:
-                # Remove the STL headers.
-                shutil.rmtree(sysroot / 'usr' / 'include' / 'c++')
-        else:
-            # Add the android_support headers from usr/local/include.
-            shutil.copytree(src_sysroot / 'usr' / 'local' / 'include',
-                            sysroot / 'usr' / 'local' / 'include', symlinks=True)
+        if arch != hosts.Arch.RISCV64:
+            # Remove the STL headers.
+            shutil.rmtree(sysroot / 'usr' / 'include' / 'c++')
 
         # Copy over usr/lib/$TRIPLE.
         src_lib = src_sysroot / 'usr' / 'lib' / config.ndk_sysroot_triple
         dest_lib = sysroot / 'usr' / 'lib' / config.ndk_sysroot_triple
         shutil.copytree(src_lib, dest_lib, symlinks=True)
 
-        # Remove the NDK's libcompiler_rt-extras.  For the platform, also remove
-        # the NDK libc++, except for the riscv64 sysroot which doesn't have
-        # these files.
+        # Remove the NDK's libcompiler_rt-extras.  Also remove the NDK libc++,
+        # except for the riscv64 sysroot which doesn't have these files.
         (dest_lib / 'libcompiler_rt-extras.a').unlink()
-        if platform and arch != hosts.Arch.RISCV64:
+        if arch != hosts.Arch.RISCV64:
             (dest_lib / 'libc++abi.a').unlink()
             (dest_lib / 'libc++_static.a').unlink()
             (dest_lib / 'libc++_shared.so').unlink()
@@ -952,57 +946,76 @@ class DeviceSysrootsBuilder(base_builders.Builder):
                 continue
             if not re.match(r'\d+$', subdir.name):
                 continue
-            if platform and arch != hosts.Arch.RISCV64:
+            if arch != hosts.Arch.RISCV64:
                 (subdir / 'libc++.a').unlink()
                 (subdir / 'libc++.so').unlink()
         # Verify that there aren't any extra copies somewhere else in the
         # directory hierarchy.
-        verify_gone = ['libcompiler_rt-extras.a', 'libunwind.a']
-        if platform:
-            verify_gone += [
-                'libc++abi.a',
-                'libc++_static.a',
-                'libc++_shared.so',
-                'libc++.a',
-                'libc++.so',
-            ]
+        verify_gone = [
+            'libc++abi.a',
+            'libc++_static.a',
+            'libc++_shared.so',
+            'libc++.a',
+            'libc++.so',
+            'libcompiler_rt-extras.a',
+            'libunwind.a',
+        ]
         for (parent, _, files) in os.walk(sysroot):
             for f in files:
                 if f in verify_gone:
                     raise RuntimeError('sysroot file should have been ' +
                                        f'removed: {os.path.join(parent, f)}')
 
-        if platform:
-            # Create a stub library for the platform's libc++.
-            platform_stubs = paths.OUT_DIR / 'platform_stubs' / config.ndk_arch
-            platform_stubs.mkdir(parents=True, exist_ok=True)
-            libdir = sysroot / 'usr' / 'lib'
-            libdir.mkdir(parents=True, exist_ok=True)
-            with (platform_stubs / 'libc++.c').open('w') as f:
-                f.write(textwrap.dedent("""\
-                    void __cxa_atexit() {}
-                    void __cxa_demangle() {}
-                    void __cxa_finalize() {}
-                    void __dynamic_cast() {}
-                    void _ZTIN10__cxxabiv117__class_type_infoE() {}
-                    void _ZTIN10__cxxabiv120__si_class_type_infoE() {}
-                    void _ZTIN10__cxxabiv121__vmi_class_type_infoE() {}
-                    void _ZTISt9type_info() {}
-                """))
 
-            utils.check_call([self.toolchain.cc,
-                              f'--target={config.llvm_triple}',
-                              '-fuse-ld=lld', '-nostdlib', '-shared',
-                              '-Wl,-soname,libc++.so',
-                              '-o{}'.format(libdir / 'libc++.so'),
-                              str(platform_stubs / 'libc++.c')])
-
-
-class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
-    name = 'platform-libcxxabi'
+class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
+    name = 'device-libcxx'
     src_dir: Path = paths.LLVM_PATH / 'runtimes'
-    config_list: List[configs.Config] = configs.android_configs(
-        platform=True, suppress_libcxx_headers=True)
+
+    def gen_configs(platform: bool, apex: bool):
+        result = configs.android_configs(platform=platform,
+            suppress_libcxx_headers=True, extra_config={'apex': apex})
+        # The non-APEX system libc++.so needs to be built against a newer API so
+        # it uses the unwinder from libc.so. RISC-V uses API 10000 instead
+        # currently.
+        if platform and not apex:
+            for config in result:
+                if config.target_arch != hosts.Arch.RISCV64:
+                    config.override_api_level = 33
+        return result
+
+    config_list: List[configs.Config] = (
+        gen_configs(platform=False, apex=False) +
+        gen_configs(platform=True, apex=False) +
+        gen_configs(platform=True, apex=True)
+    )
+
+    @property
+    def _is_ndk(self) -> bool:
+        return not self._config.platform
+
+    @property
+    def _is_apex(self) -> bool:
+        return self._config.extra_config['apex']
+
+    @property
+    def output_dir(self) -> Path:
+        old_path = super().output_dir
+        suffix = '-apex' if self._config.extra_config['apex'] else ''
+        return old_path.parent / (old_path.name + suffix)
+
+    @property
+    def ldflags(self) -> List[str]:
+        # Avoid linking the STL because it does not exist yet.
+        result = super().ldflags + ['-nostdlib++']
+
+        # For the platform libc++ build, use the unwinder API exported from
+        # libc.so. Otherwise, link libunwind.a.
+        if self._is_ndk or self._is_apex:
+            result.append('-unwindlib=libunwind')
+        else:
+            result.append('-unwindlib=none')
+
+        return result
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -1010,33 +1023,79 @@ class PlatformLibcxxAbiBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LLVM_ENABLE_RUNTIMES'] ='libcxx;libcxxabi'
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
+        if not self._is_ndk:
+            defines['LIBCXXABI_NON_DEMANGLING_TERMINATE'] = 'ON'
+            defines['LIBCXXABI_STATIC_DEMANGLE_LIBRARY'] = 'ON'
 
-        defines['LIBCXX_ENABLE_SHARED'] = 'OFF'
+        defines['LIBCXX_ENABLE_SHARED'] = 'ON'
         defines['LIBCXX_TARGET_TRIPLE'] = self._config.llvm_triple
         defines['LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
-        return defines
-
-    def _build_config(self) -> None:
-        if super()._is_64bit():
-            # For arm64 and x86_64, build static cxxabi library from
-            # toolchain/libcxxabi and use it when building runtimes.  This
-            # should affect all compiler-rt runtimes that use libcxxabi
-            # (e.g. asan, hwasan, scudo, tsan, ubsan, xray).
-            super()._build_config()
+        defines['LIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY'] = 'ON'
+        defines['LIBCXX_STATIC_OUTPUT_NAME'] = 'c++_static'
+        if self._is_ndk:
+            defines['LIBCXX_SHARED_OUTPUT_NAME'] = 'c++_shared'
+            defines['LIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY'] = 'OFF'
+            defines['LIBCXX_ABI_VERSION'] = '1'
+            defines['LIBCXX_ABI_NAMESPACE'] = '__ndk1'
         else:
-            self.install_config()
+            defines['LIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY'] = 'ON'
+
+        # There is a check for ANDROID_NATIVE_API_LEVEL in
+        # HandleLLVMOptions.cmake that determines the value of
+        # LLVM_FORCE_SMALLFILE_FOR_ANDROID and _FILE_OFFSET_BITS. Maybe it
+        # should use a different name for the API level macro in CMake?
+        defines['ANDROID_NATIVE_API_LEVEL'] = str(self._config.api_level)
+
+        return defines
 
     def install_config(self) -> None:
         arch = self._config.target_arch
-        install_dir = self._config.sysroot / 'usr' / 'lib'
+        sysroot_lib = self._config.sysroot / 'usr' / 'lib'
 
-        if super()._is_64bit():
-            src_path = self.output_dir / 'lib' / 'libc++abi.a'
-            shutil.copy2(src_path, install_dir / 'libc++abi.a')
+        # Copy libc++ headers into the NDK+platform sysroot.
+        if self._is_ndk or self._is_apex:
+            shutil.copytree(self.output_dir / 'include',
+                            self._config.sysroot / 'usr' / 'include',
+                            dirs_exist_ok=True, symlinks=True)
+
+        # Copy libraries into the NDK sysroot, and generate libc++.{a,so} linker
+        # scripts.
+        if self._is_ndk:
+            for name in ['libc++abi.a', 'libc++_shared.so', 'libc++_static.a']:
+                shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
+            with open(sysroot_lib / 'libc++.a', 'w') as out:
+                out.write('INPUT(-lc++_static -lc++abi)\n')
+            with open(sysroot_lib / 'libc++.so', 'w') as out:
+                out.write('INPUT(-lc++_shared)\n')
+
+        # Copy libraries into the platform sysroot. Use the APEX build, which
+        # targets a lower API level.
+        if self._is_apex:
+            for name in ['libc++abi.a', 'libc++.so']:
+                shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
+
+        # Copy the output files to a directory structure for use with (a) Soong
+        # and (b) the NDK's checkbuild.py. Offer the experimental library in the
+        # NDK but omit it from the platform because we want to discourage
+        # platform developers from using unstable APIs.
+        if self._is_ndk:
+            kind = 'ndk'
+            libs = ['libc++abi.a', 'libc++_static.a', 'libc++_shared.so', 'libc++experimental.a']
         else:
-            with (install_dir / 'libc++abi.so').open('w') as f:
-                f.write('INPUT(-lc++)')
+            libs = ['libc++abi.a', 'libc++_static.a', 'libc++.so', 'libc++demangle.a']
+            if self._is_apex:
+                kind = 'apex'
+            else:
+                kind = 'platform'
+        dst_dir = self.output_toolchain.path / 'android_libc++' / kind / arch.value
+        dst_lib_dir = dst_dir / 'lib'
+        dst_lib_dir.mkdir(parents=True, exist_ok=True)
+        for name in libs:
+            shutil.copy2(self.output_dir / 'lib' / name, dst_lib_dir)
+        dst_inc_dir = dst_dir / 'include' / 'c++' / 'v1'
+        dst_inc_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(self.output_dir / 'include' / 'c++' / 'v1' / '__config_site', dst_inc_dir)
 
 
 class WinLibCxxBuilder(base_builders.LLVMRuntimeBuilder):
