@@ -1,0 +1,141 @@
+From ade336d6e14140134728b9991be8e4e68d6205ea Mon Sep 17 00:00:00 2001
+From: Paul Kirth <paulkirth@google.com>
+Date: Thu, 2 Mar 2023 22:11:17 +0000
+Subject: [PATCH] [codegen][riscv] Emit CFI directives when using shadow call
+ stack
+
+Currently we don't emit any CFI instructions for the SCS register when
+enabling SCS on RISCV. This causes problems when unwinding, since the
+SCS register isn't being handled properly.
+
+Reviewed By: mcgrathr
+
+Differential Revision: https://reviews.llvm.org/D145205
+---
+ llvm/lib/Target/RISCV/RISCVFrameLowering.cpp | 29 +++++++++++++++++++-
+ llvm/test/CodeGen/RISCV/shadowcallstack.ll   |  8 ++++++
+ 2 files changed, 36 insertions(+), 1 deletion(-)
+
+diff --git a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+index bb55c16bf135..a68096fc20d1 100644
+--- a/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
++++ b/llvm/lib/Target/RISCV/RISCVFrameLowering.cpp
+@@ -36,7 +36,8 @@ static void emitSCSPrologue(MachineFunction &MF, MachineBasicBlock &MBB,
+     return;
+ 
+   const auto &STI = MF.getSubtarget<RISCVSubtarget>();
+-  Register RAReg = STI.getRegisterInfo()->getRARegister();
++  const llvm::RISCVRegisterInfo *TRI = STI.getRegisterInfo();
++  Register RAReg = TRI->getRARegister();
+ 
+   // Do not save RA to the SCS if it's not saved to the regular stack,
+   // i.e. RA is not at risk of being overwritten.
+@@ -78,6 +79,26 @@ static void emitSCSPrologue(MachineFunction &MF, MachineBasicBlock &MBB,
+       .addReg(SCSPReg)
+       .addImm(SlotSize)
+       .setMIFlag(MachineInstr::FrameSetup);
++
++  // Emit a CFI instruction that causes SlotSize to be subtracted from the value
++  // of the shadow stack pointer when unwinding past this frame.
++  char DwarfSCSReg = TRI->getDwarfRegNum(SCSPReg, /*IsEH*/ true);
++  assert(DwarfSCSReg < 32 && "SCS Register should be < 32 (X18).");
++
++  char Offset = static_cast<char>(-SlotSize) & 0x7f;
++  const char CFIInst[] = {
++      dwarf::DW_CFA_val_expression,
++      DwarfSCSReg, // register
++      2,           // length
++      static_cast<char>(unsigned(dwarf::DW_OP_breg0 + DwarfSCSReg)),
++      Offset, // addend (sleb128)
++  };
++
++  unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createEscape(
++      nullptr, StringRef(CFIInst, sizeof(CFIInst))));
++  BuildMI(MBB, MI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
++      .addCFIIndex(CFIIndex)
++      .setMIFlag(MachineInstr::FrameSetup);
+ }
+ 
+ static void emitSCSEpilogue(MachineFunction &MF, MachineBasicBlock &MBB,
+@@ -128,6 +149,12 @@ static void emitSCSEpilogue(MachineFunction &MF, MachineBasicBlock &MBB,
+       .addReg(SCSPReg)
+       .addImm(-SlotSize)
+       .setMIFlag(MachineInstr::FrameDestroy);
++  // Restore the SCS pointer
++  unsigned CFIIndex = MF.addFrameInst(MCCFIInstruction::createRestore(
++      nullptr, STI.getRegisterInfo()->getDwarfRegNum(SCSPReg, /*IsEH*/ true)));
++  BuildMI(MBB, MI, DL, TII->get(TargetOpcode::CFI_INSTRUCTION))
++      .addCFIIndex(CFIIndex)
++      .setMIFlags(MachineInstr::FrameDestroy);
+ }
+ 
+ // Get the ID of the libcall used for spilling and restoring callee saved
+diff --git a/llvm/test/CodeGen/RISCV/shadowcallstack.ll b/llvm/test/CodeGen/RISCV/shadowcallstack.ll
+index 51df390df802..4442372637f2 100644
+--- a/llvm/test/CodeGen/RISCV/shadowcallstack.ll
++++ b/llvm/test/CodeGen/RISCV/shadowcallstack.ll
+@@ -36,6 +36,7 @@ define i32 @f3() shadowcallstack {
+ ; RV32:       # %bb.0:
+ ; RV32-NEXT:    sw ra, 0(s2)
+ ; RV32-NEXT:    addi s2, s2, 4
++; RV32-NEXT:    .cfi_escape 0x16, 0x12, 0x02, 0x82, 0x7c #
+ ; RV32-NEXT:    addi sp, sp, -16
+ ; RV32-NEXT:    .cfi_def_cfa_offset 16
+ ; RV32-NEXT:    sw ra, 12(sp) # 4-byte Folded Spill
+@@ -45,12 +46,14 @@ define i32 @f3() shadowcallstack {
+ ; RV32-NEXT:    addi sp, sp, 16
+ ; RV32-NEXT:    lw ra, -4(s2)
+ ; RV32-NEXT:    addi s2, s2, -4
++; RV32-NEXT:    .cfi_restore s2
+ ; RV32-NEXT:    ret
+ ;
+ ; RV64-LABEL: f3:
+ ; RV64:       # %bb.0:
+ ; RV64-NEXT:    sd ra, 0(s2)
+ ; RV64-NEXT:    addi s2, s2, 8
++; RV64-NEXT:    .cfi_escape 0x16, 0x12, 0x02, 0x82, 0x78 #
+ ; RV64-NEXT:    addi sp, sp, -16
+ ; RV64-NEXT:    .cfi_def_cfa_offset 16
+ ; RV64-NEXT:    sd ra, 8(sp) # 8-byte Folded Spill
+@@ -60,6 +63,7 @@ define i32 @f3() shadowcallstack {
+ ; RV64-NEXT:    addi sp, sp, 16
+ ; RV64-NEXT:    ld ra, -8(s2)
+ ; RV64-NEXT:    addi s2, s2, -8
++; RV64-NEXT:    .cfi_restore s2
+ ; RV64-NEXT:    ret
+   %res = call i32 @bar()
+   %res1 = add i32 %res, 1
+@@ -71,6 +75,7 @@ define i32 @f4() shadowcallstack {
+ ; RV32:       # %bb.0:
+ ; RV32-NEXT:    sw ra, 0(s2)
+ ; RV32-NEXT:    addi s2, s2, 4
++; RV32-NEXT:    .cfi_escape 0x16, 0x12, 0x02, 0x82, 0x7c #
+ ; RV32-NEXT:    addi sp, sp, -16
+ ; RV32-NEXT:    .cfi_def_cfa_offset 16
+ ; RV32-NEXT:    sw ra, 12(sp) # 4-byte Folded Spill
+@@ -98,12 +103,14 @@ define i32 @f4() shadowcallstack {
+ ; RV32-NEXT:    addi sp, sp, 16
+ ; RV32-NEXT:    lw ra, -4(s2)
+ ; RV32-NEXT:    addi s2, s2, -4
++; RV32-NEXT:    .cfi_restore s2
+ ; RV32-NEXT:    ret
+ ;
+ ; RV64-LABEL: f4:
+ ; RV64:       # %bb.0:
+ ; RV64-NEXT:    sd ra, 0(s2)
+ ; RV64-NEXT:    addi s2, s2, 8
++; RV64-NEXT:    .cfi_escape 0x16, 0x12, 0x02, 0x82, 0x78 #
+ ; RV64-NEXT:    addi sp, sp, -32
+ ; RV64-NEXT:    .cfi_def_cfa_offset 32
+ ; RV64-NEXT:    sd ra, 24(sp) # 8-byte Folded Spill
+@@ -131,6 +138,7 @@ define i32 @f4() shadowcallstack {
+ ; RV64-NEXT:    addi sp, sp, 32
+ ; RV64-NEXT:    ld ra, -8(s2)
+ ; RV64-NEXT:    addi s2, s2, -8
++; RV64-NEXT:    .cfi_restore s2
+ ; RV64-NEXT:    ret
+   %res1 = call i32 @bar()
+   %res2 = call i32 @bar()
+-- 
+2.40.0.634.g4ca3ef3211-goog
+
