@@ -1010,6 +1010,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [BOLT][NFC] Simplify code using std::optional"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d788db3d193eac219a9e2a1afc785800ab7378bf.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 494384
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [clang][driver] Pass `-femulated-tls` through to the linker in LTO mode"
         },
         "platforms": [
@@ -1019,20 +1033,6 @@
         "version_range": {
             "from": 487747,
             "until": 495214
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "[UPSTREAM] [StackProtector] don't check stack protector before calling nounwind functions"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/fc4494dffa5422b2be5442c235554e76bed79c8a.patch",
-        "version_range": {
-            "from": 487747,
-            "until": 495641
         }
     },
     {
@@ -1061,6 +1061,34 @@
         "version_range": {
             "from": 487747,
             "until": 495214
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [StackProtector] don't check stack protector before calling nounwind functions"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/fc4494dffa5422b2be5442c235554e76bed79c8a.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495641
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [BOLT] Parallelize legacy profile merging"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/35af20d9e036deeed250b73fd3ae86d6455173c5.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 497146
         }
     },
     {
