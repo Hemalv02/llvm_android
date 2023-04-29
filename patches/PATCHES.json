@@ -1094,6 +1094,48 @@
     {
         "metadata": {
             "info": [],
+            "title": "[BACKPORT] [CodeGen] precommit machine-latecleanup test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f3ce0af17a074434889e5d836ed76e51f11bddd6.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495167
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CodeGen] precommit machine-latecleanup test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/095a0c67bb5705b2ebd91ecc039e73bbd6982cee.patch",
+        "version_range": {
+            "from": 495167,
+            "until": 497235
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [CodeGen][MachineLastInstrsCleanup] fix INLINEASM_BR hazard"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/012ea747ed0275c499f69c82ac0f635f4c76f746.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 497236
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
