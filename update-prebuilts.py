@@ -226,6 +226,18 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "*/lib/libc_musl.so"])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
+        kleaf_versions = pathlib.Path("kleaf") / "versions.bzl"
+        if kleaf_versions.is_file():
+            with open(kleaf_versions) as f:
+                kleaf_versions_lines = f.read().splitlines()
+            list_end_idx = kleaf_versions_lines.index("]")
+            new_lines = kleaf_versions_lines[:list_end_idx]
+            new_lines.append('    "{}",'.format(svn_revision))
+            new_lines += kleaf_versions_lines[list_end_idx:]
+            with open(kleaf_versions, "w") as f:
+                f.write("\n".join(new_lines))
+            utils.check_call(['git', 'add', kleaf_versions])
+
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
     # coverage instrumentation and rely on the driver to pick the correct
     # profile runtime.  Symlink the Linux resource dir from the Linux toolchain
