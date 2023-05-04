@@ -1004,6 +1004,21 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         return old_path.parent / (old_path.name + suffix)
 
     @property
+    def cxxflags(self) -> list[str]:
+        base = super().cxxflags
+        # Required to prevent dlclose from causing crashes on thread exit.
+        # https://github.com/android/ndk/issues/1200
+        #
+        # This doesn't actually control whether thread_local is used in most of the code
+        # base, just whether it is used in the implementation of C++ exception storage
+        # for libc++abi.
+        if self._config.target_arch is hosts.Arch.RISCV64:
+            # But rv64 doesn't support TLS yet (emulated or otherwise).
+            # https://github.com/google/android-riscv64/issues/3
+            return base
+        return base + ['-DHAS_THREAD_LOCAL']
+
+    @property
     def ldflags(self) -> List[str]:
         # Avoid linking the STL because it does not exist yet.
         result = super().ldflags + ['-nostdlib++']
