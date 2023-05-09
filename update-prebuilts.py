@@ -318,7 +318,7 @@ def main():
 
     branch = args.branch
     if branch is None:
-        output = utils.check_output(['/google/data/ro/projects/android/ab',
+        output = utils.check_output(['/google/bin/releases/android/ab/ab.par',
                                      'get',
                                      '--raw', # prevent color text
                                      '--bid', args.build,
