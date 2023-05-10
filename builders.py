@@ -662,9 +662,13 @@ class LibNcursesBuilder(base_builders.AutoconfBuilder, base_builders.LibInfo):
 
     @property
     def config_flags(self) -> List[str]:
-        return super().config_flags + [
+        flags = super().config_flags + [
             '--with-shared',
+            '--with-default-terminfo-dir=/usr/share/terminfo',
         ]
+        if self._config.target_os.is_darwin:
+            flags.append('--disable-mixed-case')
+        return flags
 
     @property
     def _lib_names(self) -> List[str]:
