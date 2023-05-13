@@ -16,6 +16,7 @@
 #
 
 import os
+from pathlib import Path
 import string
 import subprocess
 
@@ -27,20 +28,38 @@ import source_manager
 import sys
 
 _LLVM_ANDROID_PATH = paths.SCRIPTS_DIR
-_PATCH_DIR = os.path.join(_LLVM_ANDROID_PATH, 'patches')
-_PATCH_JSON = os.path.join(_PATCH_DIR, 'PATCHES.json')
+_PATCH_DIR = _LLVM_ANDROID_PATH / 'patches'
+_PATCH_JSON = _PATCH_DIR / 'PATCHES.json'
 
 _SVN_REVISION = (android_version.get_svn_revision_number())
 
 
 def get_removed_patches(output):
-    """Parse the list of removed patches from patch_manager.py's output."""
-    marker = 'removed from the patch metadata file:\n'
+    """
+    Parse the list of removed patches from patch_manager.py's output.
+
+    The output is of the form:
+    Removed <n> old patches:
+    - <patch_path1>: <patch_title1>
+    - <patch_path2>: <patch_title2>
+    ...
+    """
+
+    def _get_file_from_line(line):
+        # each line is '- <patch_path>: patch_title\n'
+        line = line[2:]
+        return line[:line.find(':')]
+
+    marker = ' old patches:\n'
     marker_start = output.find(marker)
     if marker_start == -1:
         return None
     removed = output[marker_start + len(marker):].splitlines()
-    return [p.strip() for p in removed]
+    rmfiles = [_PATCH_DIR / _get_file_from_line(p) for p in removed if p]
+    for rmfile in rmfiles:
+        if not rmfile.exists():
+            raise RuntimeError(f'Removed file {rmfile} doesn\'t exist')
+    return rmfiles
 
 
 def trim_patches_json():
@@ -59,17 +78,6 @@ def main():
               'Android LLVM version.')
         return
 
-    def _get_patch_path(patch):
-        # Find whether the basename printed by patch_manager.py is a cherry-pick
-        # (patch/cherry/<PATCH>) or a local patch (patch/<PATCH>).
-        cherry = os.path.join(_PATCH_DIR, 'cherry', patch)
-        local = os.path.join(_PATCH_DIR, patch)
-        if os.path.exists(cherry):
-            return cherry
-        elif os.path.exists(local):
-            return local
-        raise RuntimeError(f'Cannot find patch file {patch}')
-
     # Start a new repo branch before trimming patches.
     os.chdir(_LLVM_ANDROID_PATH)
     branch_name = f'trim-patches-before-{_SVN_REVISION}'
@@ -81,12 +89,10 @@ def main():
         print('No patches to remove')
         return
 
-    removed_patch_paths = [_get_patch_path(p) for p in removed_patches]
-
     # Apply the changes to git and commit.
     utils.check_call(['git', 'add', _PATCH_JSON])
-    for patch in removed_patch_paths:
-        utils.check_call(['git', 'rm', patch])
+    for patch in removed_patches:
+        utils.check_call(['git', 'rm', str(patch)])
 
     message_lines = [
         f'Remove patch entries older than {_SVN_REVISION}.',
