@@ -158,6 +158,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[BACKPORT] [CodeGen] precommit machine-latecleanup test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f3ce0af17a074434889e5d836ed76e51f11bddd6.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495167
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [clang][driver] Pass `-femulated-tls` through to the linker in LTO mode"
         },
         "platforms": [
@@ -228,20 +242,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "[BACKPORT] [CodeGen] precommit machine-latecleanup test"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/f3ce0af17a074434889e5d836ed76e51f11bddd6.patch",
-        "version_range": {
-            "from": 487747,
-            "until": 495167
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "[UPSTREAM] [CodeGen] precommit machine-latecleanup test"
         },
         "platforms": [
@@ -265,6 +265,66 @@
         "version_range": {
             "from": 487747,
             "until": 497236
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[AArch64] Emit FNMADD instead of FNEG(FMADD)\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/4157625cea4aafe38e3e56afbd9cb76ea7500360.patch",
+        "version_range": {
+            "from": 498005,
+            "until": 498187
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert \"[SCEV] Replace IsAvailableOnEntry with block disposition\""
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/9fb9c7776edcade522e5718c91189d51796cedd6.patch",
+        "version_range": {
+            "from": 497275,
+            "until": 498489
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[LV] Use VPValue to get expanded value for SCEV step expressions."
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/236a0e82df37d3a11f57c34df43bea1904a29530.patch",
+        "version_range": {
+            "from": 497853,
+            "until": 498568
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[LV] Reuse SCEV expansion results for epilogue vectorization."
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/3d4eed01338d3b5f0bb5b2dbe41afc9d957d3cc6.patch",
+        "version_range": {
+            "from": 497853,
+            "until": 498593
         }
     },
     {
