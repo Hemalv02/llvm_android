@@ -757,6 +757,10 @@ class LLVMBuilder(LLVMBaseBuilder):
         defines['CLANG_DEFAULT_LINKER'] = 'lld'
         defines['CLANG_DEFAULT_OBJCOPY'] = 'llvm-objcopy'
 
+        # Omit versions on LLVM's Linux and Darwin shared libraries. The versions for the runtimes
+        # (e.g. libc++) are also omitted, using OS-specific versions of the same CMake flag.
+        defines['CMAKE_PLATFORM_NO_VERSIONED_SONAME'] = 'ON'
+
         if self._config.target_os.is_darwin:
             defines['COMPILER_RT_ENABLE_IOS'] = 'OFF'
             defines['COMPILER_RT_ENABLE_TVOS'] = 'OFF'
@@ -765,7 +769,11 @@ class LLVMBuilder(LLVMBaseBuilder):
             runtimes_cmake_args = []
             runtimes_cmake_args.append(f'-DCMAKE_OSX_DEPLOYMENT_TARGET={constants.MAC_MIN_VERSION}')
             runtimes_cmake_args.append('-DCMAKE_OSX_ARCHITECTURES=arm64|x86_64')
+            runtimes_cmake_args.append('-DCMAKE_PLATFORM_NO_VERSIONED_SONAME=ON')
             defines['RUNTIMES_CMAKE_ARGS'] = ';'.join(sorted(runtimes_cmake_args))
+
+            # Add libc++abi to libc++.{a,dylib} for consistency with Linux.
+            defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 
         if self._config.target_os.is_linux:
             runtime_configs = [self._config]
@@ -814,6 +822,7 @@ class LLVMBuilder(LLVMBaseBuilder):
                 defines[f'RUNTIMES_{triple}_CMAKE_EXE_LINKER_FLAGS'] = ldflags_str
                 defines[f'RUNTIMES_{triple}_CMAKE_SHARED_LINKER_FLAGS'] = ldflags_str
                 defines[f'RUNTIMES_{triple}_CMAKE_MODULE_LINKER_FLAGS'] = ldflags_str
+                defines[f'RUNTIMES_{triple}_CMAKE_PLATFORM_NO_VERSIONED_SONAME'] = 'ON'
 
                 # clang generates call to builtin functions when building
                 # compiler-rt for musl.  Allow use of the builtins library.
@@ -828,7 +837,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
                 # Make libc++.so a symlink to libc++.so.x instead of a linker script that
                 # also adds -lc++abi.  Statically link libc++abi to libc++ so it is not
-                # necessary to pass -lc++abi explicitly.  This is needed only for Linux.
+                # necessary to pass -lc++abi explicitly.
                 defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_ABI_LINKER_SCRIPT'] = 'OFF'
                 defines[f'RUNTIMES_{triple}_LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
 

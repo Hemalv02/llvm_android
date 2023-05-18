@@ -260,90 +260,6 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
     clangcl_path.symlink_to('clang.real')
 
 
-# Normalize host libraries (libLLVM, libclang, libc++, libc++abi) so that there
-# is just one library, whose SONAME entry matches the actual name.
-def normalize_llvm_host_libs(install_dir: Path,
-                             host: hosts.Host,
-                             version: Version,
-                             host_config: configs.Config) -> None:
-    if host.is_linux:
-        libs = {'libLLVM': 'libLLVM-{version}.so',
-                'libclang': 'libclang.so.{version}',
-                'libclang-cpp': 'libclang-cpp.so.{version}',
-                'libc++': 'libc++.so.{version}',
-                'libc++abi': 'libc++abi.so.{version}'
-               }
-    else:
-        libs = {'libc++': 'libc++.{version}.dylib',
-                'libc++abi': 'libc++abi.{version}.dylib'
-               }
-
-    def getVersions(libname: str) -> Tuple[str, str]:
-        if libname == 'libclang-cpp':
-            return version.major, version.major
-        if not libname.startswith('libc++'):
-            return version.long_version(), version.major
-        else:
-            return '1.0', '1'
-
-    no_llvm_libs = host_config.target_os.is_linux and host_config.is_32_bit
-    libdir = os.path.join(install_dir, 'lib')
-    for libname, libformat in libs.items():
-        if libformat.startswith('libc++'):
-            libprefix = os.path.join(libdir, host_config.llvm_triple)
-            if not os.path.exists(libprefix):
-                libprefix = libdir
-        elif no_llvm_libs:
-            continue
-        else:
-            libprefix = libdir
-
-        short_version, major = getVersions(libname)
-
-        if libname == 'libclang':
-            soname = list(Path(libprefix).glob('libclang.so.[0-9][0-9]'))
-            if len(soname) == 1:
-                soname_version = str(soname[0]).split('.')[-1]
-            else:
-                raise RuntimeError(str(len(soname)) + " versions of libclang.so found, 1 expected")
-        else:
-            soname_version = major
-
-        soname_lib = os.path.join(libprefix, libformat.format(version=soname_version))
-        if libname.startswith('libclang') and libname != 'libclang-cpp':
-            soname_lib = soname_lib[:-3]
-        real_lib = os.path.join(libprefix, libformat.format(version=short_version))
-
-        preserved_libnames = ('libLLVM', 'libclang-cpp')
-        if libname not in preserved_libnames and os.path.exists(real_lib):
-            # Rename the library to match its SONAME
-            if not os.path.isfile(real_lib):
-                raise RuntimeError(real_lib + ' must be a regular file')
-            if not os.path.islink(soname_lib):
-                raise RuntimeError(soname_lib + ' must be a symlink')
-
-            shutil.move(real_lib, soname_lib)
-
-        # Retain only soname_lib and delete other files for this library.  We
-        # still need libc++.so or libc++.dylib symlinks for a subsequent stage1
-        # build using these prebuilts (where CMake tries to find C++ atomics
-        # support) to succeed.  We also need a few checks to ensure libclang-cpp
-        # is not deleted when cleaning up libclang.so* and libc++abi is not
-        # deleted when cleaning up libc++.so*.
-        libcxx_name = 'libc++.so' if host.is_linux else 'libc++.dylib'
-        all_libs = [lib for lib in os.listdir(libprefix) if
-                    lib != libcxx_name and
-                    not lib.startswith('libclang-cpp') and # retain libclang-cpp
-                    not lib.endswith('.a') and # skip static host libraries
-                    (lib.startswith(libname + '.') or # so libc++abi is ignored
-                     lib.startswith(libname + '-'))]
-
-        for lib in all_libs:
-            lib = os.path.join(libprefix, lib)
-            if lib != soname_lib:
-                os.remove(lib)
-
-
 def install_license_files(install_dir: Path) -> None:
     projects = (
         'llvm',
@@ -429,6 +345,15 @@ def bolt_instrument(toolchain_builder: LLVMBuilder):
     # Need to create the profile output directory for BOLT.
     # TODO: Let BOLT instrumented library to create it on itself.
     os.makedirs(clang_afdo_path, exist_ok=True)
+
+
+def verify_symlink_exists(link_path: Path, target: Path):
+    if not link_path.exists():
+        raise RuntimeError(f'{link_path} does not exist')
+    if not link_path.is_symlink():
+        raise RuntimeError(f'{link_path} exists but is not a symlink')
+    if link_path.readlink() != target:
+        raise RuntimeError(f'{link_path} points to {link_path.readlink()}, expected {target}')
 
 
 def verify_file_exists(lib_dir: Path, name: str):
@@ -584,6 +509,20 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
             'libc++.a',
             'libc++abi.a',
         }
+    if host.is_linux:
+        necessary_lib_files |= {
+            'libc++.so',
+            'libc++.so.1',
+            'libc++abi.so',
+            'libc++abi.so.1',
+        }
+    if host.is_darwin:
+        necessary_lib_files |= {
+            'libc++.dylib',
+            'libc++.1.dylib',
+            'libc++abi.dylib',
+            'libc++abi.1.dylib',
+        }
 
     if host.is_windows and not win_sdk.is_enabled():
         necessary_lib_files.add('libwinpthread-1' + shlib_ext)
@@ -596,27 +535,36 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     if host.is_linux:
         install_wrappers(install_dir, llvm_next)
 
-    if not host.is_windows:
-        normalize_llvm_host_libs(install_dir, host, version, host_config)
-        if host.is_linux:
-            # We also need to normalize the 32-bit libc++, libc++abi
-            normalize_llvm_host_libs(install_dir, host, version,
-                                     configs.host_32bit_config(host_config.is_musl))
+    # Add libc++[abi].so.1 and libc++[abi].1.dylib symlinks for backwards compatibility. These
+    # symlinks point to the unversioned libraries (as opposed to the typical situation where
+    # unversioned symlinks point to the versioned libraries).
+    if host.is_linux:
+        if host_config.is_musl:
+            triple32 = 'i686-unknown-linux-musl'
+            triple64 = 'x86_64-unknown-linux-musl'
+        else:
+            triple32 = 'i386-unknown-linux-gnu'
+            triple64 = 'x86_64-unknown-linux-gnu'
+        for tripleNN in (triple32, triple64):
+            (lib_dir / tripleNN / 'libc++.so.1').symlink_to('libc++.so')
+            (lib_dir / tripleNN / 'libc++abi.so.1').symlink_to('libc++abi.so')
+        (lib_dir / 'libc++.so.1').symlink_to(Path(triple64) / 'libc++.so.1')
+        (lib_dir / 'libc++abi.so.1').symlink_to(Path(triple64) / 'libc++abi.so.1')
+    elif host.is_darwin:
+        (lib_dir / 'libc++.1.dylib').symlink_to('libc++.dylib')
+        (lib_dir / 'libc++abi.1.dylib').symlink_to('libc++abi.dylib')
 
     # Check necessary lib files exist.
     for necessary_lib_file in necessary_lib_files:
         if necessary_lib_file.startswith('libc++') and (host.is_linux or host.is_windows):
-            verify_file_exists(lib_dir / 'i686-w64-windows-gnu', necessary_lib_file)
-            verify_file_exists(lib_dir / 'x86_64-w64-windows-gnu', necessary_lib_file)
+            verify_file_exists(lib_dir, necessary_lib_file)
+            if necessary_lib_file.endswith('.a'):
+                verify_file_exists(lib_dir / 'i686-w64-windows-gnu', necessary_lib_file)
+                verify_file_exists(lib_dir / 'x86_64-w64-windows-gnu', necessary_lib_file)
             if host.is_linux:
-                if host_config.is_musl:
-                    verify_file_exists(lib_dir, necessary_lib_file)
-                    verify_file_exists(lib_dir / 'i686-unknown-linux-musl', necessary_lib_file)
-                    verify_file_exists(lib_dir / 'x86_64-unknown-linux-musl', necessary_lib_file)
-                else:
-                    verify_file_exists(lib_dir, necessary_lib_file)
-                    verify_file_exists(lib_dir / 'i386-unknown-linux-gnu', necessary_lib_file)
-                    verify_file_exists(lib_dir / 'x86_64-unknown-linux-gnu', necessary_lib_file)
+                verify_symlink_exists(lib_dir / necessary_lib_file, Path(triple64) / necessary_lib_file)
+                verify_file_exists(lib_dir / triple32, necessary_lib_file)
+                verify_file_exists(lib_dir / triple64, necessary_lib_file)
         else:
             verify_file_exists(lib_dir, necessary_lib_file)
 
@@ -713,7 +661,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                             'clang++.real\n'
                             'clang-tidy\n'
                             'clang-tidy.real\n'
-                            '../lib/libc++.so.1\n'
+                            '../lib/libc++.so\n'
                             'lld\n'
                             'ld64.lld\n'
                             'ld.lld\n'
