@@ -1,27 +1,41 @@
-From 331953c68f271b81348981474afe42a06c1f85e4 Mon Sep 17 00:00:00 2001
-From: Yabin Cui <yabinc@google.com>
-Date: Wed, 26 Oct 2022 10:27:30 -0700
-Subject: [PATCH] Revert "[clang] Improve diagnostics for expansion length
- mismatch"
+From acecf68c8b7c3c625cfa00f00f8ddc8f15baae44 Mon Sep 17 00:00:00 2001
+From: Erich Keane <erich.keane@intel.com>
+Date: Wed, 8 Mar 2023 12:12:33 -0800
+Subject: [PATCH] Revert two patches to fix GH58452 regression
 
+GH58452 is a regression in the 16.0 release branch caused by both:
+b8a1b698afb2fc84819c7596090aabf4d826b436 and
+3a0309c53674be56b5cfce038d78a0c2c6e2a98c
+
+This patch reverts both of those to make the 'valid' code stop
+diagnosing
+at the expense of crashes on invalid + unclear diagnostics.
+
+This patch also adds the tests from GH58452 to prevent any
+re-application from breaking this again.
+
+Revert "[clang] Improve diagnostics for expansion length mismatch"
 This reverts commit 3a0309c53674be56b5cfce038d78a0c2c6e2a98c.
+Revert "[clang] fix missing initialization of original number of expansions"
+This reverts commit b8a1b698afb2fc84819c7596090aabf4d826b436.
 
-Change-Id: I6713ffe3a9b9f71e6f79948f899bd96eb8c81fbe
+Differential Revision: https://reviews.llvm.org/D145605
 ---
- clang/include/clang/Sema/Sema.h               |   7 +-
+ clang/include/clang/Sema/Sema.h               |   8 +-
  clang/include/clang/Sema/SemaInternal.h       |   4 +-
  clang/lib/Sema/SemaTemplateDeduction.cpp      |   7 +-
  clang/lib/Sema/SemaTemplateVariadic.cpp       | 234 +++++++++---------
- .../CXX/temp/temp.decls/temp.variadic/p5.cpp  |   4 +-
+ clang/lib/Sema/TreeTransform.h                |   1 -
+ .../CXX/temp/temp.decls/temp.variadic/p5.cpp  |  72 +++---
  .../SemaTemplate/cxx1z-fold-expressions.cpp   |   2 +-
  clang/test/SemaTemplate/pack-deduction.cpp    |   6 +-
- 8 files changed, 126 insertions(+), 140 deletions(-)
+ 8 files changed, 158 insertions(+), 176 deletions(-)
 
 diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
-index 67ba41ffa846..49f9e349d7d2 100644
+index d1342876f85d..a492721f77bf 100644
 --- a/clang/include/clang/Sema/Sema.h
 +++ b/clang/include/clang/Sema/Sema.h
-@@ -238,11 +238,8 @@ namespace threadSafety {
+@@ -238,11 +238,9 @@ namespace threadSafety {
  
  // FIXME: No way to easily map from TemplateTypeParmTypes to
  // TemplateTypeParmDecls, so we have this horrible PointerUnion.
@@ -30,8 +44,9 @@ index 67ba41ffa846..49f9e349d7d2 100644
 -        const TemplateTypeParmType *, const SubstTemplateTypeParmPackType *,
 -        const SubstNonTypeTemplateParmPackExpr *, const NamedDecl *>,
 -    SourceLocation>;
-+typedef std::pair<llvm::PointerUnion<const TemplateTypeParmType*, NamedDecl*>,
-+                  SourceLocation> UnexpandedParameterPack;
++typedef std::pair<llvm::PointerUnion<const TemplateTypeParmType *, NamedDecl *>,
++                  SourceLocation>
++    UnexpandedParameterPack;
  
  /// Describes whether we've seen any nullability information for the given
  /// file.
@@ -58,7 +73,7 @@ index 4eca50919dc7..842eec099540 100644
  
  class TypoCorrectionConsumer : public VisibleDeclConsumer {
 diff --git a/clang/lib/Sema/SemaTemplateDeduction.cpp b/clang/lib/Sema/SemaTemplateDeduction.cpp
-index 6d57cd8542d6..69e942f5bd37 100644
+index 9e48a2a35a34..1fe2d3fac685 100644
 --- a/clang/lib/Sema/SemaTemplateDeduction.cpp
 +++ b/clang/lib/Sema/SemaTemplateDeduction.cpp
 @@ -756,11 +756,8 @@ private:
@@ -76,10 +91,10 @@ index 6d57cd8542d6..69e942f5bd37 100644
            AddPack(Index);
        }
 diff --git a/clang/lib/Sema/SemaTemplateVariadic.cpp b/clang/lib/Sema/SemaTemplateVariadic.cpp
-index 3326b93c085c..747dcfcc13f1 100644
+index 01a435668d88..86268b504cbb 100644
 --- a/clang/lib/Sema/SemaTemplateVariadic.cpp
 +++ b/clang/lib/Sema/SemaTemplateVariadic.cpp
-@@ -88,23 +88,6 @@ namespace {
+@@ -89,23 +89,6 @@ namespace {
        return true;
      }
  
@@ -103,7 +118,7 @@ index 3326b93c085c..747dcfcc13f1 100644
      /// Record occurrences of function and non-type template
      /// parameter packs in an expression.
      bool VisitDeclRefExpr(DeclRefExpr *E) {
-@@ -323,8 +306,7 @@ Sema::DiagnoseUnexpandedParameterPacks(SourceLocation Loc,
+@@ -324,8 +307,7 @@ Sema::DiagnoseUnexpandedParameterPacks(SourceLocation Loc,
            auto *TTPD = dyn_cast<TemplateTypeParmDecl>(LocalPack);
            return TTPD && TTPD->getTypeForDecl() == TTPT;
          }
@@ -113,7 +128,7 @@ index 3326b93c085c..747dcfcc13f1 100644
        };
        if (llvm::any_of(LSI->LocalPacks, DeclaresThisPack))
          LambdaParamPackReferences.push_back(Pack);
-@@ -376,7 +358,7 @@ Sema::DiagnoseUnexpandedParameterPacks(SourceLocation Loc,
+@@ -377,7 +359,7 @@ Sema::DiagnoseUnexpandedParameterPacks(SourceLocation Loc,
            = Unexpanded[I].first.dyn_cast<const TemplateTypeParmType *>())
        Name = TTP->getIdentifier();
      else
@@ -122,16 +137,16 @@ index 3326b93c085c..747dcfcc13f1 100644
  
      if (Name && NamesKnown.insert(Name).second)
        Names.push_back(Name);
-@@ -439,7 +421,7 @@ bool Sema::DiagnoseUnexpandedParameterPackInRequiresExpr(RequiresExpr *RE) {
+@@ -440,7 +422,7 @@ bool Sema::DiagnoseUnexpandedParameterPackInRequiresExpr(RequiresExpr *RE) {
    llvm::SmallPtrSet<NamedDecl*, 8> ParmSet(Parms.begin(), Parms.end());
    SmallVector<UnexpandedParameterPack, 2> UnexpandedParms;
    for (auto Parm : Unexpanded)
 -    if (ParmSet.contains(Parm.first.dyn_cast<const NamedDecl *>()))
-+    if (ParmSet.contains(Parm.first.dyn_cast<NamedDecl*>()))
++    if (ParmSet.contains(Parm.first.dyn_cast<NamedDecl *>()))
        UnexpandedParms.push_back(Parm);
    if (UnexpandedParms.empty())
      return false;
-@@ -691,95 +673,109 @@ bool Sema::CheckParameterPacksForExpansion(
+@@ -692,95 +674,109 @@ bool Sema::CheckParameterPacksForExpansion(
      bool &RetainExpansion, std::optional<unsigned> &NumExpansions) {
    ShouldExpand = true;
    RetainExpansion = false;
@@ -238,8 +253,8 @@ index 3326b93c085c..747dcfcc13f1 100644
 +    //   arguments corresponding to a template parameter pack, even when the
 +    //   sequence contains explicitly specified template arguments.
 +    if (!IsVarDeclPack && CurrentInstantiationScope) {
-+      if (NamedDecl *PartialPack
-+                    = CurrentInstantiationScope->getPartiallySubstitutedPack()){
++      if (NamedDecl *PartialPack =
++              CurrentInstantiationScope->getPartiallySubstitutedPack()) {
 +        unsigned PartialDepth, PartialIndex;
 +        std::tie(PartialDepth, PartialIndex) = getDepthAndIndex(PartialPack);
 +        if (PartialDepth == Depth && PartialIndex == Index) {
@@ -299,7 +314,7 @@ index 3326b93c085c..747dcfcc13f1 100644
    // If we're performing a partial expansion but we also have a full expansion,
    // expand to the number of common arguments. For example, given:
    //
-@@ -789,18 +785,17 @@ bool Sema::CheckParameterPacksForExpansion(
+@@ -790,18 +786,17 @@ bool Sema::CheckParameterPacksForExpansion(
    //
    // ... a call to 'A<int, int>().f<int>' should expand the pack once and
    // retain an expansion.
@@ -312,8 +327,8 @@ index 3326b93c085c..747dcfcc13f1 100644
        Diag(EllipsisLoc, diag::err_pack_expansion_length_conflict_partial)
 -          << PartialPack << PartialExpansion->first << *CurNumExpansions
 -          << SourceRange(PartialExpansion->second);
-+        << PartialPack << *NumPartialExpansions << *NumExpansions
-+        << SourceRange(PartiallySubstitutedPackLoc);
++          << PartialPack << *NumPartialExpansions << *NumExpansions
++          << SourceRange(PartiallySubstitutedPackLoc);
        return true;
      }
 -    NumExpansions = PartialExpansion->first;
@@ -324,7 +339,7 @@ index 3326b93c085c..747dcfcc13f1 100644
    }
  
    return false;
-@@ -813,48 +808,47 @@ std::optional<unsigned> Sema::getNumArgumentsInExpansion(QualType T,
+@@ -814,48 +809,47 @@ std::optional<unsigned> Sema::getNumArgumentsInExpansion(
    CollectUnexpandedParameterPacksVisitor(Unexpanded).TraverseType(Pattern);
  
    std::optional<unsigned> Result;
@@ -358,8 +373,8 @@ index 3326b93c085c..747dcfcc13f1 100644
 -    } else if (const auto *SEP =
 -                   I.dyn_cast<const SubstNonTypeTemplateParmPackExpr *>()) {
 -      setResultSz(SEP->getArgumentPack().pack_size());
-+    if (const TemplateTypeParmType *TTP
-+          = Unexpanded[I].first.dyn_cast<const TemplateTypeParmType *>()) {
++    if (const TemplateTypeParmType *TTP =
++            Unexpanded[I].first.dyn_cast<const TemplateTypeParmType *>()) {
 +      Depth = TTP->getDepth();
 +      Index = TTP->getIndex();
      } else {
@@ -374,10 +389,10 @@ index 3326b93c085c..747dcfcc13f1 100644
 +        // Function parameter pack or init-capture pack.
 +        typedef LocalInstantiationScope::DeclArgumentPack DeclArgumentPack;
 +
-+        llvm::PointerUnion<Decl *, DeclArgumentPack *> *Instantiation
-+          = CurrentInstantiationScope->findInstantiationOf(
-+                                        Unexpanded[I].first.get<NamedDecl *>());
-+        if (Instantiation->is<Decl*>())
++        llvm::PointerUnion<Decl *, DeclArgumentPack *> *Instantiation =
++            CurrentInstantiationScope->findInstantiationOf(
++                Unexpanded[I].first.get<NamedDecl *>());
++        if (Instantiation->is<Decl *>())
            // The pattern refers to an unexpanded pack. We're not ready to expand
            // this pack yet.
            return std::nullopt;
@@ -406,28 +421,107 @@ index 3326b93c085c..747dcfcc13f1 100644
    }
  
    return Result;
+diff --git a/clang/lib/Sema/TreeTransform.h b/clang/lib/Sema/TreeTransform.h
+index 44e4a14b487b..c6a3af1b72b0 100644
+--- a/clang/lib/Sema/TreeTransform.h
++++ b/clang/lib/Sema/TreeTransform.h
+@@ -5897,7 +5897,6 @@ bool TreeTransform<Derived>::TransformFunctionTypeParams(
+                                        = dyn_cast<PackExpansionType>(OldType)) {
+       // We have a function parameter pack that may need to be expanded.
+       QualType Pattern = Expansion->getPattern();
+-      NumExpansions = Expansion->getNumExpansions();
+       SmallVector<UnexpandedParameterPack, 2> Unexpanded;
+       getSema().collectUnexpandedParameterPacks(Pattern, Unexpanded);
+ 
 diff --git a/clang/test/CXX/temp/temp.decls/temp.variadic/p5.cpp b/clang/test/CXX/temp/temp.decls/temp.variadic/p5.cpp
-index 2d82a4f26b14..99381c97a5ac 100644
+index 2d82a4f26b14..7542186c22c7 100644
 --- a/clang/test/CXX/temp/temp.decls/temp.variadic/p5.cpp
 +++ b/clang/test/CXX/temp/temp.decls/temp.variadic/p5.cpp
-@@ -476,7 +476,7 @@ int fn() {
- namespace pr56094 {
- template <typename... T> struct D {
-   template <typename... U> using B = int(int (*...p)(T, U));
+@@ -473,51 +473,45 @@ int fn() {
+ }
+ }
+ 
+-namespace pr56094 {
+-template <typename... T> struct D {
+-  template <typename... U> using B = int(int (*...p)(T, U));
 -  // expected-error@-1 {{pack expansion contains parameter packs 'T' and 'U' that have different lengths (1 vs. 2)}}
-+  // expected-error@-1 {{pack expansion contains parameter pack 'U' that has a different length (1 vs. 2) from outer parameter packs}}
-   template <typename U1, typename U2> D(B<U1, U2> *);
-   // expected-note@-1 {{in instantiation of template type alias 'B' requested here}}
+-  template <typename U1, typename U2> D(B<U1, U2> *);
+-  // expected-note@-1 {{in instantiation of template type alias 'B' requested here}}
++namespace GH58452 {
++template <typename... As> struct A {
++  template <typename... Bs> using B = void(As...(Bs));
  };
-@@ -487,7 +487,7 @@ template <bool...> struct F {};
- template <class...> struct G {};
- template <bool... I> struct E {
-   template <bool... U> using B = G<F<I, U>...>;
+-using t1 = D<float>::B<int>;
+-// expected-note@-1 {{in instantiation of template class 'pr56094::D<float>' requested here}}
+-
+-template <bool...> struct F {};
+-template <class...> struct G {};
+-template <bool... I> struct E {
+-  template <bool... U> using B = G<F<I, U>...>;
 -  // expected-error@-1 {{pack expansion contains parameter packs 'I' and 'U' that have different lengths (1 vs. 2)}}
-+  // expected-error@-1 {{pack expansion contains parameter pack 'U' that has a different length (1 vs. 2) from outer parameter packs}}
-   template <bool U1, bool U2> E(B<U1, U2> *);
-   // expected-note@-1 {{in instantiation of template type alias 'B' requested here}}
+-  template <bool U1, bool U2> E(B<U1, U2> *);
+-  // expected-note@-1 {{in instantiation of template type alias 'B' requested here}}
++
++template <typename... Cs> struct C {
++    template <typename... Ds> using D = typename A<Cs...>::template B<Ds...>;
  };
+-using t2 = E<true>::B<false>;
+-// expected-note@-1 {{in instantiation of template class 'pr56094::E<true>' requested here}}
+-} // namespace pr56094
+-
+-namespace GH56094 {
+-#if __cplusplus >= 201402L
+-template <class> struct A; // expected-note {{template is declared here}}
+-template <class> using B = char;
+-template <class ...Cs> int C{ A<B<Cs>>{}... }; // expected-error {{implicit instantiation of undefined template}}
+-#endif
+-} // namespace GH56094
+ 
+-namespace GH58679 {
+-#if __cplusplus >= 201402L
+-template <class> constexpr int A = 1;
++using t1 = C<int, int>::template D<float, float>;
+ 
+-template <int> struct B;
+-template <> struct B<1> { using b1 = void; };
++template <typename A, typename B>
++using ConditionalRewrite = B;
+ 
+-template <class> using C = char;
++template <typename T>
++using SignatureType = int;
+ 
+-template <class... Ds> int D{ B<A<C<Ds>>>{}... };
++template <typename... Args>
++struct Type1 {
++    template <typename... Params>
++        using Return = SignatureType<int(ConditionalRewrite<Args, Params>...)>;
+ 
+-struct E {
+-  template <class E1, class = typename B<A<E1>>::b1> E(E1);
+ };
+ 
+-template <typename... Es> int F{ E(C<Es>{})... };
+-#endif
+-} // namespace GH58679
++template <typename... Args>
++struct Type2 {
++    using T1 = Type1<Args...>;
++
++      template <typename... Params>
++          using Return = typename T1::template Return<Params...>;
++
++};
++
++template <typename T>
++typename T::template Return<int, int> InvokeMethod() {
++    return 3;
++}
++
++int Function1() {
++    return InvokeMethod<Type2<int, int>>();
++}
++}
 diff --git a/clang/test/SemaTemplate/cxx1z-fold-expressions.cpp b/clang/test/SemaTemplate/cxx1z-fold-expressions.cpp
 index 98876baf1f3e..518eaf0e0523 100644
 --- a/clang/test/SemaTemplate/cxx1z-fold-expressions.cpp
@@ -464,5 +558,5 @@ index f07bafdf86bc..e42709820e9c 100644
  
    pair<tuple<int, float>, tuple<char, double>> k1 = A<int, float>().f<char>(pair<int, char>(), pair<float, double>());
 -- 
-2.30.2
+2.40.1.698.g37aff9b760-goog
 

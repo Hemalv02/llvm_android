@@ -130,6 +130,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert two patches to fix GH58452 regression"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/acecf68c8b7c3c625cfa00f00f8ddc8f15baae44.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 492021
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [llvm-objdump] Fix help message for --print-imm-hex"
         },
         "platforms": [
@@ -367,34 +381,6 @@
         "version_range": {
             "from": 450784,
             "until": null
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert [clang] Improve diagnostics for expansion length mismatch"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-clang-Improve-diagnostics-for-expansion-length-mismatch-v3.patch",
-        "version_range": {
-            "from": 475366,
-            "until": 487748
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert [clang] fix missing initialization of original number of expansions"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-clang-fix-missing-initialization-of-original-number-of-expansions-v3.patch",
-        "version_range": {
-            "from": 475366,
-            "until": 487748
         }
     },
     {
