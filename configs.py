@@ -222,7 +222,7 @@ class LinuxConfig(_GccConfig):
         return 'i386-unknown-linux-gnu' if self.is_32_bit else 'x86_64-unknown-linux-gnu'
 
     @property
-    def cflagsS(self) -> List[str]:
+    def cflags(self) -> List[str]:
         cflags = super().cflags
         if self.is_32_bit and not self.is_musl:
             # compiler-rt/lib/gwp_asan uses PRIu64 and similar format-specifier macros.
@@ -233,6 +233,7 @@ class LinuxConfig(_GccConfig):
             # (https://sourceware.org/git/gitweb.cgi?p=glibc.git;h=1ef74943ce2f114c78b215af57c2ccc72ccdb0b7)
             cflags.append('-D__STDC_FORMAT_MACROS')
             cflags.append('-march=i686')
+        return cflags
 
 
     @property
