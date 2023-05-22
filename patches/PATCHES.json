@@ -233,10 +233,10 @@
         "platforms": [
             "android"
         ],
-        "rel_patch_path": "cherry/35af20d9e036deeed250b73fd3ae86d6455173c5.patch",
+        "rel_patch_path": "cherry/67cf01bd37273af5041ba07e2c57b55fcbf287cb.patch",
         "version_range": {
             "from": 487747,
-            "until": 497146
+            "until": 499735
         }
     },
     {
