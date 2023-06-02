@@ -226,17 +226,15 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "*/lib/libc_musl.so"])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
-        kleaf_versions = pathlib.Path("kleaf") / "versions.bzl"
-        if kleaf_versions.is_file():
-            with open(kleaf_versions) as f:
-                kleaf_versions_lines = f.read().splitlines()
-            new_version_line = '    "{}",'.format(svn_revision)
-            list_end_idx = kleaf_versions_lines.index("]")
-            if new_version_line not in kleaf_versions_lines:
-                kleaf_versions_lines.insert(list_end_idx, new_version_line)
-            with open(kleaf_versions, "w") as f:
-                f.write("\n".join(kleaf_versions_lines))
-            utils.check_call(['git', 'add', kleaf_versions])
+        with open(paths.KLEAF_VERSIONS_BZL) as f:
+            kleaf_versions_lines = f.read().splitlines()
+        new_version_line = '    "{}",'.format(svn_revision)
+        list_end_idx = kleaf_versions_lines.index("]")
+        if new_version_line not in kleaf_versions_lines:
+            kleaf_versions_lines.insert(list_end_idx, new_version_line)
+        with open(paths.KLEAF_VERSIONS_BZL, "w") as f:
+            f.write("\n".join(kleaf_versions_lines))
+        utils.check_call(['git', 'add', paths.KLEAF_VERSIONS_BZL])
 
     # Some platform tests (e.g. system/bt/profile/sdp) build directly with
     # coverage instrumentation and rely on the driver to pick the correct

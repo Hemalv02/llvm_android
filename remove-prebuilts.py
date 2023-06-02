@@ -50,6 +50,16 @@ def remove_prebuilt(prebuilt_dir: Path, version: str, use_cbr: bool) -> None:
     shutil.rmtree(clang_dir)
 
 
+def remove_kleaf_version(prebuilt_dir: Path, version: str) -> None:
+    version_line = '    "{}",'.format(version)
+    with open(paths.KLEAF_VERSIONS_BZL) as f:
+        kleaf_versions_lines = f.read().splitlines()
+    kleaf_versions_lines.remove(version_line)
+    with open(paths.KLEAF_VERSIONS_BZL, "w") as f:
+        f.write("\n".join(kleaf_versions_lines))
+    utils.check_call(['git', 'add', paths.KLEAF_VERSIONS_BZL], cwd=prebuilt_dir)
+
+
 def do_commit(prebuilt_dir: Path, version: str, bug_id: Optional[str]) -> None:
     utils.check_call(['git','rm', '-r', f'clang-{version}'], cwd=prebuilt_dir)
 
@@ -73,6 +83,8 @@ def main():
     for host in hosts:
         prebuilt_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / host
         remove_prebuilt(prebuilt_dir, args.version, args.use_current_branch)
+        if host == 'linux-x86':
+            remove_kleaf_version(prebuilt_dir, args.version)
         do_commit(prebuilt_dir, args.version, args.bug)
 
     if args.repo_upload:

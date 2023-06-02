@@ -35,6 +35,8 @@ TOOLCHAIN_DIR: Path = ANDROID_DIR / 'toolchain'
 TOOLCHAIN_UTILS_DIR: Path = EXTERNAL_DIR / 'toolchain-utils'
 TOOLCHAIN_LLVM_PATH: Path = TOOLCHAIN_DIR / 'llvm-project'
 
+KLEAF_VERSIONS_BZL: Path = PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'kleaf' / 'versions.bzl'
+
 CLANG_PREBUILT_DIR: Path = (PREBUILTS_DIR / 'clang' / 'host' / hosts.build_host().os_tag
                             / constants.CLANG_PREBUILT_VERSION)
 CLANG_PREBUILT_LIBCXX_HEADERS: Path = CLANG_PREBUILT_DIR / 'include' / 'c++' / 'v1'
