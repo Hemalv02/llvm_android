@@ -575,7 +575,7 @@
         ],
         "rel_patch_path": "disable-symlink-resolve-test-on-android.patch",
         "version_range": {
-            "from": 475365,
+            "from": 498229,
             "until": null
         }
     },
@@ -589,7 +589,7 @@
         ],
         "rel_patch_path": "avoid-fifo-socket-hardlink-in-libcxx-tests.patch",
         "version_range": {
-            "from": 475365,
+            "from": 498229,
             "until": null
         }
     }

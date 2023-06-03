@@ -1,6 +1,6 @@
-From 37b0c466beb5d62b39d0de78ffb63df1ff4cf4b7 Mon Sep 17 00:00:00 2001
-From: Ryan Prichard <rprichard@google.com>
-Date: Wed, 18 May 2022 22:40:56 -0700
+From bbd14a5ed0c61a3db1f6e9376bc87031068970c2 Mon Sep 17 00:00:00 2001
+From: Yabin Cui <yabinc@google.com>
+Date: Thu, 25 May 2023 18:08:21 +0000
 Subject: [PATCH] [libc++][Android] Disable test_no_resolve_symlink_on_symlink
  on Android
 
@@ -15,15 +15,17 @@ modifies the symlink's permissions. This issue is tracked internally at
 http://b/262631136.
 
 Differential Revision: https://reviews.llvm.org/D140183
+
+Change-Id: I2e091313031e080c71a5821070c8ffab50dacc76
 ---
- .../fs.op.permissions/permissions.pass.cpp        | 15 ++++++++++++++-
- 1 file changed, 14 insertions(+), 1 deletion(-)
+ .../fs.op.permissions/permissions.pass.cpp      | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
 
 diff --git a/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp b/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp
-index 7cf1c7208a61..176de0320431 100644
+index dc5ff1188521..4b6aff7729b3 100644
 --- a/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp
 +++ b/libcxx/test/std/input.output/filesystems/fs.op.funcs/fs.op.permissions/permissions.pass.cpp
-@@ -138,10 +138,23 @@ TEST_CASE(basic_permissions_test)
+@@ -135,10 +135,23 @@ static void basic_permissions_test()
      }
  }
  
@@ -45,9 +47,18 @@ index 7cf1c7208a61..176de0320431 100644
 +//    bug http://b/262631136).
 +//  - Do nothing and fail with operation_not_supported (e.g. devices using f2fs
 +//    for /data/local/tmp).
- TEST_CASE(test_no_resolve_symlink_on_symlink)
+ static void test_no_resolve_symlink_on_symlink()
  {
      scoped_test_env env;
+@@ -187,7 +200,7 @@ int main(int, char**) {
+     test_signatures();
+     test_error_reporting();
+     basic_permissions_test();
+-#ifndef _WIN32
++#if !defined(_WIN32) && !defined(__ANDROID__)
+     test_no_resolve_symlink_on_symlink();
+ #endif
+     return 0;
 -- 
-2.39.0.314.g84b9a713c41-goog
+2.41.0.rc0.172.g3f132b7071-goog
 

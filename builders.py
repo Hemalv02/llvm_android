@@ -855,9 +855,7 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         # lldb depends on support libraries.
         defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
         defines['LLVM_TARGETS_TO_BUILD'] = self._llvm_target
-        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
-        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
-        defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
+        defines['LLVM_NATIVE_TOOL_DIR'] = str(self.toolchain.build_path / 'bin')
         triple = self._config.llvm_triple
         defines['LLVM_HOST_TRIPLE'] = triple.replace('i686', 'i386')
         defines['LLDB_ENABLE_LUA'] = 'OFF'
@@ -1245,14 +1243,8 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         defines['LLVM_TOOL_OPENMP_BUILD'] = 'OFF'
         # Don't build tests for Windows.
         defines['LLVM_INCLUDE_TESTS'] = 'OFF'
-
-        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.build_path / 'bin' / 'llvm-config')
-        defines['LLVM_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'llvm-tblgen')
-        defines['CLANG_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tblgen')
-        defines['CLANG_PSEUDO_GEN'] = str(self.toolchain.build_path / 'bin' / 'clang-pseudo-gen')
-        defines['CLANG_TIDY_CONFUSABLE_CHARS_GEN'] = str(self.toolchain.build_path / 'bin' / 'clang-tidy-confusable-chars-gen')
+        defines['LLVM_NATIVE_TOOL_DIR'] = str(self.toolchain.build_path / 'bin')
         if self.build_lldb:
-            defines['LLDB_TABLEGEN'] = str(self.toolchain.build_path / 'bin' / 'lldb-tblgen')
             defines['LLDB_PYTHON_RELATIVE_PATH'] = f'lib/python{paths._PYTHON_VER}/site-packages'
             defines['LLDB_PYTHON_EXE_RELATIVE_PATH'] = f'python3'
             defines['LLDB_PYTHON_EXT_SUFFIX'] = '.exe'
