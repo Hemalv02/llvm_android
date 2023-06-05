@@ -826,7 +826,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
                 # clang generates call to builtin functions when building
                 # compiler-rt for musl.  Allow use of the builtins library.
-                if _config.is_musl and _config.target_arch == hosts.Arch.I386:
+                if _config.is_musl:
                     defines[f'RUNTIMES_{triple}_COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
 
                 for arg in runtimes_passthrough_args:
