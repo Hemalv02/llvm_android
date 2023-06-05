@@ -924,6 +924,9 @@ def main():
 
     android_version.set_llvm_next(args.build_llvm_next)
 
+    if (do_bolt or do_bolt_instrument) and hosts.build_host().is_darwin:
+        raise ValueError("BOLT is not supported for Mach-O binaries. https://github.com/llvm/llvm-project/blob/main/bolt/README.md#input-binary-requirements")
+
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows_libcxx = hosts.build_host().is_linux
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
