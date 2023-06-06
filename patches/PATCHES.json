@@ -242,20 +242,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] [BOLT] Parallelize legacy profile merging"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/67cf01bd37273af5041ba07e2c57b55fcbf287cb.patch",
-        "version_range": {
-            "from": 487747,
-            "until": 499735
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "[UPSTREAM] [CodeGen] precommit machine-latecleanup test"
         },
         "platforms": [
@@ -299,6 +285,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Re-revert \"[ValueTracking] Use knownbits interface for determining if `div`/`rem` are safe to speculate\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/2647547ee44f509a34ff9709b63bd7603ca59f5d.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498420
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Revert \"[SCEV] Replace IsAvailableOnEntry with block disposition\""
         },
         "platforms": [
@@ -309,6 +309,20 @@
         "version_range": {
             "from": 497275,
             "until": 498489
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [libc++] Consistently enable __CORRECT_ISO_CPP_WCHAR_H_PROTO in mbstate."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/0ec57bf7b18e8918dd8ced007a88467b798677c6.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498524
         }
     },
     {
@@ -339,6 +353,34 @@
         "version_range": {
             "from": 497853,
             "until": 498593
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[X86][AsmParser] Refactor code in AsmParser\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f4865c7c1795eb17b079e116791eb1419fea1620.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498670
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [BOLT] Parallelize legacy profile merging"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/67cf01bd37273af5041ba07e2c57b55fcbf287cb.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 499735
         }
     },
     {
