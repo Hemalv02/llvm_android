@@ -285,6 +285,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[CodeGen][ShrinkWrap] Split restore point\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f4999d3535af93919d58e3cc56ccb50f2ccb8453.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498306
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Re-revert \"[ValueTracking] Use knownbits interface for determining if `div`/`rem` are safe to speculate\""
         },
         "platforms": [
@@ -309,6 +323,34 @@
         "version_range": {
             "from": 497275,
             "until": 498489
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[RISCV][InsertVSETVLI] Avoid VL toggles for extractelement patterns\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/33314693f536a66390b0e022f2f00be94de5b06e.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498498
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[RISCV] Fix extract_vector_elt on i1 at idx 0 being inverted\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/10876725cd9754812a4917fec7acb6850ba4ffb3.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498521
         }
     },
     {
@@ -372,6 +414,62 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[lldb] Refactor SBFileSpec::GetDirectory\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/58e6caaba1cf623292c8898be30a5a56722432b3.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498905
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"Emit the correct flags for the PROC CodeView Debug Symbol\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6b22608a1d30793b32f98d90f2c6a8c268630afa.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498912
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[clang][deps] Only cache files with specific extension\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/09c5d69592f7df4db62063e4dd231a7e154bdac6.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498935
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"Reapply D146987 \"[Assignment Tracking] Enable by default\"\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9e7f14a8211c82dca64bd6b22d1c450d4c6d3e5b.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 499700
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [BOLT] Parallelize legacy profile merging"
         },
         "platforms": [
@@ -381,6 +479,62 @@
         "version_range": {
             "from": 487747,
             "until": 499735
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] SelectionDAG: Teach ComputeKnownBits about VSCALE"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a4f437f012b4be40e9fac5d2e86eae549d3469fe.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 500339
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[LCSSA] Remove unused ScalarEvolution argument (NFC)\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/143ed21b26b2c68695e9f74f0ce4632b8a2e000b.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 501212
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[LCSSA] Don't invalidate SCEV\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/3c9cf023db32ba2cfa1e052ddc58f57dd080995c.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 501220
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[VPlan] Mark recurrence recipes as not having side-effects.\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/8f781b96e201408d1fb7b49367876a54682594ed.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 501347
         }
     },
     {
