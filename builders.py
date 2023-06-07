@@ -159,6 +159,10 @@ class Stage2Builder(base_builders.LLVMBuilder):
         return proj
 
     @property
+    def ld_library_path_env_name(self) -> str:
+        return 'LD_LIBRARY_PATH' if self._config.target_os.is_linux else 'DYLD_LIBRARY_PATH'
+
+    @property
     def env(self) -> Dict[str, str]:
         env = super().env
         # Point CMake to the libc++ from stage1.  It is possible that once built,
@@ -168,7 +172,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
         # Newer compilers put lib files in lib/x86_64-unknown-linux-gnu.
         # Include the path to the libc++.so.1 in stage2-install,
         # to run unittests/.../*Tests programs.
-        env['LD_LIBRARY_PATH'] = (
+        env[self.ld_library_path_env_name] = (
                 ':'.join([str(item) for item in self.toolchain.lib_dirs])
                 + f':{self.install_dir}/lib')
         return env
@@ -249,12 +253,11 @@ class Stage2Builder(base_builders.LLVMBuilder):
     def install_config(self) -> None:
         super().install_config()
         lldb_wrapper_path = self.install_dir / 'bin' / 'lldb.sh'
-        lib_path_env = 'LD_LIBRARY_PATH' if self._config.target_os.is_linux else 'DYLD_LIBRARY_PATH'
         lldb_wrapper_path.write_text(textwrap.dedent(f"""\
             #!/bin/bash
             CURDIR=$(cd $(dirname $0) && pwd)
             export PYTHONHOME="$CURDIR/../python3"
-            export {lib_path_env}="$CURDIR/../python3/lib:${lib_path_env}"
+            export {self.ld_library_path_env_name}="$CURDIR/../python3/lib:${self.ld_library_path_env_name}"
             "$CURDIR/lldb" "$@"
         """))
         lldb_wrapper_path.chmod(0o755)
