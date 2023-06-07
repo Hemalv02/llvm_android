@@ -1251,7 +1251,6 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
             defines['LLDB_PYTHON_RELATIVE_PATH'] = f'lib/python{paths._PYTHON_VER}/site-packages'
             defines['LLDB_PYTHON_EXE_RELATIVE_PATH'] = f'python3'
             defines['LLDB_PYTHON_EXT_SUFFIX'] = '.exe'
-        defines['LLVM_ENABLE_PLUGINS'] = 'ON'
 
         defines['CMAKE_CXX_STANDARD'] = '17'
 
