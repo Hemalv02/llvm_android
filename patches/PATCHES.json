@@ -498,6 +498,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [HWASan] use hwasan linker for Android 14+"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a2684acfb61d40f441e240035d7f1ba50da637c8.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 500361
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"[LCSSA] Remove unused ScalarEvolution argument (NFC)\""
         },
         "platforms": [
