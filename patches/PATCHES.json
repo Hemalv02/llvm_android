@@ -817,19 +817,5 @@
             "from": 498229,
             "until": null
         }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "[clang-tidy, llvm-objcopy] Disable failing tests for darwin builds"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "clang-tidy-llvm-objcopy-Disable-failing-tests-for-da.patch",
-        "version_range": {
-            "from": 498229,
-            "until": null
-        }
     }
 ]
