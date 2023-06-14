@@ -554,6 +554,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [llvm-dlltool] Ignore the --temp-prefix option"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6540157fe389b3dc46e9a1306370acd79d40c183.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 501686
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[RISCV] Support '.option arch' directive"
         },
         "platforms": [
