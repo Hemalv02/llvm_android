@@ -577,7 +577,22 @@
         "rel_patch_path": "cherry/9e8ed3403c191ab9c4903e8eeb8f732ff8a43cb4.patch",
         "version_range": {
             "from": 498229,
-            "until": null
+            "until": 500296
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[RISCV][MC] .debug_line/.debug_frame/.eh_frame: emit relocations for assembly input files with relaxation"
+        },
+        "platforms": [
+            "android",
+            "chromiumos"
+        ],
+        "rel_patch_path": "cherry/dde1795f14eb946fbcb1810863fa172fbdf7e044.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 498941
         }
     },
     {
