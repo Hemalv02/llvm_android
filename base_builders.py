@@ -402,6 +402,7 @@ class CMakeBuilder(Builder):
 
             'CMAKE_BUILD_TYPE': 'Release',
             'CMAKE_INSTALL_PREFIX': str(self.install_dir),
+            'CMAKE_INSTALL_LIBDIR': 'lib',
 
             'CMAKE_MAKE_PROGRAM': str(paths.NINJA_BIN_PATH),
 
