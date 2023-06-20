@@ -1,0 +1,247 @@
+From dde1795f14eb946fbcb1810863fa172fbdf7e044 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Mon, 15 May 2023 18:44:55 -0700
+Subject: [PATCH] [RISCV][MC] .debug_line/.debug_frame/.eh_frame: emit
+ relocations for assembly input files with relaxation
+
+When assembling `.debug_line` for both explicitly specified and synthesized
+`.loc` directives. the integrated assembler may incorrectly omit relocations for
+-mrelax.
+
+For an assembly file, we have a `MCAssembler` object and `evaluateAsAbsolute`
+will incorrectly fold `AddrDelta` to a constant (which is not true in the
+presence of linker relaxation).
+`MCDwarfLineAddr::Emit` will emit a special opcode, which does not take into
+account of linker relaxation. This is a sufficiently complex function that
+I think should be called in any "fast paths" for linker relaxation aware assembling.
+
+The following script demonstrates the bugs.
+
+```
+cat > x.c <<eof
+void f();
+void _start() {
+  f();
+  f();
+  f();
+}
+eof
+# C to object file: correct DW_LNS_fixed_advance_pc
+clang --target=riscv64 -g -c x.c
+llvm-dwarfdump --debug-line -v x.o | grep \ DW_LNS_fixed_advance_pc -q
+
+# Assembly to object file with synthesized line number information: incorrect special opcodes
+clang --target=riscv64 -S x.c && clang --target=riscv64 -g -c x.s
+llvm-dwarfdump --debug-line -v x.o | grep \ DW_LNS_fixed_advance_pc -q; test $? -eq 1
+
+# Assembly with .loc to object file: incorrect special opcodes
+clang --target=riscv64 -S -g x.c && clang --target=riscv64 -c x.s
+llvm-dwarfdump --debug-line -v x.o | grep \ DW_LNS_fixed_advance_pc -q; test $? -eq 1
+```
+
+The `MCDwarfLineAddr::Emit` code path is an old optimization in commit
+57ab708bdd3231b23a8ef4978b11ff07616034a2 (2010) that seems no longer relevant.
+It don't trigger for direct machine code emission (label differences are not
+foldable without a `MCAssembler`). MCDwarfLineAddr::Emit does complex operations
+that are repeated in MCAssembler::relaxDwarfLineAddr, which an intricate RISCV
+override.
+
+Let's remove the "fast path". Assembling the assembly output of
+X86ISelLowering.cpp with `-g` may be 2% slower, but I think the cost is fine.
+There are opportunities to make the "slow path" faster, e.g.
+
+* Optimizing the current new MC*Fragment pattern that allocates new fragments on
+  the heap.
+* Reducing the number of relaxation times for .debug_line and .debug_frame, as
+  well as possibly other sections using LEB128. For instance, LEB128 can have a
+  one-byte estimate to avoid the second relaxation iteration.
+
+For assembly input with -mno-relax, in theory we can prefer special opcodes to
+DW_LNS_fixed_advance_pc to decrease the size of .debug_line, but such a change
+may be overkill and unnecessarily diverge from -mrelax behaviors and GCC.
+
+---
+
+For .debug_frame/.eh_frame, MCDwarf currently emits DW_CFA_advance_loc without
+relocations. Remove the special case to enable relocations. Similar to
+.debug_line, even without the bug fix, the MCDwarfFrameEmitter::encodeAdvanceLoc
+special case is a sufficiently complex code path that should be avoided.
+
+---
+
+When there are more than one section, we generate .debug_rnglists for
+DWARF v5. We currently emit DW_RLE_start_length using ULEB128, which
+is incorrect. The new test gen-dwarf.s adds a TODO.
+
+---
+
+About other `evaluateAsAbsolute` uses. `MCObjectStreamer::emit[SU]LEB128Value`
+have similar code to MCDwarfLineAddr. They are fine to keep as we don't have
+LEB128 relocations to correctly represent link-time non-constants anyway.
+
+---
+
+In the future, we should investigate ending a MCFragment for a relaxable
+instruction, to further clean up the assembler support for linker relaxation
+and fix `evaluateAsAbsolute`.
+
+See bbea64250f65480d787e1c5ff45c4de3ec2dcda8 for some of the related code.
+
+Reviewed By: enh, barannikov88
+
+Differential Revision: https://reviews.llvm.org/D150004
+---
+ llvm/lib/MC/MCObjectStreamer.cpp     | 15 +----
+ llvm/test/MC/ELF/RISCV/gen-dwarf.s   | 97 ++++++++++++++++++++++++++++
+ llvm/test/MC/ELF/RISCV/lit.local.cfg |  2 +
+ 3 files changed, 100 insertions(+), 14 deletions(-)
+ create mode 100644 llvm/test/MC/ELF/RISCV/gen-dwarf.s
+ create mode 100644 llvm/test/MC/ELF/RISCV/lit.local.cfg
+
+diff --git a/llvm/lib/MC/MCObjectStreamer.cpp b/llvm/lib/MC/MCObjectStreamer.cpp
+index 059d7e9d602b..4c79df014a6c 100644
+--- a/llvm/lib/MC/MCObjectStreamer.cpp
++++ b/llvm/lib/MC/MCObjectStreamer.cpp
+@@ -541,12 +541,6 @@ void MCObjectStreamer::emitDwarfAdvanceLineAddr(int64_t LineDelta,
+     return;
+   }
+   const MCExpr *AddrDelta = buildSymbolDiff(*this, Label, LastLabel);
+-  int64_t Res;
+-  if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr())) {
+-    MCDwarfLineAddr::Emit(this, Assembler->getDWARFLinetableParams(), LineDelta,
+-                          Res);
+-    return;
+-  }
+   insert(new MCDwarfLineAddrFragment(LineDelta, *AddrDelta));
+ }
+ 
+@@ -571,14 +565,7 @@ void MCObjectStreamer::emitDwarfLineEndEntry(MCSection *Section,
+ void MCObjectStreamer::emitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
+                                                  const MCSymbol *Label) {
+   const MCExpr *AddrDelta = buildSymbolDiff(*this, Label, LastLabel);
+-  int64_t Res;
+-  if (AddrDelta->evaluateAsAbsolute(Res, getAssemblerPtr())) {
+-    SmallString<8> Tmp;
+-    MCDwarfFrameEmitter::encodeAdvanceLoc(getContext(), Res, Tmp);
+-    emitBytes(Tmp);
+-  } else {
+-    insert(new MCDwarfCallFrameFragment(*AddrDelta));
+-  }
++  insert(new MCDwarfCallFrameFragment(*AddrDelta));
+ }
+ 
+ void MCObjectStreamer::emitCVLocDirective(unsigned FunctionId, unsigned FileNo,
+diff --git a/llvm/test/MC/ELF/RISCV/gen-dwarf.s b/llvm/test/MC/ELF/RISCV/gen-dwarf.s
+new file mode 100644
+index 000000000000..a9e9d2c730bb
+--- /dev/null
++++ b/llvm/test/MC/ELF/RISCV/gen-dwarf.s
+@@ -0,0 +1,97 @@
++## Linker relaxation imposes restrictions on .eh_frame/.debug_frame, .debug_line,
++## and LEB128 uses.
++
++## CFI instructions can be preceded by relaxable instructions. We must use
++## DW_CFA_advance_loc* opcodes with relocations.
++
++## For .debug_line, emit DW_LNS_fixed_advance_pc with ADD16/SUB16 relocations so
++## that .debug_line can be fixed by the linker. Without linker relaxation, we can
++## emit special opcodes to make .debug_line smaller, but we don't do this for
++## consistency.
++
++# RUN: llvm-mc -filetype=obj -triple=riscv64 -g -dwarf-version=5 -mattr=+relax < %s -o %t
++# RUN: llvm-dwarfdump -eh-frame -debug-line -debug-rnglists -v %t | FileCheck %s
++# RUN: llvm-readobj -r %t | FileCheck %s --check-prefix=RELOC
++
++# CHECK:      FDE
++# CHECK-NEXT: Format:       DWARF32
++# CHECK-NEXT: DW_CFA_advance_loc: 16
++# CHECK-NEXT: DW_CFA_def_cfa_offset: +32
++# CHECK-NEXT: DW_CFA_advance_loc: 4
++# CHECK-NEXT: DW_CFA_offset: X1 -8
++# CHECK-NEXT: DW_CFA_nop:
++
++# CHECK:      DW_LNE_set_address
++# CHECK-NEXT: DW_LNS_advance_line ([[#]])
++# CHECK-NEXT: DW_LNS_copy
++# CHECK-NEXT:                           is_stmt
++# CHECK-NEXT: DW_LNS_advance_line
++# CHECK-NEXT: DW_LNS_fixed_advance_pc (0x0004)
++# CHECK-NEXT: DW_LNS_copy
++# CHECK-NEXT:                           is_stmt
++# CHECK-NEXT: DW_LNS_advance_line
++# CHECK-NEXT: DW_LNS_fixed_advance_pc (0x0004)
++# CHECK-NEXT: DW_LNS_copy
++
++# CHECK:      0x00000000: range list header: length = 0x0000001d, format = DWARF32, version = 0x0005
++# CHECK-NEXT: ranges:
++# CHECK-NEXT: 0x0000000c: [DW_RLE_start_length]:  0x0000000000000000, 0x0000000000000034
++# CHECK-NEXT: 0x00000016: [DW_RLE_start_length]:  0x0000000000000000, 0x0000000000000004
++# CHECK-NEXT: 0x00000020: [DW_RLE_end_of_list ]
++
++# RELOC:      Section ([[#]]) .rela.eh_frame {
++# RELOC-NEXT:   0x1C R_RISCV_32_PCREL - 0x0
++# RELOC-NEXT:   0x20 R_RISCV_ADD32 - 0x0
++# RELOC-NEXT:   0x20 R_RISCV_SUB32 - 0x0
++# RELOC-NEXT:   0x25 R_RISCV_SET6 - 0x0
++# RELOC-NEXT:   0x25 R_RISCV_SUB6 - 0x0
++# RELOC-NEXT:   0x28 R_RISCV_SET6 - 0x0
++# RELOC-NEXT:   0x28 R_RISCV_SUB6 - 0x0
++# RELOC-NEXT:   0x34 R_RISCV_32_PCREL - 0x0
++# RELOC-NEXT:   0x38 R_RISCV_ADD32 - 0x0
++# RELOC-NEXT:   0x38 R_RISCV_SUB32 - 0x0
++# RELOC-NEXT: }
++
++## TODO A section needs two relocations.
++# RELOC:      Section ([[#]]) .rela.debug_rnglists {
++# RELOC-NEXT:   0xD R_RISCV_64 .text.foo 0x0
++# RELOC-NEXT:   0x17 R_RISCV_64 .text.bar 0x0
++# RELOC-NEXT: }
++
++# RELOC:      Section ([[#]]) .rela.debug_line {
++# RELOC:        R_RISCV_ADD16 - 0x0
++# RELOC-NEXT:   R_RISCV_SUB16 - 0x0
++# RELOC-NEXT:   R_RISCV_ADD16 - 0x0
++# RELOC-NEXT:   R_RISCV_SUB16 - 0x0
++# RELOC-NEXT:   R_RISCV_ADD16 - 0x0
++# RELOC-NEXT:   R_RISCV_SUB16 - 0x0
++# RELOC:      }
++
++.section .text.foo,"ax"
++.globl foo
++foo:
++.cfi_startproc
++.Lpcrel_hi0:
++  auipc a1, %pcrel_hi(g)
++  lw a1, %pcrel_lo(.Lpcrel_hi0)(a1)
++  bge a1, a0, .LBB0_2
++  addi sp, sp, -32
++  .cfi_def_cfa_offset 32
++  sd ra, 24(sp)
++  .cfi_offset ra, -8
++  addi a0, sp, 8
++  call ext@plt
++  ld ra, 24(sp)
++  addi sp, sp, 32
++  ret
++.LBB0_2:
++  li a0, 0
++  ret
++  .cfi_endproc
++  .size foo, .-foo
++
++.section .text.bar,"ax"
++bar:
++.cfi_startproc
++  nop
++.cfi_endproc
+diff --git a/llvm/test/MC/ELF/RISCV/lit.local.cfg b/llvm/test/MC/ELF/RISCV/lit.local.cfg
+new file mode 100644
+index 000000000000..c029408db052
+--- /dev/null
++++ b/llvm/test/MC/ELF/RISCV/lit.local.cfg
+@@ -0,0 +1,2 @@
++if 'RISCV' not in config.root.targets:
++    config.unsupported = True
+-- 
+2.41.0.162.gfafddb0af9-goog
+
