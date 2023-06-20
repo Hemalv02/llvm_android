@@ -568,6 +568,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Enable zbb for riscv android"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6bcf57f0b7ec8b28e933387a4925dfc52779ce0f.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 502145
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[RISCV] Support '.option arch' directive"
         },
         "platforms": [
