@@ -572,7 +572,7 @@ class AndroidConfig(_BaseConfig):
         if self.override_api_level:
             return self.override_api_level
         if self.target_arch == hosts.Arch.RISCV64:
-            return 10000
+            return 35
         if self.static or self.platform:
             # Set API level for platform to to 29 since these runtimes can be
             # used for apexes targeting that API level.
@@ -675,10 +675,8 @@ def android_configs(platform: bool=True,
         AndroidAArch64Config(),
         AndroidI386Config(),
         AndroidX64Config(),
+        AndroidRiscv64Config(),
     ]
-    # There is no NDK for riscv64, only include it in platform configs.
-    if platform:
-        configs.append(AndroidRiscv64Config())
     for config in configs:
         config.static = static
         config.platform = platform

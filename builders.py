@@ -850,6 +850,7 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
             hosts.Arch.AARCH64: 'AArch64',
             hosts.Arch.I386: 'X86',
             hosts.Arch.X86_64: 'X86',
+            hosts.Arch.RISCV64: 'RISCV',
         }[self._config.target_arch]
 
     @property
@@ -937,6 +938,12 @@ class DeviceSysrootsBuilder(base_builders.Builder):
         src_lib = src_sysroot / 'usr' / 'lib' / config.ndk_sysroot_triple
         dest_lib = sysroot / 'usr' / 'lib' / config.ndk_sysroot_triple
         shutil.copytree(src_lib, dest_lib, symlinks=True)
+
+        # For RISCV64, symlink the 10000 api-dir to 35
+        # TODO (http://b/287650094 Remove this hack when we have a risc-v
+        # sysroot in the NDK.
+        if arch == hosts.Arch.RISCV64:
+            (dest_lib / '35').symlink_to('10000')
 
         # Remove the NDK's libcompiler_rt-extras.  Also remove the NDK libc++,
         # except for the riscv64 sysroot which doesn't have these files.
