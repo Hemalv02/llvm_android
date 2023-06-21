@@ -83,7 +83,8 @@ def build_llvm_for_windows(enable_assertions: bool,
                            build_name: str,
                            build_lldb: bool,
                            swig_builder: Optional[builders.SwigBuilder],
-                           full_build: bool):
+                           full_build: bool,
+                           build_simpleperf_readelf: bool):
     config_list: List[configs.Config]
     if win_sdk.is_enabled():
         config_list = [configs.MSVCConfig()]
@@ -135,6 +136,16 @@ def build_llvm_for_windows(enable_assertions: bool,
         win_builder.svn_revision = android_version.get_svn_revision()
         win_builder.enable_assertions = enable_assertions
         win_builder.build()
+
+    if build_simpleperf_readelf:
+        libsimpleperf_readelf_builder = builders.LibSimpleperfReadElfBuilder(config_list)
+        if full_build:
+            # The libs have been built in win_builder.
+            libsimpleperf_readelf_builder.build_readelf_lib(
+                win_builder.output_dir / 'lib', libsimpleperf_readelf_builder.install_dir)
+        else:
+            libsimpleperf_readelf_builder.enable_assertions = enable_assertions
+            libsimpleperf_readelf_builder.build()
 
     return (win_builder, lldb_bins)
 
@@ -207,6 +218,7 @@ def build_runtimes(build_lldb_server: bool,
     if build_lldb_server:
         builders.LldbServerBuilder().build()
     builders.SanitizerMapFileBuilder().build()
+    builders.LibSimpleperfReadElfBuilder().build()
 
 
 def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
@@ -517,6 +529,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
             'libc++.so.1',
             'libc++abi.so',
             'libc++abi.so.1',
+            'libsimpleperf_readelf.a',
         }
     if host.is_darwin:
         necessary_lib_files |= {
@@ -524,12 +537,21 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
             'libc++.1.dylib',
             'libc++abi.dylib',
             'libc++abi.1.dylib',
+            'libsimpleperf_readelf.a',
         }
 
     if host.is_windows and not win_sdk.is_enabled():
         necessary_lib_files.add('libwinpthread-1' + shlib_ext)
         # For Windows, add other relevant libraries.
         install_winpthreads(bin_dir, lib_dir)
+
+    # Archive libsimpleperf_readelf.a for linux and darwin hosts from stage2 build.
+    if host.is_linux:
+        builders.LibSimpleperfReadElfBuilder().build_readelf_lib(lib_dir,
+                                                                 lib_dir / host_config.llvm_triple)
+    elif host.is_darwin:
+        builders.LibSimpleperfReadElfBuilder().build_readelf_lib(lib_dir, lib_dir,
+                                                                 is_darwin_lib=True)
 
     # Remove unnecessary static libraries.
     remove_static_libraries(lib_dir, necessary_lib_files)
@@ -567,6 +589,8 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                 verify_symlink_exists(lib_dir / necessary_lib_file, Path(triple64) / necessary_lib_file)
                 verify_file_exists(lib_dir / triple32, necessary_lib_file)
                 verify_file_exists(lib_dir / triple64, necessary_lib_file)
+        elif necessary_lib_file == 'libsimpleperf_readelf.a' and host.is_linux:
+            verify_file_exists(lib_dir / host_config.llvm_triple, necessary_lib_file)
         else:
             verify_file_exists(lib_dir, necessary_lib_file)
 
@@ -1051,7 +1075,8 @@ def main():
             build_name=args.build_name,
             build_lldb=build_lldb,
             swig_builder=swig_builder,
-            full_build=need_windows)
+            full_build=need_windows,
+            build_simpleperf_readelf=need_host)
 
     # stage2 test is on when stage2 is enabled unless --skip-tests or
     # on instrumented builds.

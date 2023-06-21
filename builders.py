@@ -31,6 +31,7 @@ import hosts
 import mapfile
 import multiprocessing
 import paths
+import tempfile
 import utils
 
 class SanitizerMapFileBuilder(base_builders.Builder):
@@ -1365,3 +1366,67 @@ class TsanBuilder(base_builders.LLVMRuntimeBuilder):
         dst_dir.mkdir(exist_ok=True)
         for tsan_lib in lib_dir.glob('*tsan*'):
             shutil.copy(tsan_lib, dst_dir)
+
+
+class LibSimpleperfReadElfBuilder(base_builders.LLVMRuntimeBuilder):
+    """ Build static llvm libraries for reading ELF files on both devices and hosts. It is used
+        by simpleperf.
+    """
+    name: str = 'libsimpleperf_readelf'
+    src_dir: Path = paths.LLVM_PATH / 'llvm'
+    config_list = configs.android_configs(platform=True)
+
+    @property
+    def llvm_libs(self) -> List[str]:
+        output = utils.check_output([str(self.toolchain.path / 'bin' / 'llvm-config'),
+                                     '--libs', 'object', '--libnames', '--link-static'])
+        return output.strip().split()
+
+    ninja_targets: List[str] = llvm_libs
+    target_libname: str = 'libsimpleperf_readelf.a'
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        # The build system will add '-stdlib=libc++' automatically. Since we
+        # have -nostdinc++ here, -stdlib is useless. Adds a flag to avoid the
+        # warnings.
+        cflags.append('-Wno-unused-command-line-argument')
+        return cflags
+
+    @property
+    def cmake_defines(self) -> Dict[str, str]:
+        defines = super().cmake_defines
+        defines['LLVM_NATIVE_TOOL_DIR'] = str(self.toolchain.build_path / 'bin')
+        return defines
+
+    @property
+    def install_dir(self) -> Path:
+        if self._config.target_os ==  hosts.Host.Windows:
+            return self.output_toolchain.path / 'lib' / 'x86_64-w64-windows-gnu'
+        return super().install_dir
+
+    def install_config(self) -> None:
+        self.build_readelf_lib(self.output_dir / 'lib', self.install_dir)
+
+    def build_readelf_lib(self, llvm_lib_dir: Path, out_dir: Path, is_darwin_lib: bool = False):
+        llvm_lib_dir = llvm_lib_dir.absolute()
+        out_dir = out_dir.absolute()
+        out_file = out_dir / self.target_libname
+        out_file.unlink(missing_ok=True)
+        if is_darwin_lib:
+            utils.check_call([str(self.toolchain.path / 'bin' / 'llvm-libtool-darwin'),
+                              '--static', '-o', str(out_file)] + self.llvm_libs, cwd=llvm_lib_dir)
+        else:
+            with tempfile.TemporaryDirectory(dir=paths.OUT_DIR) as tmp_dirname:
+                tmp_dir = Path(tmp_dirname).absolute()
+                for name in self.llvm_libs:
+                    lib_path = llvm_lib_dir / name
+                    assert lib_path.is_file(), f'{lib_path} not found'
+                    # The libraries can have object files with the same name. To avoid conflict,
+                    # extract each library into a distinct directory.
+                    extract_dir = tmp_dir / name[:-2]
+                    extract_dir.mkdir()
+                    utils.check_call([str(self.toolchain.ar), '-x', str(lib_path)], cwd=extract_dir)
+                utils.check_call(f'{self.toolchain.ar} -cqs {out_file} */*', cwd=tmp_dir,
+                                 shell=True)
