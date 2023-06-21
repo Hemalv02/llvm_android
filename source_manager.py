@@ -137,6 +137,7 @@ def setup_sources(llvm_rev=None, skip_apply_patches=False):
     if not llvm_rev:
         # Copy llvm source tree to a temporary directory.
         copy_from = paths.TOOLCHAIN_LLVM_PATH
+        logger().info(f'No llvm revision provided, copying from {copy_from}')
         # Use 'cp' instead of shutil.copytree.  The latter uses copystat and retains
         # timestamps from the source.  We instead use rsync below to only update
         # changed files into source_dir.  Using 'cp' will ensure all changed files
@@ -151,6 +152,7 @@ def setup_sources(llvm_rev=None, skip_apply_patches=False):
           cmd = ['cp', '-Rf', copy_from, tmp_source_dir]
           subprocess.check_call(cmd)
     else:
+        logger().info(f'Fetching {llvm_rev} from https://github.com/llvm/llvm-project.git')
         if not os.path.exists(tmp_source_dir):
             os.makedirs(tmp_source_dir)
         with utils.chdir_context(tmp_source_dir):
