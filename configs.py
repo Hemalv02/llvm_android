@@ -142,6 +142,11 @@ class BaremetalConfig(_BaseConfig):
         cflags.append(f'--target={self.llvm_triple}')
         return cflags
 
+    @property
+    def output_suffix(self) -> str:
+        """The suffix of output directory name."""
+        return f'-{self.target_arch.value}-baremetal'
+
 
 class BaremetalAArch64Config(BaremetalConfig):
     """Configuration for baremetal targets."""
@@ -151,6 +156,86 @@ class BaremetalAArch64Config(BaremetalConfig):
     @property
     def llvm_triple(self) -> str:
         return 'aarch64-elf'
+
+
+class BaremetalArmMultilibConfig(BaremetalConfig):
+    """Configuration for baremetal ARM multilib targets."""
+
+    target_arch: hosts.Arch = hosts.Arch.ARM
+
+    @property
+    def multilib_name(self) -> str:
+        """The name of the multilib variant."""
+        raise NotImplementedError()
+
+    @property
+    def output_suffix(self) -> str:
+        """The suffix of output directory name."""
+        return f'-{self.multilib_name}-baremetal'
+
+
+class BaremetalArmv6MConfig(BaremetalArmMultilibConfig):
+    """Configuration for baremetal Armv6-M target."""
+
+    @property
+    def llvm_triple(self) -> str:
+        return 'armv6m-none-eabi'
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-march=armv6-m')
+        cflags.append('-mfloat-abi=soft')
+        return cflags
+
+    @property
+    def multilib_name(self) -> str:
+        return 'armv6-m'
+
+
+class BaremetalArmv8MBaseConfig(BaremetalArmMultilibConfig):
+    """Configuration for baremetal Armv8-M baseline target."""
+
+    @property
+    def llvm_triple(self) -> str:
+        return 'armv8m.base-none-eabi'
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-march=armv8-m.base')
+        cflags.append('-mfloat-abi=soft')
+        return cflags
+
+    @property
+    def multilib_name(self) -> str:
+        return 'armv8-m.base'
+
+
+class BaremetalArmv81MMainConfig(BaremetalArmMultilibConfig):
+    """Configuration for baremetal Armv8.1-M mainline target."""
+
+    def __init__(self, fpu: hosts.Armv81MMainFpu):
+        self.fpu = fpu
+
+    @property
+    def llvm_triple(self) -> str:
+        if self.fpu == hosts.Armv81MMainFpu.NONE:
+            return 'armv8.1m.main-none-eabi'
+        else:
+            return 'armv8.1m.main-none-eabihf'
+
+    @property
+    def cflags(self) -> List[str]:
+        cflags = super().cflags
+        cflags.append('-march=armv8.1-m.main')
+        cflags.append(f'-mfpu={self.fpu.llvm_fpu}')
+        cflags.append(f'-mfloat-abi={self.fpu.llvm_float_abi}')
+        return cflags
+
+    @property
+    def multilib_name(self) -> str:
+        return f'armv8.1-m.main+{self.fpu.value}'
 
 
 class DarwinConfig(_BaseConfig):
