@@ -860,5 +860,19 @@
             "from": 498229,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Strengthen atomic ordering for sequentially consistent stores"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "RISCV-Strengthen-atomic-ordering-for-sequentially-co.patch",
+        "version_range": {
+            "from": 498229,
+            "until": null
+        }
     }
 ]
