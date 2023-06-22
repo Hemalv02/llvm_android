@@ -91,6 +91,28 @@ class Arch(enum.Enum):
         }[self]
 
 
+@enum.unique
+class Armv81MMainFpu(enum.Enum):
+    """Enumeration of supported Armv8.1-M mainline FPUs."""
+    NONE = 'nofp'
+    SINGLE = 'fp'
+    DOUBLE = 'fp.dp'
+
+    @property
+    def llvm_fpu(self) -> str:
+        """Converts to llvm FPU name."""
+        return {
+            Armv81MMainFpu.NONE: 'none',
+            Armv81MMainFpu.SINGLE: 'fp-armv8-fullfp16-sp-d16',
+            Armv81MMainFpu.DOUBLE: 'fp-armv8-fullfp16-d16',
+        }[self]
+
+    @property
+    def llvm_float_abi(self) -> str:
+        """Converts to llvm float-abi."""
+        return 'soft' if self == Armv81MMainFpu.NONE else 'hard'
+
+
 def _get_default_host() -> Host:
     """Returns the Host matching the current machine."""
     if sys.platform.startswith('linux'):
