@@ -21,6 +21,7 @@ import collections
 import dataclasses
 from dataclasses import dataclass
 import json
+import logging
 import math
 from pathlib import Path
 import re
@@ -45,6 +46,7 @@ def parse_args():
     parser.add_argument('--create-cl', action='store_true', help='create a CL')
     parser.add_argument('--bug', help='bug to reference in CLs created (if any)')
     parser.add_argument('--reason', help='issue/reason to mention in CL subject line')
+    parser.add_argument('--verbose', help='Enable logging')
     args = parser.parse_args()
     return args
 
@@ -194,6 +196,8 @@ def create_cl(new_patches: PatchList, reason: str, bug: Optional[str]):
 
 def main():
     args = parse_args()
+    level = logging.DEBUG if args.verbose else logging.INFO
+    logging.basicConfig(level=level)
     patch_list = PatchList.load_from_file()
     if args.sha:
         start_version = parse_start_version(args.start_version)
@@ -202,7 +206,7 @@ def main():
     patch_list.sort()
     patch_list.save_to_file()
     if args.verify_merge:
-        print('verify merge...')
+        print('Verifying merge...')
         source_manager.setup_sources()
     if args.create_cl:
         if not args.reason:
