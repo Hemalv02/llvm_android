@@ -166,16 +166,17 @@ class Stage2Builder(base_builders.LLVMBuilder):
     @property
     def env(self) -> Dict[str, str]:
         env = super().env
-        # Point CMake to the libc++ from stage1.  It is possible that once built,
-        # the newly-built libc++ may override this because of the rpath pointing to
-        # $ORIGIN/../lib.  That'd be fine because both libraries are built from
-        # the same sources.
-        # Newer compilers put lib files in lib/x86_64-unknown-linux-gnu.
-        # Include the path to the libc++.so.1 in stage2-install,
-        # to run unittests/.../*Tests programs.
-        env[self.ld_library_path_env_name] = (
-                ':'.join([str(item) for item in self.toolchain.lib_dirs])
-                + f':{self.install_dir}/lib')
+        if self._config.target_os.is_linux:
+            # Point CMake to the libc++ from stage1.  It is possible that once built,
+            # the newly-built libc++ may override this because of the rpath pointing to
+            # $ORIGIN/../lib.  That'd be fine because both libraries are built from
+            # the same sources.
+            # Newer compilers put lib files in lib/x86_64-unknown-linux-gnu.
+            # Include the path to the libc++.so.1 in stage2-install,
+            # to run unittests/.../*Tests programs.
+            env['LD_LIBRARY_PATH'] = (
+                    ':'.join([str(item) for item in self.toolchain.lib_dirs])
+                    + f':{self.install_dir}/lib')
         return env
 
     @property
@@ -250,6 +251,23 @@ class Stage2Builder(base_builders.LLVMBuilder):
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
 
         return defines
+
+    def _build_config(self) -> None:
+        if self._config.target_os.is_darwin:
+            # Tablegen binaries (like llvm-min-tblgen, llvm-tblgen) are built and ran before
+            # building libc++.dylib. We need someway to help them find libc++.dylib in
+            # stage1-install. Because /usr/lib/libc++.1.dylib may be too old to support them.
+            # On darwin, System Integrity Protection blocks DYLD_LIBRARY_PATH from taking effect
+            # through /bin/bash. And we don't want to change rpath for all binaries built in
+            # stage2. So we copy libc++.dylib from stage1-install to stage2 before building stage2.
+            # This will help us run tablegen binaries. And it will be overwritten by libc++.dylib
+            # built in stage2.
+            lib_dir = self.output_dir / 'lib'
+            lib_dir.mkdir(parents=True, exist_ok=True)
+            libcxx_path = lib_dir / 'libc++.dylib'
+            if not libcxx_path.is_file():
+                shutil.copy2(self.toolchain.path / 'lib' / 'libc++.dylib', libcxx_path)
+        return super()._build_config()
 
     def install_config(self) -> None:
         super().install_config()
