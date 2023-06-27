@@ -139,21 +139,20 @@ def validity_check(host, install_dir, clang_version_major):
     # profiles.
     if host == 'linux-x86':
       realClangPath = os.path.join(install_dir, 'bin', 'clang-' + clang_version_major)
-      strings = utils.check_output(['strings', realClangPath])
+      strings = utils.check_output([realClangPath, '--version'])
       llvm_next = strings.find('ANDROID_LLVM_NEXT') != -1
 
-      no_pgo_profile = strings.find('-pgo') != -1
-      if no_pgo_profile and not llvm_next:
+      if not llvm_next:
+        has_pgo = ('+pgo' in strings) and ('-pgo' not in strings)
+        if not has_pgo:
           logger().error('The Clang binary is not built with PGO profiles.')
           return False
-
-      no_bolt_profile = strings.find('-bolt') != -1
-      if no_bolt_profile and not llvm_next:
+        has_bolt = ('+bolt' in strings) and ('-bolt' not in strings)
+        if not has_bolt:
           logger().error('The Clang binary is not built with BOLT profiles.')
           return False
-
-      no_lto = strings.find('-lto') != -1
-      if no_lto and not llvm_next:
+        has_lto = ('+lto' in strings) and ('-lto' not in strings)
+        if not has_lto:
           logger().error('The Clang binary is not built with LTO.')
           return False
 
