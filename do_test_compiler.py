@@ -206,14 +206,15 @@ def parse_args():
     return args
 
 
-def link_clang(android_base: Path, clang_path: Path) -> None:
+def copy_clang(android_base: Path, clang_path: Path) -> None:
     android_clang_path = (android_base / 'prebuilts' / 'clang' / 'host' /
                           hosts.build_host().os_tag / 'clang-dev')
     if android_clang_path.is_symlink() or android_clang_path.is_file():
         android_clang_path.unlink()
     elif android_clang_path.is_dir():
         shutil.rmtree(android_clang_path)
-    android_clang_path.symlink_to(clang_path.resolve())
+    # TODO(b/260809113): We can use symlink when this bug is fixed.
+    shutil.copytree(clang_path, android_clang_path, symlinks=True)
 
 
 def get_connected_device_list() -> List[List[str]]:
@@ -284,9 +285,6 @@ def build_target(android_base: Path, clang_version: version.Version,
     env['LLVM_PREBUILTS_VERSION'] = 'clang-dev'
     env['LLVM_RELEASE_VERSION'] = clang_version.long_version()
     env['LLVM_NEXT'] = 'true'
-
-    # TODO(b/260809113): Remove this when the bug is fixed
-    env['BUILD_BROKEN_DISABLE_BAZEL'] = '1'
 
     if with_tidy:
         env['WITH_TIDY'] = '1'
@@ -404,7 +402,7 @@ def main():
         utils.check_call(cmd)
         clang_path = paths.get_package_install_path(hosts.build_host(), 'clang-dev')
     clang_version = extract_clang_version(clang_path)
-    link_clang(Path(args.android_path), clang_path)
+    copy_clang(Path(args.android_path), clang_path)
 
     if args.build_only:
         if args.profile:
