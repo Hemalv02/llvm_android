@@ -355,6 +355,7 @@ class LinuxMuslConfig(LinuxConfig):
         cflags = super().cflags + [
                 f'--target={self.llvm_triple}',
                 '-D_LIBCPP_HAS_MUSL_LIBC',
+                '-D_LARGEFILE64_SOURCE=1',
                 # gcc does this automatically and glibc includes it in features.h
                 # Neither clang nor musl include it, so add it here.  Otherwise
                 # libedit fails with error: wchar_t must store ISO 10646 characters
