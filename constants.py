@@ -21,7 +21,7 @@ from typing import Set
 MAC_MIN_VERSION: str = '10.14'
 
 # This is the baseline stable version of Clang to start our stage-1 build.
-CLANG_PREBUILT_VERSION: str = 'clang-r487747c'
+CLANG_PREBUILT_VERSION: str = 'clang-r498229'
 
 # This is the ndk version used to build runtimes.
 NDK_VERSION: str = 'r26'

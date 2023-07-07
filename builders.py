@@ -94,11 +94,16 @@ class Stage1Builder(base_builders.LLVMBuilder):
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
-        # Use -static-libstdc++ to statically link the c++ runtime [1].  This
-        # avoids specifying self.toolchain.lib_dirs in rpath to find libc++ at
-        # runtime.
-        # [1] libc++ in our case, despite the flag saying -static-libstdc++.
-        ldflags.append('-static-libstdc++')
+        if self._config.target_os.is_darwin:
+            # On Darwin, -static-libstdc++ isn't supported. So use rpath to find c++ runtime.
+            ldflags.append(f'-Wl,-rpath,{self.toolchain.path / "lib"}')
+        else:
+            # Use -static-libstdc++ to statically link the c++ runtime [1].  This
+            # avoids specifying self.toolchain.lib_dirs in rpath to find libc++ at
+            # runtime.
+            # [1] libc++ in our case, despite the flag saying -static-libstdc++.
+            ldflags.append('-static-libstdc++')
+
         return ldflags
 
     @property
