@@ -426,6 +426,13 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         return output_dir.parent / (output_dir.name + '-install')
 
     @property
+    def ldflags(self) -> List[str]:
+        ldflags = super().ldflags
+        if self._config.platform:
+            ldflags.append('-Wl,-z,max-page-size=65536')
+        return ldflags
+
+    @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         defines['COMPILER_RT_BUILD_BUILTINS'] = 'OFF'
