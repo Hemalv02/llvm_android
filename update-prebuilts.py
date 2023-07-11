@@ -222,7 +222,8 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "--wildcards",
             "*/lib/libclang.so*",
             "*/lib/*/libc++.so*",
-            "*/lib/libc_musl.so"])
+            "*/lib/libc_musl.so",
+            "*/lib/x86_64-unknown-linux-musl/libsimpleperf_readelf.a"])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
         with open(paths.KLEAF_VERSIONS_BZL) as f:
