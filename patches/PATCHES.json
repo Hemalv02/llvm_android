@@ -1024,6 +1024,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[BACKPORT] [CodeGen] precommit machine-latecleanup test"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f3ce0af17a074434889e5d836ed76e51f11bddd6.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 495167
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [clang][driver] Pass `-femulated-tls` through to the linker in LTO mode"
         },
         "platforms": [
@@ -1094,20 +1108,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "[BACKPORT] [CodeGen] precommit machine-latecleanup test"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/f3ce0af17a074434889e5d836ed76e51f11bddd6.patch",
-        "version_range": {
-            "from": 487747,
-            "until": 495167
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "[UPSTREAM] [CodeGen] precommit machine-latecleanup test"
         },
         "platforms": [
@@ -1131,6 +1131,20 @@
         "version_range": {
             "from": 487747,
             "until": 497236
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [HWASan] use hwasan linker for Android 14+"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a2684acfb61d40f441e240035d7f1ba50da637c8.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 500361
         }
     },
     {
