@@ -57,6 +57,7 @@ class ClangStableBuilder:
         self.stable_dir.mkdir()
         (self.stable_dir / 'bin').mkdir()
         (self.stable_dir / 'lib').mkdir()
+        (self.stable_dir / 'lib' / 'x86_64-unknown-linux-gnu').mkdir()
         (self.stable_dir / 'share').mkdir()
 
         self.copy_file(self.clang_dir / 'bin' / 'clang-format', self.stable_dir / 'bin')
@@ -64,7 +65,8 @@ class ClangStableBuilder:
 
         self.copy_files((self.clang_dir / 'lib').glob('libclang.*'), self.stable_dir / 'lib')
         self.copy_dir(self.clang_dir / 'lib' / 'python3', self.stable_dir / 'lib')
-        self.copy_dir(self.clang_dir / 'lib' / 'x86_64-unknown-linux-gnu', self.stable_dir / 'lib')
+        self.copy_files((self.clang_dir / 'lib' / 'x86_64-unknown-linux-gnu').glob('libc++*'),
+                        self.stable_dir / 'lib' / 'x86_64-unknown-linux-gnu')
         self.copy_dir(self.clang_dir / 'share' / 'clang', self.stable_dir / 'share')
 
         (self.stable_dir / 'README.md').write_text(
