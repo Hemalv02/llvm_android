@@ -22,7 +22,7 @@ import argparse
 import inspect
 import logging
 import os
-import pathlib
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -223,8 +223,17 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "*/lib/libclang.so*",
             "*/lib/*/libc++.so*",
             "*/lib/libc_musl.so",
+            "*/lib/x86_64-unknown-linux-musl/libc++.a",
+            "*/lib/x86_64-unknown-linux-musl/libc++abi.a",
             "*/lib/x86_64-unknown-linux-musl/libsimpleperf_readelf.a"])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
+
+        x86_64_linux_musl_lib_dir = (Path(install_subdir) / 'lib' / 'clang' / clang_version / 'lib'
+                                     / 'x86_64-unknown-linux-musl')
+        shutil.move(Path(musl_install_subdir) / 'lib' / 'x86_64-unknown-linux-musl' / 'libc++.a',
+                    x86_64_linux_musl_lib_dir)
+        shutil.move(Path(musl_install_subdir) / 'lib' / 'x86_64-unknown-linux-musl' / 'libc++abi.a',
+                    x86_64_linux_musl_lib_dir)
 
         with open(paths.KLEAF_VERSIONS_BZL) as f:
             kleaf_versions_lines = f.read().splitlines()
