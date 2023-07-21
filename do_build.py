@@ -525,6 +525,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         }
     if host.is_linux:
         necessary_lib_files |= {
+            'libbolt_rt_instr.a',
             'libc++.so',
             'libc++.so.1',
             'libc++abi.so',
