@@ -225,7 +225,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "*/lib/libc_musl.so",
             "*/lib/x86_64-unknown-linux-musl/libc++.a",
             "*/lib/x86_64-unknown-linux-musl/libc++abi.a",
-            "*/lib/x86_64-unknown-linux-musl/libsimpleperf_readelf.a"])
+            ])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
         x86_64_linux_musl_lib_dir = (Path(install_subdir) / 'lib' / 'clang' / clang_version / 'lib'
