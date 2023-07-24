@@ -1418,7 +1418,10 @@ class LibSimpleperfReadElfBuilder(base_builders.LLVMRuntimeBuilder):
     """
     name: str = 'libsimpleperf_readelf'
     src_dir: Path = paths.LLVM_PATH / 'llvm'
-    config_list = configs.android_configs(platform=True)
+    config_list = [*configs.android_configs(platform=True),
+                   configs.LinuxMuslConfig(hosts.Arch.X86_64),
+                   configs.LinuxMuslConfig(hosts.Arch.AARCH64),
+                  ]
 
     @property
     def llvm_libs(self) -> List[str]:
@@ -1448,6 +1451,8 @@ class LibSimpleperfReadElfBuilder(base_builders.LLVMRuntimeBuilder):
     def install_dir(self) -> Path:
         if self._config.target_os ==  hosts.Host.Windows:
             return self.output_toolchain.path / 'lib' / 'x86_64-w64-windows-gnu'
+        if self._config.target_os == hosts.Host.Linux and self._config.is_musl:
+            return self.output_resource_dir / self._config.llvm_triple / 'lib'
         return super().install_dir
 
     def install_config(self) -> None:
@@ -1456,6 +1461,7 @@ class LibSimpleperfReadElfBuilder(base_builders.LLVMRuntimeBuilder):
     def build_readelf_lib(self, llvm_lib_dir: Path, out_dir: Path, is_darwin_lib: bool = False):
         llvm_lib_dir = llvm_lib_dir.absolute()
         out_dir = out_dir.absolute()
+        out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / self.target_libname
         out_file.unlink(missing_ok=True)
         if is_darwin_lib:
