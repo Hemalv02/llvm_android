@@ -343,6 +343,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [compiler-rt][AArch64] Correct how FMV use ifunc resolver abi."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/61962aa1eec922c7dddd36897bb29888b4c98174.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 505596
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
