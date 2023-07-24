@@ -1,0 +1,81 @@
+From 16949c5c48ab475d34547d4bbbe91df7efe73120 Mon Sep 17 00:00:00 2001
+From: Dimitry Andric <dimitry@andric.com>
+Date: Thu, 20 Apr 2023 19:43:37 +0200
+Subject: [PATCH] [compiler-rt] Include system headers before optionally
+ defining HWCAP macros
+
+In https://reviews.llvm.org/D141285 the optional definitions of `HWCAP`
+macros were moved to before their usage. However, they were also moved
+to before the inclusion of system headers which can optionally define
+them. If any of those system headers then actually defined any of the
+`HWCAP` macros, it would result in a redefinition error.
+
+Move the system header includes to just before the optional definitions,
+to avoid this problem.
+
+Reviewed By: ilinpv
+
+Differential Revision: https://reviews.llvm.org/D148819
+---
+ compiler-rt/lib/builtins/cpu_model.c | 38 ++++++++++++++--------------
+ 1 file changed, 19 insertions(+), 19 deletions(-)
+
+diff --git a/compiler-rt/lib/builtins/cpu_model.c b/compiler-rt/lib/builtins/cpu_model.c
+index 01bab46aebac..c013bb622477 100644
+--- a/compiler-rt/lib/builtins/cpu_model.c
++++ b/compiler-rt/lib/builtins/cpu_model.c
+@@ -839,6 +839,25 @@ int CONSTRUCTOR_ATTRIBUTE __cpu_indicator_init(void) {
+ }
+ #elif defined(__aarch64__)
+ 
++// LSE support detection for out-of-line atomics
++// using HWCAP and Auxiliary vector
++_Bool __aarch64_have_lse_atomics
++    __attribute__((visibility("hidden"), nocommon));
++
++#if defined(__has_include)
++#if __has_include(<sys/auxv.h>)
++#include <sys/auxv.h>
++#if __has_include(<asm/hwcap.h>)
++#include <asm/hwcap.h>
++
++#if defined(__ANDROID__)
++#include <string.h>
++#include <sys/system_properties.h>
++#elif defined(__Fuchsia__)
++#include <zircon/features.h>
++#include <zircon/syscalls.h>
++#endif
++
+ #ifndef AT_HWCAP
+ #define AT_HWCAP 16
+ #endif
+@@ -1009,25 +1028,6 @@ int CONSTRUCTOR_ATTRIBUTE __cpu_indicator_init(void) {
+ #define HWCAP2_SVE_EBF16 (1UL << 33)
+ #endif
+ 
+-// LSE support detection for out-of-line atomics
+-// using HWCAP and Auxiliary vector
+-_Bool __aarch64_have_lse_atomics
+-    __attribute__((visibility("hidden"), nocommon));
+-
+-#if defined(__has_include)
+-#if __has_include(<sys/auxv.h>)
+-#include <sys/auxv.h>
+-#if __has_include(<asm/hwcap.h>)
+-#include <asm/hwcap.h>
+-
+-#if defined(__ANDROID__)
+-#include <string.h>
+-#include <sys/system_properties.h>
+-#elif defined(__Fuchsia__)
+-#include <zircon/features.h>
+-#include <zircon/syscalls.h>
+-#endif
+-
+ // Detect Exynos 9810 CPU
+ #define IF_EXYNOS9810                                                          \
+   char arch[PROP_VALUE_MAX];                                                   \
+-- 
+2.34.1
+

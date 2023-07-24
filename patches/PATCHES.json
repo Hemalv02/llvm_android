@@ -996,6 +996,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [compiler-rt][builtins] Define AT_HWCAP2 for AArch64"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/23fcca822a3a3b9a14b6a1ad432814e2634cdb63.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 491868
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [llvm-objdump] Fix help message for --print-imm-hex"
         },
         "platforms": [
@@ -1094,6 +1108,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [compiler-rt] Include system headers before optionally defining HWCAP macros"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/16949c5c48ab475d34547d4bbbe91df7efe73120.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 496472
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [BOLT] Parallelize legacy profile merging"
         },
         "platforms": [
@@ -1145,6 +1173,20 @@
         "version_range": {
             "from": 487747,
             "until": 500361
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [compiler-rt][AArch64] Correct how FMV use ifunc resolver abi."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/61962aa1eec922c7dddd36897bb29888b4c98174.patch",
+        "version_range": {
+            "from": 487747,
+            "until": 505596
         }
     },
     {
