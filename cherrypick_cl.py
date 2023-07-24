@@ -26,6 +26,7 @@ import math
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.request
 
 from android_version import get_svn_revision_number
 from merge_from_upstream import fetch_upstream, sha_to_revision
@@ -38,6 +39,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Cherry pick upstream LLVM patches.",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--sha', nargs='+', help='sha of patches to cherry pick')
+    parser.add_argument('--diff', help='Cherry pick from a differential revision e.g., D149486')
     parser.add_argument(
         '--start-version', default='llvm',
         help="""svn revision to start applying patches. 'llvm' can also be used.""")
@@ -89,6 +91,14 @@ class PatchItem:
     def sha(self) -> str:
         m = re.match(r'cherry/(.+)\.patch', self.rel_patch_path)
         assert m, self.rel_patch_path
+        return m.group(1)
+
+    @property
+    def phab_link(self) -> str:
+        m = next(re.match(r'Differential Revision: (.+)', line)
+            for line in open(f'patches/{self.rel_patch_path}'))
+
+        assert m, f'No phabricator link found in: {self.rel_patch_path}'
         return m.group(1)
 
     @property
@@ -172,9 +182,14 @@ def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
     return check_output(['git', 'rev-parse', short_sha], cwd=upstream_dir).strip()
 
 
-def create_cl(new_patches: PatchList, reason: str, bug: Optional[str]):
-    file_list = [p.rel_patch_path for p in new_patches] + ['PATCHES.json']
-    file_list = [str(paths.SCRIPTS_DIR / 'patches' / f) for f in file_list]
+def create_cl(new_patches: PatchList, reason: str, bug: Optional[str], cherry: bool):
+    file_list = [p.rel_patch_path for p in new_patches]
+    if cherry:
+        file_list = [str(paths.SCRIPTS_DIR / f) for f in file_list]
+    else:
+        file_list = [str(paths.SCRIPTS_DIR / 'patches' / f) for f in file_list]
+
+    file_list += ['patches/PATCHES.json']
     check_call(['git', 'add'] + file_list)
 
     subject = f'[patches] Cherry pick CLS for: {reason}'
@@ -185,26 +200,84 @@ def create_cl(new_patches: PatchList, reason: str, bug: Optional[str]):
         else:
             commit_lines += [f'Bug: {bug}', '']
     for patch in new_patches:
-        sha = patch.sha[:11]
-        subject = patch.metadata['title']
-        if subject.startswith('[UPSTREAM] '):
-            subject = subject[len('[UPSTREAM] '):]
-        commit_lines.append(sha + ' ' + subject)
+        if cherry: # Add SHA and title for each cherry-pick.
+            sha = patch.sha[:11]
+            subject = patch.metadata['title']
+            if subject.startswith('[UPSTREAM] '):
+                subject = subject[len('[UPSTREAM] '):]
+            commit_line = sha + ' ' + subject
+        else: # Add link to differential revision.
+            commit_line = patch.phab_link
+
+        commit_lines.append(commit_line)
+
     commit_lines += ['', 'Test: N/A']
     check_call(['git', 'commit', '-m', '\n'.join(commit_lines)])
 
+def get_title_from_phab(url) -> str:
+    webpage = urllib.request.urlopen(url).read()
+    title = str(webpage).split('<title>')[1].split('</title>')[0]
+    actual_title = ' '.join(title.split(' ')[1:])
+    return actual_title
+
+def create_patch(diff, start_version) -> PatchList:
+    assert diff.startswith('D'), f'Invalid Differential Revision {diff}'
+
+    phab_url=f'https://reviews.llvm.org/{diff}'
+    patch_url_req = urllib.request.Request(f'https://reviews.llvm.org/{diff}?download=true',
+                                        method="HEAD")
+    patch_url = urllib.request.urlopen(patch_url_req).url
+
+    # TODO: Add commit body and author details as well.
+    title=get_title_from_phab(phab_url)
+    assert title, f'Title not found for {diff}'
+    print(f'Creating a patch for {title}')
+    file_name=f'{diff}.patch'
+    abs_file_name= paths.SCRIPTS_DIR / 'patches' / file_name
+    # Download the file from `patch_url` and save in `abs_file_name`:
+    urllib.request.urlretrieve(patch_url, abs_file_name)
+    # Add link to Differential Revision at the beginning of the file
+    patch_first_line=f'Differential Revision: {patch_url}'
+    with open(abs_file_name, 'r+') as f:
+        content = f.read()
+        f.seek(0, 0)
+        f.write(patch_first_line + '\n\n' + content)
+
+    # Extend the PATCHES.json
+    result = PatchList()
+    info: Optional[List[str]] = []
+    rel_patch_path = f'{file_name}'
+    end_version = None
+    metadata = { 'info': info, 'title': title }
+    platforms = ['android']
+    version_range: Dict[str, Optional[int]] = {
+       'from': start_version,
+       'until': end_version,
+    }
+    result.append(PatchItem(metadata, platforms, rel_patch_path, version_range))
+    return result
 
 def main():
     args = parse_args()
     level = logging.DEBUG if args.verbose else logging.INFO
     logging.basicConfig(level=level)
     patch_list = PatchList.load_from_file()
-    if args.sha:
+
+    assert not (bool(args.sha) and bool(args.diff)), (
+        'Only one of cherry-pick or patch supported.'
+    )
+    if args.diff:
+        start_version = parse_start_version(args.start_version)
+        new_patches = create_patch(args.diff, start_version)
+        patch_list.extend(new_patches)
+    elif args.sha:
         start_version = parse_start_version(args.start_version)
         new_patches = generate_patch_files(args.sha, start_version)
         patch_list.extend(new_patches)
+
     patch_list.sort()
     patch_list.save_to_file()
+
     if args.verify_merge:
         print('Verifying merge...')
         source_manager.setup_sources()
@@ -212,7 +285,8 @@ def main():
         if not args.reason:
             print('error: --create-cl requires --reason')
             exit(1)
-        create_cl(new_patches, args.reason, args.bug)
+        cherry = True if args.sha else False
+        create_cl(new_patches, args.reason, args.bug, cherry)
 
 
 if __name__ == '__main__':
