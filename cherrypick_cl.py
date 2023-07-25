@@ -183,11 +183,9 @@ def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
 
 
 def create_cl(new_patches: PatchList, reason: str, bug: Optional[str], cherry: bool):
-    file_list = [p.rel_patch_path for p in new_patches]
-    if cherry:
-        file_list = [str(paths.SCRIPTS_DIR / f) for f in file_list]
-    else:
-        file_list = [str(paths.SCRIPTS_DIR / 'patches' / f) for f in file_list]
+    file_list = [
+        str(paths.SCRIPTS_DIR / 'patches' / p.rel_patch_path) for p in new_patches
+    ]
 
     file_list += ['patches/PATCHES.json']
     check_call(['git', 'add'] + file_list)
