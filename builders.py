@@ -327,6 +327,7 @@ class BuiltinsBuilder(base_builders.LLVMRuntimeBuilder):
             result.append(arch)
         result.append(configs.LinuxMuslConfig(hosts.Arch.AARCH64))
         result.append(configs.LinuxMuslConfig(hosts.Arch.ARM))
+        result.append(configs.LinuxMuslConfig(hosts.Arch.X86_64))
         return result
 
     @property
