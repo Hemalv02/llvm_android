@@ -555,8 +555,7 @@ class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines: Dict[str, str] = super().cmake_defines
-        defines['LLVM_CONFIG_PATH'] = str(self.toolchain.path /
-                                          'bin' / 'llvm-config')
+        defines['LLVM_CMAKE_DIR'] = str(self.toolchain.path)
         if self._config.target_os.is_android:
             # ANDROID_PLATFORM_LEVEL is checked when enabling TSAN for Android.
             # It's usually set by the NDK's CMake toolchain file, which we don't
