@@ -26,9 +26,5 @@ CLANG_PREBUILT_VERSION: str = 'clang-r498229'
 # This is the ndk version used to build runtimes.
 NDK_VERSION: str = 'r26'
 
-# Targets for host.
-HOST_TARGETS: Set[str] = set(['X86'])
-DARWIN_HOST_TARGETS: Set[str] = set(['X86', 'AArch64'])
-
 # Targets for Android.
 ANDROID_TARGETS: Set[str] = set(['AArch64', 'ARM', 'BPF', 'RISCV', 'WebAssembly', 'X86'])

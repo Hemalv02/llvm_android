@@ -228,8 +228,9 @@ def install_wrappers(llvm_install_path: Path, llvm_next=False) -> None:
     # Note: The build script automatically determines the architecture
     # based on the host.
     go_env = dict(os.environ)
-    go_env['PATH'] = str(paths.GO_BIN_PATH) + os.pathsep + go_env['PATH']
-    go_env['GOROOT'] = str(paths.GO_ROOT)
+    if hosts.has_prebuilts():
+        go_env['PATH'] = str(paths.GO_BIN_PATH) + os.pathsep + go_env['PATH']
+        go_env['GOROOT'] = str(paths.GO_ROOT)
     utils.check_call([sys.executable, wrapper_build_script,
                       '--config=android',
                       '--use_ccache=false',
@@ -526,13 +527,16 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         }
     if host.is_linux:
         necessary_lib_files |= {
-            'libbolt_rt_instr.a',
             'libc++.so',
             'libc++.so.1',
             'libc++abi.so',
             'libc++abi.so.1',
-            'libsimpleperf_readelf.a',
         }
+        if hosts.has_prebuilts():
+            necessary_lib_files |= {
+                'libbolt_rt_instr.a',
+                'libsimpleperf_readelf.a',
+            }
     if host.is_darwin:
         necessary_lib_files |= {
             'libc++.dylib',
@@ -567,7 +571,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     if host.is_linux:
         if host_config.is_musl:
             triple32 = 'i686-unknown-linux-musl'
-            triple64 = 'x86_64-unknown-linux-musl'
+            triple64 = hosts.build_arch().musl_triple
         else:
             triple32 = 'i386-unknown-linux-gnu'
             triple64 = 'x86_64-unknown-linux-gnu'
