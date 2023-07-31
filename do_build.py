@@ -21,7 +21,6 @@ import glob
 import logging
 from pathlib import Path
 import os
-import platform
 import shutil
 import sys
 import textwrap
@@ -960,10 +959,15 @@ def main():
 
     logging.basicConfig(level=logging.DEBUG)
 
-    logger().info('Host OS version: %r', platform.platform())
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r bolt=%r musl=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
                   do_runtimes, do_package, need_windows, args.lto, args.bolt, args.musl))
+
+    if paths.get_tensorflow_path() is None:
+        if mlgo:
+            raise ValueError("MLGO requires tensorflow. Tensorflow not found.")
+        else:
+            logger().info('Tensorflow not found.')
 
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:

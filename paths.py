@@ -160,3 +160,9 @@ def get_python_dynamic_lib(host: hosts.Host) -> Path:
         hosts.Host.Darwin: python_root / 'lib' / f'libpython{_PYTHON_VER}.dylib',
         hosts.Host.Windows: python_root / f'python{_PYTHON_VER_SHORT}.dll',
     }[host]
+
+def get_tensorflow_path() -> Optional[Path]:
+    path = os.getenv('TENSORFLOW_INSTALL')
+    if path is not None and Path(path).is_dir():
+        return path
+    return None
