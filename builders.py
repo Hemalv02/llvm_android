@@ -65,13 +65,10 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
     @property
     def llvm_targets(self) -> Set[str]:
+        targets = set([hosts.build_arch().llvm_target_name])
         if self.build_android_targets:
-            return constants.HOST_TARGETS | constants.ANDROID_TARGETS
-        else:
-            if self._config.target_os.is_darwin:
-                return constants.DARWIN_HOST_TARGETS
-            else:
-                return constants.HOST_TARGETS
+            targets |= constants.ANDROID_TARGETS
+        return targets
 
     @property
     def llvm_projects(self) -> Set[str]:
@@ -189,7 +186,7 @@ class Stage2Builder(base_builders.LLVMBuilder):
         ldflags = super().ldflags
         if self._config.target_os.is_linux:
             if isinstance(self._config, configs.LinuxMuslConfig):
-                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-musl')
+                ldflags.append(f'-Wl,-rpath,\$ORIGIN/../lib/{hosts.build_arch().musl_triple}')
             else:
                 ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
         # '$ORIGIN/../lib' is added by llvm's CMake rules.
@@ -890,21 +887,11 @@ class LldbServerBuilder(base_builders.LLVMRuntimeBuilder):
         return super().ldflags + ['-lunwind']
 
     @property
-    def _llvm_target(self) -> str:
-        return {
-            hosts.Arch.ARM: 'ARM',
-            hosts.Arch.AARCH64: 'AArch64',
-            hosts.Arch.I386: 'X86',
-            hosts.Arch.X86_64: 'X86',
-            hosts.Arch.RISCV64: 'RISCV',
-        }[self._config.target_arch]
-
-    @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
         # lldb depends on support libraries.
         defines['LLVM_ENABLE_PROJECTS'] = 'clang;lldb'
-        defines['LLVM_TARGETS_TO_BUILD'] = self._llvm_target
+        defines['LLVM_TARGETS_TO_BUILD'] = self._config.target_arch.llvm_target_name
         defines['LLVM_NATIVE_TOOL_DIR'] = str(self.toolchain.build_path / 'bin')
         triple = self._config.llvm_triple
         defines['LLVM_HOST_TRIPLE'] = triple.replace('i686', 'i386')

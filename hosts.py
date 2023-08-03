@@ -15,6 +15,7 @@
 #
 """Constants and helper functions for hosts."""
 import enum
+import platform
 import sys
 
 @enum.unique
@@ -90,6 +91,23 @@ class Arch(enum.Enum):
             Arch.RISCV64: 'riscv64'
         }[self]
 
+    @property
+    def llvm_target_name(self) -> str:
+        return {
+            Arch.ARM: 'ARM',
+            Arch.AARCH64: 'AArch64',
+            Arch.I386: 'X86',
+            Arch.X86_64: 'X86',
+            Arch.RISCV64: 'RISCV',
+        }[self]
+
+    @property
+    def musl_triple(self) -> str:
+        triple = self.llvm_arch + '-unknown-linux-musl'
+        if self is Arch.ARM:
+            triple += 'eabihf'
+        return triple
+
 
 @enum.unique
 class Armv81MMainFpu(enum.Enum):
@@ -124,10 +142,35 @@ def _get_default_host() -> Host:
     raise RuntimeError('Unsupported host: {}'.format(sys.platform))
 
 
+def _get_default_arch() -> Host:
+    """Returns the Arch matching the current machine."""
+    mach = platform.machine()
+    if mach == 'x86_64':
+        return Arch.X86_64
+    if mach == 'aarch64' or mach == 'arm64':
+        return Arch.AARCH64
+    raise RuntimeError(f'Unsupported architecture: {mach}')
+
+
 _BUILD_OS_TYPE: Host = _get_default_host()
+_BUILD_ARCH_TYPE: Arch = _get_default_arch()
 
 
 def build_host() -> Host:
     """Returns the cached Host matching the current machine."""
     global _BUILD_OS_TYPE  # pylint: disable=global-statement
     return _BUILD_OS_TYPE
+
+
+def build_arch() -> Arch:
+    """Returns the cached Arch matching the current machine."""
+    global _BUILD_ARCH_TYPE  # pylint: disable=global-statement
+    return _BUILD_ARCH_TYPE
+
+
+def has_prebuilts() -> bool:
+    if build_host() == Host.Linux:
+        return build_arch() == Arch.X86_64
+    if build_host() == Host.Darwin:
+        return build_arch() == Arch.X86_64 or build_arch() == Arch.AARCH64
+    return False
