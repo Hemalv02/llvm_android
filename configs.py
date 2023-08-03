@@ -660,9 +660,9 @@ class AndroidConfig(_BaseConfig):
         if self.target_arch == hosts.Arch.RISCV64:
             return 35
         if self.static or self.platform:
-            # Set API level for platform to to 29 since these runtimes can be
+            # Set API level for platform to to 30 since these runtimes can be
             # used for apexes targeting that API level.
-            return 29
+            return 30
         return 21
 
     def __str__(self) -> str:
