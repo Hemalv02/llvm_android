@@ -336,9 +336,7 @@ class LinuxMuslConfig(LinuxConfig):
     is_musl: bool = True
 
     def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64, is_cross_compiling: bool = True):
-        self.triple = arch.llvm_arch + '-unknown-linux-musl'
-        if arch is hosts.Arch.ARM:
-            self.triple += 'eabihf'
+        self.triple = arch.musl_triple
         self.target_arch = arch
         self.is_cross_compiling = is_cross_compiling
 
@@ -430,7 +428,7 @@ class LinuxMuslConfig(LinuxConfig):
 
 class LinuxMuslHostConfig(LinuxMuslConfig):
     """Config for Musl as the host"""
-    def __init__(self, arch: hosts.Arch = hosts.Arch.X86_64):
+    def __init__(self, arch: hosts.Arch = hosts.build_arch()):
         super().__init__(arch=arch, is_cross_compiling=False)
 
     @property

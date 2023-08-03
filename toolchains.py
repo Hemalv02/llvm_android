@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import List
 
 from builder_registry import BuilderRegistry
+import hosts
 import paths
 import version
 
@@ -116,7 +117,9 @@ class Toolchain:
     @property
     def lib_dirs(self) -> List[Path]:
         """Returns the paths to lib dirs."""
-        return [self.path / 'lib', self.path / 'lib' / 'x86_64-unknown-linux-gnu', self.path / 'lib' / 'x86_64-unknown-linux-musl']
+        return [self.path / 'lib',
+                self.path / 'lib' / 'x86_64-unknown-linux-gnu',
+                self.path / 'lib' / hosts.build_arch().musl_triple]
 
     @property
     def _version_file(self) -> Path:
@@ -142,4 +145,8 @@ class Toolchain:
 def get_prebuilt_toolchain() -> Toolchain:
     """Returns the prebuilt toolchain."""
     # Prebuilt toolchain doesn't have a build path. Use a temp path instead.
-    return Toolchain(paths.CLANG_PREBUILT_DIR, Path('.'))
+    if hosts.has_prebuilts():
+        return Toolchain(paths.CLANG_PREBUILT_DIR, Path('.'))
+    else:
+        # We don't have prebuilts for this architecture, try the system toolchain.
+        return Toolchain(Path('/usr'), Path('.'))
