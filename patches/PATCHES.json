@@ -357,6 +357,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Reland \"Fix __cfi_check not aligned to 4k on relocatable files with no executable code\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b82c2b9ac2baae0f2a9dd65770cfb37fdc2a80a9.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 508116
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
