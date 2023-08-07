@@ -473,6 +473,8 @@ class MinGWConfig(_GccConfig):
         cflags.append('-D_WIN32_WINNT=0x0600')
         cflags.append('-DWINVER=0x0600')
         cflags.append('-D__MSVCRT_VERSION__=0x1400')
+        if self.target_arch == hosts.Arch.I386:
+            cflags.append('-fsjlj-exceptions')
         return cflags
 
     @property
