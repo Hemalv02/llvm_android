@@ -633,6 +633,13 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     if clang_source_info_file.exists():
         shutil.copy2(clang_source_info_file, install_dir)
 
+    # Add order file scripts to the toolcahin in share_orderfile_dir
+    share_orderfile_dir = install_dir / "share/orderfiles"
+    share_orderfile_dir.mkdir(parents=True, exist_ok=True)
+    for script_file in paths.ORDERFILE_SCRIPTS_DIR.iterdir():
+        if script_file.is_file():
+            shutil.copy2(script_file, share_orderfile_dir)
+    os.remove(share_orderfile_dir / "orderfile_unittest.py")
 
     # Remove optrecord.py to avoid auto-filed bugs about call to yaml.load_all
     os.remove(install_dir / 'share/opt-viewer/optrecord.py')
