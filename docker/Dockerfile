@@ -12,9 +12,11 @@ RUN apt-get update \
   repo \
   rsync \
   ssh \
-  tzdata \
   unzip \
   zip \
+  # Required by android-build buildbot
+  default-jre-headless \
+  tzdata \
   # clang-3289846 uses host libncurses5
   libncurses5 \
   # Necessary to test 32-bit runtimes.
