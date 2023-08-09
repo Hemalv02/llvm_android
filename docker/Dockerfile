@@ -15,7 +15,6 @@ RUN apt-get update \
   unzip \
   zip \
   # Required by android-build buildbot
-  default-jre-headless \
   tzdata \
   # clang-3289846 uses host libncurses5
   libncurses5 \
