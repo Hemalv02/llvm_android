@@ -1,6 +1,6 @@
 FROM ubuntu:22.04
 RUN apt-get update \
-&& DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+&& DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get install --no-install-recommends -y \
   bison \
   build-essential \
   cargo \
@@ -12,6 +12,7 @@ RUN apt-get update \
   repo \
   rsync \
   ssh \
+  tzdata \
   unzip \
   zip \
   # clang-3289846 uses host libncurses5
