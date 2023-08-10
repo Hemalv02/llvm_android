@@ -295,12 +295,6 @@ class AutoconfBuilder(Builder):
         self._touch_src_dir(files_to_touch)
         self._touch_src_dir(self.src_dir.glob('**/*.in'))
 
-    @property
-    def make_path(self) -> str:
-        if hosts.has_prebuilts():
-            return str(paths.MAKE_BIN_PATH)
-        return '/usr/bin/make'
-
     def _build_config(self) -> None:
         logger().info('Building %s for %s', self.name, self._config)
 
@@ -339,14 +333,14 @@ class AutoconfBuilder(Builder):
         utils.create_script(self.output_dir / 'config_invocation.sh', config_cmd, env)
         utils.check_call(config_cmd, cwd=self.output_dir, env=env)
 
-        make_cmd = [self.make_path, f'-j{multiprocessing.cpu_count()}']
+        make_cmd = [str(paths.MAKE_BIN_PATH), f'-j{multiprocessing.cpu_count()}']
         utils.check_call(make_cmd, cwd=self.output_dir, env=self.env)
 
         self.install_config()
 
     def install_config(self) -> None:
         """Installs built artifacts for current config."""
-        install_cmd = [self.make_path, 'install']
+        install_cmd = [str(paths.MAKE_BIN_PATH), 'install']
         utils.check_call(install_cmd, cwd=self.output_dir, env=self.env)
         if isinstance(self, LibInfo):
             cast(LibInfo, self).update_lib_id()
@@ -370,18 +364,6 @@ class CMakeBuilder(Builder):
         """Returns the path this target will be installed to."""
         output_dir = self.output_dir
         return output_dir.parent / (output_dir.name + '-install')
-
-    @property
-    def ninja_path(self) -> str:
-        if hosts.has_prebuilts():
-            return str(paths.NINJA_BIN_PATH)
-        return '/usr/bin/ninja'
-
-    @property
-    def cmake_path(self) -> str:
-        if hosts.has_prebuilts():
-            return str(paths.CMAKE_BIN_PATH)
-        return '/usr/bin/cmake'
 
     @property
     def cmake_defines(self) -> Dict[str, str]:
@@ -422,7 +404,7 @@ class CMakeBuilder(Builder):
             'CMAKE_INSTALL_PREFIX': str(self.install_dir),
             'CMAKE_INSTALL_LIBDIR': 'lib',
 
-            'CMAKE_MAKE_PROGRAM': self.ninja_path,
+            'CMAKE_MAKE_PROGRAM': str(paths.NINJA_BIN_PATH),
 
             'CMAKE_FIND_ROOT_PATH_MODE_INCLUDE': 'ONLY',
             'CMAKE_FIND_ROOT_PATH_MODE_LIBRARY': 'ONLY',
@@ -449,7 +431,7 @@ class CMakeBuilder(Builder):
             defines['CMAKE_LIPO'] = str(self.toolchain.lipo)
         if self._config.target_os.is_windows:
             defines['CMAKE_RC_COMPILER'] = str(self.toolchain.rc)
-            defines['CMAKE_RC_FLAGS'] = f'-I {paths.MINGW_ROOT}/include/ --target={self._config.llvm_triple}'
+            defines['CMAKE_RC_FLAGS'] = f'-I {paths.MINGW_ROOT}/include/'
         if self._config.is_cross_compiling:
             # Cross compiling
             defines['CMAKE_SYSTEM_NAME'] = self._get_cmake_system_name()
@@ -477,7 +459,7 @@ class CMakeBuilder(Builder):
                 args: ninja targets to build
                 add_env: additional environment variables
         """
-        ninja_cmd = [self.ninja_path] + args
+        ninja_cmd = [str(paths.NINJA_BIN_PATH)] + args
         if add_env:
             ninja_env = self.env.copy()
             ninja_env.update(add_env)
@@ -492,7 +474,7 @@ class CMakeBuilder(Builder):
         if self.remove_install_dir and self.install_dir.exists():
             shutil.rmtree(self.install_dir)
 
-        cmake_cmd: List[str] = [self.cmake_path, '-G', 'Ninja']
+        cmake_cmd: List[str] = [str(paths.CMAKE_BIN_PATH), '-G', 'Ninja']
 
         cmake_cmd.extend(f'-D{key}={val}' for key, val in self.cmake_defines.items())
         cmake_cmd.append(str(self.src_dir))
@@ -508,7 +490,7 @@ class CMakeBuilder(Builder):
 
     def install_config(self) -> None:
         """Installs built artifacts for current config."""
-        utils.check_call([self.ninja_path, 'install'],
+        utils.check_call([paths.NINJA_BIN_PATH, 'install'],
                          cwd=self.output_dir, env=self.env)
 
 
@@ -546,15 +528,14 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
             defines['LLVM_USE_LINKER'] = 'lld'
 
         # Building llvm with tests needs python >= 3.6, which may not be available on build server.
-        # So always use prebuilts python if available.
-        if hosts.has_prebuilts():
-            target = self._config.target_os
-            if target != hosts.Host.Android and target != hosts.Host.Baremetal:
-                defines['Python3_LIBRARY'] = str(paths.get_python_lib(target))
-                defines['Python3_LIBRARIES'] = str(paths.get_python_lib(target))
-                defines['Python3_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
-                defines['Python3_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
-            defines['Python3_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
+        # So always use prebuilts python.
+        target = self._config.target_os
+        if target != hosts.Host.Android and target != hosts.Host.Baremetal:
+            defines['Python3_LIBRARY'] = str(paths.get_python_lib(target))
+            defines['Python3_LIBRARIES'] = str(paths.get_python_lib(target))
+            defines['Python3_INCLUDE_DIR'] = str(paths.get_python_include_dir(target))
+            defines['Python3_INCLUDE_DIRS'] = str(paths.get_python_include_dir(target))
+        defines['Python3_EXECUTABLE'] = str(paths.get_python_executable(hosts.build_host()))
 
         return defines
 
