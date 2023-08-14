@@ -389,11 +389,13 @@ def main():
     else:
         cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb']
         if args.profile:
+            cmd.append('--mlgo')
             cmd.append('--build-instrumented')
             cmd.append('--skip-tests')
         elif args.bolt:
             cmd.append('--pgo')
             cmd.append('--lto')
+            cmd.append('--mlgo')
             cmd.append('--bolt-instrument')
             cmd.append('--no-strip')
             cmd.append('--skip-tests')
