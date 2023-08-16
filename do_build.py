@@ -456,6 +456,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         'sanstats' + ext,
         'scan-build' + ext,
         'scan-view' + ext,
+        'wasm-ld' + ext,
     }
 
     if toolchain_builder.build_lldb:
