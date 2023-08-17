@@ -82,6 +82,8 @@ KYTHE_CXX_EXTRACTOR = (PREBUILTS_DIR / 'clang-tools' / hosts.build_host().os_tag
 KYTHE_OUTPUT_DIR = OUT_DIR / 'kythe-files'
 KYTHE_VNAMES_JSON = SCRIPTS_DIR / 'kythe_vnames.json'
 
+ORDERFILE_SCRIPTS_DIR: Path = TOOLCHAIN_DIR / "llvm_android" / "orderfiles" / "scripts"
+
 _PYTHON_VER = '3.10'
 _PYTHON_VER_SHORT = _PYTHON_VER.replace('.', '')
 
