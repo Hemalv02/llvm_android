@@ -483,7 +483,9 @@ class CMakeBuilder(Builder):
 
         env = self.env
         utils.create_script(self.output_dir / 'cmake_invocation.sh', cmake_cmd, env)
-        utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
+
+        with timer.Timer(f'cmake_{self.name}_{self._config}'):
+          utils.check_call(cmake_cmd, cwd=self.output_dir, env=env)
 
         self._ninja(self.ninja_targets)
         self.install_config()
