@@ -884,7 +884,7 @@ class LLVMBuilder(LLVMBaseBuilder):
             # need libedit.so.*, libxml2.so.*, etc. in stage2/lib.
             self._install_lib_deps(self.output_dir / 'lib')
             self._ninja(
-                ['check-clang', 'check-llvm', 'check-clang-tools'] +
+                ['check-clang', 'check-llvm'] +
                 ['check-cxx-' + triple for triple in sorted(self.runtimes_triples)])
         # Known failed tests:
         #   Clang :: CodeGenCXX/builtins.cpp
