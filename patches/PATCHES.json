@@ -371,6 +371,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [AArch64] Add Defs=[NZCV] to MTE loop pseudos."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b09c575975b691e988a0f2e31d632c5f1038ab1d.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 509890
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
