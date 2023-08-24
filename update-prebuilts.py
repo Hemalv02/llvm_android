@@ -108,9 +108,10 @@ def extract_clang_info(clang_dir):
     with open(version_file_path) as version_file:
         # e.g. for contents: ['7.0.1', 'based on r326829']
         contents = [l.strip() for l in version_file.readlines()]
-        version = contents[0]
+        full_version = contents[0]
+        major_version = full_version.split('.')[0]
         revision = contents[1].split()[-1]
-        return version, revision
+        return full_version, major_version, revision
 
 
 def symlink_to_linux_resource_dir(install_dir):
@@ -205,7 +206,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     extract_package(package, prebuilt_dir)
 
     extract_subdir = 'clang-' + build_number
-    clang_version, svn_revision = extract_clang_info(extract_subdir)
+    clang_version_full, clang_version_major, svn_revision = extract_clang_info(extract_subdir)
 
     # Install into clang-<svn_revision>.  Suffixes ('a', 'b', 'c' etc.), if any,
     # are included in the svn_revision.
@@ -228,7 +229,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             ])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
-        x86_64_linux_musl_lib_dir = (Path(install_subdir) / 'lib' / 'clang' / clang_version / 'lib'
+        x86_64_linux_musl_lib_dir = (Path(install_subdir) / 'lib' / 'clang' / clang_version_major / 'lib'
                                      / 'x86_64-unknown-linux-musl')
         shutil.move(Path(musl_install_subdir) / 'lib' / 'x86_64-unknown-linux-musl' / 'libc++.a',
                     x86_64_linux_musl_lib_dir)
@@ -254,7 +255,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         symlink_to_linux_resource_dir(install_subdir)
 
     if do_validity_check:
-        if not validity_check(host, install_subdir, clang_version.split('.')[0]):
+        if not validity_check(host, install_subdir, clang_version_major):
             sys.exit(1)
 
     shutil.copy(manifest_file, str(prebuilt_dir / install_subdir))
@@ -268,9 +269,9 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         return
 
     message_lines = [
-        f'Update prebuilt Clang to {svn_revision} ({clang_version}).',
+        f'Update prebuilt Clang to {svn_revision} ({clang_version_full}).',
         '',
-        f'clang {clang_version} (based on {svn_revision}) from build {build_number}.'
+        f'clang {clang_version_full} (based on {svn_revision}) from build {build_number}.'
     ]
     if is_testing:
         message_lines.append('Note: This prebuilt is from testing branch.')
