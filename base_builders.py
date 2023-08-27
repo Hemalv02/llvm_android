@@ -885,10 +885,12 @@ class LLVMBuilder(LLVMBaseBuilder):
             # newer test tools like dexp, clang-query, c-index-test
             # need libedit.so.*, libxml2.so.*, etc. in stage2/lib.
             self._install_lib_deps(self.output_dir / 'lib')
-            checks = ['check-clang', 'check-llvm'] + ['check-cxx-' + triple for triple in sorted(self.runtimes_triples)]
+            checks = ['check-clang', 'check-llvm', 'check-clang-tools'] + ['check-cxx-' + triple for triple in sorted(self.runtimes_triples)]
+            # clangd tests fail intermittently. https://github.com/llvm/llvm-project/issues/64964
+            check_env = {'LIT_OPTS': '--filter-out=clangd'}
             if hosts.build_host().is_darwin:
-                checks += ['check-clang-tools']
-            self._ninja(checks)
+                check_env = {'LIT_OPTS': '--filter-out=clangd --filter-out=clang-tidy --filter-out=xpc'}
+            self._ninja(checks, check_env)
 
         # Known failed tests:
         #   Clang :: CodeGenCXX/builtins.cpp
