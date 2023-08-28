@@ -541,6 +541,12 @@ class LLVMBaseBuilder(CMakeBuilder):  # pylint: disable=abstract-method
 
         return defines
 
+    @property
+    def cflags(self) -> List[str]:
+        # TODO: Remove this once the platform libc++ is updated past LLVM 15.
+        # http://b/175635923
+        return super().cflags + ["-D_LIBCPP_AVAILABILITY_HAS_NO_VERBOSE_ABORT=1"]
+
 
 class LLVMRuntimeBuilder(LLVMBaseBuilder):  # pylint: disable=abstract-method
     """Base builder for llvm runtime libs."""
