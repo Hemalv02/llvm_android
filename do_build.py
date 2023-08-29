@@ -571,9 +571,6 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
             (lib_dir / tripleNN / 'libc++abi.so.1').symlink_to('libc++abi.so')
         (lib_dir / 'libc++.so.1').symlink_to(Path(triple64) / 'libc++.so.1')
         (lib_dir / 'libc++abi.so.1').symlink_to(Path(triple64) / 'libc++abi.so.1')
-    elif host.is_darwin:
-        (lib_dir / 'libc++.1.dylib').symlink_to('libc++.dylib')
-        (lib_dir / 'libc++abi.1.dylib').symlink_to('libc++abi.dylib')
 
     # Check necessary lib files exist.
     for necessary_lib_file in necessary_lib_files:
