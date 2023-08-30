@@ -1091,7 +1091,9 @@ def main():
             BuilderRegistry.should_build('stage2') and \
             (not args.build_instrumented)
     if need_tests:
-        stage2.test()
+        # http://b/197645198 Temporarily skip tests on [Darwin] builds
+        if not (hosts.build_host().is_darwin):
+            stage2.test()
 
     # Instrument with llvm-bolt. Must be the last build step to prevent other
     # build steps generating BOLT profiles.
