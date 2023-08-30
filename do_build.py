@@ -531,9 +531,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
     if host.is_darwin:
         necessary_lib_files |= {
             'libc++.dylib',
-            'libc++.1.dylib',
             'libc++abi.dylib',
-            'libc++abi.1.dylib',
             'libsimpleperf_readelf.a',
         }
 
