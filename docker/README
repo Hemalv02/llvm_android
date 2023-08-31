@@ -16,3 +16,10 @@ Make your changes and run test_env.sh.
 Command to build and deploy an updated Docker image using Google Cloud Build:
 
   gcloud builds submit --timeout 3600s --tag us-west1-docker.pkg.dev/google.com/android-llvm-kokoro/android-llvm-ubuntu/llvm-ubuntu
+
+# Generate requirements.txt
+
+docker/prod_env.sh
+pip install pip-compile
+echo tensorflow-cpu > requirements.in
+~/.local/bin/pip-compile --upgrade --generate-hashes --output-file=requirements.txt requirements.in

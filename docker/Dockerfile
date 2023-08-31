@@ -34,4 +34,4 @@ RUN cargo install --root /usr/local --no-default-features --features=gcs sccache
 && rm -rf /root/.cargo
 
 # Set up git user identity, as required by repo
-RUN printf '[user]\n  name = Builder\n  email = android-llvm+kokoro@google.com' > /etc/gitconfig
+RUN printf '[user]\n  name = Builder\n  email = android-llvm+build@google.com' > /etc/gitconfig
