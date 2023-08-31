@@ -34,9 +34,14 @@ class Timer:
     @classmethod
     def report(cls):
         """Return list of '<duration> <description>' entries."""
+        num_cores = os.cpu_count()
+        report = f'Cores: {num_cores}\n\n'
+
         pretty_print = lambda t: str(timedelta(seconds=int(t)))
         result = sorted(cls.times.items(), key=lambda item: item[1], reverse=True)
-        return '\n'.join(f'{pretty_print(t)} {d}' for d, t in result)
+        report = report + '\n'.join(f'{pretty_print(t)} {d}' for d, t in result)
+
+        return report
 
     @classmethod
     def report_to_file(cls, outfile):
