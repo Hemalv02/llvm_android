@@ -11,9 +11,9 @@ WORK_DIR=/tmpfs/src/git/
 echo build:x:${LOCAL_UID}:${LOCAL_GID}:Build:${WORK_DIR}:/bin/bash > /tmp/passwd.docker
 echo build:*:${LOCAL_GID}: > /tmp/group.docker
 
-docker_img=us-west1-docker.pkg.dev/google.com/android-llvm-kokoro/android-llvm-ubuntu/llvm-ubuntu
+docker_img=us-docker.pkg.dev/google.com/android-llvm-kokoro/android-llvm/llvm-ubuntu:prod
 
-docker pull ${docker_img}:latest
+docker pull ${docker_img}
 docker run -it \
   --rm \
   --user ${LOCAL_UID}:${LOCAL_GID} \
