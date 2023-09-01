@@ -747,6 +747,7 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         defines['LLVM_BUILD_RUNTIME'] = 'ON'
 
+        # Disable LLVM :: Bindings/Go/go.test
         defines['LLVM_INCLUDE_GO_TESTS'] = 'OFF'
 
         if self._config.target_os.is_darwin:
@@ -894,14 +895,6 @@ class LLVMBuilder(LLVMBaseBuilder):
             checks = ['check-clang', 'check-llvm', 'check-clang-tools'] + ['check-cxx-' + triple for triple in sorted(self.runtimes_triples)]
             # clangd tests fail intermittently. https://github.com/llvm/llvm-project/issues/64964
             check_env = {'LIT_FILTER_OUT': 'clangd'}
-            if hosts.build_host().is_darwin:
+            if hosts.build_host().is_darwin: # b/298489611
                 check_env = {'LIT_FILTER_OUT': 'clangd|clang-tidy|xpc|tools\/lto|LineEditor'}
             self._ninja(checks, check_env)
-
-        # Known failed tests:
-        #   Clang :: CodeGenCXX/builtins.cpp
-        #   Clang :: CodeGenCXX/unknown-anytype.cpp
-        #   Clang :: Sema/builtin-setjmp.c
-        #   LLVM :: Bindings/Go/go.test (disabled by LLVM_INCLUDE_GO_TESTS=OFF)
-        #   LLVM :: CodeGen/X86/extractelement-fp.ll
-        #   LLVM :: CodeGen/X86/fp-round.ll
