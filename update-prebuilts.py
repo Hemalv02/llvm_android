@@ -156,6 +156,10 @@ def validity_check(host, install_dir, clang_version_major):
         if not has_lto:
           logger().error('The Clang binary is not built with LTO.')
           return False
+        has_mlgo = ('+mlgo' in strings) and ('-mlgo' not in strings)
+        if not has_mlgo:
+          logger().error('The Clang binary is not built with MLGO support.')
+          return False
 
     # Check that all the files listed in remote_toolchain_inputs are valid
     if host == 'linux-x86':
