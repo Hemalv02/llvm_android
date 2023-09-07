@@ -856,11 +856,22 @@ def parse_args():
         nargs='+',
         help='A list of builders to skip. All builders not listed will be built.')
 
-    parser.add_argument(
-        '--single-stage',
+    bootstrap_group = parser.add_mutually_exclusive_group()
+    bootstrap_group.add_argument(
+        '--bootstrap-build-only',
+        default=False,
+        action='store_true',
+        help='Build the bootstrap compiler and exit.')
+    bootstrap_group.add_argument(
+        '--bootstrap-use',
+        default='',
+        help='Use the given bootstrap compiler.'
+    )
+    bootstrap_group.add_argument(
+        '--bootstrap-use-prebuilt',
         action='store_true',
         default=False,
-        help='Skip building stage 1 compiler and use the prebuilt instead.')
+        help='Skip building the bootstrap compiler and use the prebuilt instead.')
 
     parser.add_argument(
         '--mlgo',
@@ -930,8 +941,6 @@ def main():
         BuilderRegistry.add_skips(args.skip)
     elif args.build:
         BuilderRegistry.add_builds(args.build)
-    if args.single_stage:
-        BuilderRegistry.add_skips(['stage1'])
 
     do_bolt = args.bolt and not args.debug and not args.build_instrumented
     do_bolt_instrument = args.bolt_instrument and not args.debug and not args.build_instrumented
@@ -977,24 +986,29 @@ def main():
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
 
-    stage1 = builders.Stage1Builder(host_configs)
-    stage1.build_name = 'stage1'
-    stage1.svn_revision = android_version.get_svn_revision()
-    # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
-    stage1.build_lldb = build_lldb
-    stage1.enable_mlgo = mlgo
-    stage1.build_extra_tools = args.run_tests_stage1
-    stage1.build_android_targets = args.debug or instrumented
-    stage1.use_sccache = sccache
-    stage1.build()
-    if hosts.build_host().is_linux and not args.single_stage:
-        add_header_links('stage1', host_config=configs.host_config(musl))
-    # stage1 test is off by default, turned on by --run-tests-stage1,
-    # and suppressed by --skip-tests.
-    if not args.skip_tests and args.run_tests_stage1:
-        stage1.test()
-    if not args.single_stage:
+    if not args.bootstrap_use_prebuilt and not args.bootstrap_use:
+        stage1 = builders.Stage1Builder(host_configs)
+        stage1.build_name = 'stage1'
+        stage1.svn_revision = android_version.get_svn_revision()
+        # Build lldb for lldb-tblgen. It will be used to build lldb-server and windows lldb.
+        stage1.build_lldb = build_lldb
+        stage1.enable_mlgo = mlgo
+        stage1.build_extra_tools = args.run_tests_stage1
+        stage1.build_android_targets = args.debug or instrumented
+        stage1.use_sccache = sccache
+        stage1.build()
+        if hosts.build_host().is_linux:
+            add_header_links('stage1', host_config=configs.host_config(musl))
+        # stage1 test is off by default, turned on by --run-tests-stage1,
+        # and suppressed by --skip-tests.
+        if not args.skip_tests and args.run_tests_stage1:
+            stage1.test()
         set_default_toolchain(stage1.installed_toolchain)
+    if args.bootstrap_use:
+        toolchain_path = Path(os.path.abspath(args.bootstrap_use))
+        set_default_toolchain(toolchains.Toolchain(toolchain_path, Path('.')))
+    if args.bootstrap_build_only:
+        return
 
     if build_lldb:
         # Swig is needed for both host and windows lldb.
