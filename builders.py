@@ -1077,9 +1077,10 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         # Avoid linking the STL because it does not exist yet.
         result = super().ldflags + ['-nostdlib++']
 
-        # For the platform libc++ build, use the unwinder API exported from
-        # libc.so. Otherwise, link libunwind.a.
-        if self._is_ndk or self._is_apex:
+        # For the platform (including APEX) libc++ builds, use the unwinder API
+        # exported from libc.so. Link libunwind.a for NDK builds, which must run
+        # on older platforms where libc.so didn't export the unwinder.
+        if self._is_ndk:
             result.append('-unwindlib=libunwind')
         else:
             result.append('-unwindlib=none')
