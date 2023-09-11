@@ -978,6 +978,8 @@ def main():
             raise ValueError("MLGO requires tensorflow. Tensorflow not found.")
         else:
             logger().info('Tensorflow not found.')
+    else:
+        logger().info('Tensorflow found: ' + paths.get_tensorflow_path())
 
     # Clone sources to be built and apply patches.
     if not args.skip_source_setup:
