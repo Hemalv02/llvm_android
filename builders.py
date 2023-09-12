@@ -60,18 +60,14 @@ class SanitizerMapFileBuilder(base_builders.Builder):
 class Stage1Builder(base_builders.LLVMBuilder):
     name: str = 'stage1'
     install_dir: Path = paths.OUT_DIR / 'stage1-install'
-    build_android_targets: bool = False
     build_extra_tools: bool = False
 
     @property
     def llvm_targets(self) -> Set[str]:
-        if self.build_android_targets:
-            return constants.HOST_TARGETS | constants.ANDROID_TARGETS
+        if self._config.target_os.is_darwin:
+            return constants.DARWIN_HOST_TARGETS
         else:
-            if self._config.target_os.is_darwin:
-                return constants.DARWIN_HOST_TARGETS
-            else:
-                return constants.HOST_TARGETS
+            return constants.HOST_TARGETS | constants.ANDROID_TARGETS
 
     @property
     def llvm_projects(self) -> Set[str]:

@@ -996,7 +996,6 @@ def main():
         stage1.build_lldb = build_lldb
         stage1.enable_mlgo = mlgo
         stage1.build_extra_tools = args.run_tests_stage1
-        stage1.build_android_targets = args.debug or instrumented
         stage1.use_sccache = sccache
         stage1.build()
         if hosts.build_host().is_linux:
