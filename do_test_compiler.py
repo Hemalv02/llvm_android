@@ -387,15 +387,13 @@ def main():
     elif args.clang_package_path is not None:
         clang_path = extract_packaged_clang(Path(args.clang_package_path))
     else:
-        cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb']
+        cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb', '--mlgo']
         if args.profile:
-            cmd.append('--mlgo')
             cmd.append('--build-instrumented')
             cmd.append('--skip-tests')
         elif args.bolt:
             cmd.append('--pgo')
             cmd.append('--lto')
-            cmd.append('--mlgo')
             cmd.append('--bolt-instrument')
             cmd.append('--no-strip')
             cmd.append('--skip-tests')
