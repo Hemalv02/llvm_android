@@ -920,6 +920,19 @@ def parse_args():
         dest='musl',
         help="Don't Build against musl libc")
 
+    incremental_group = parser.add_mutually_exclusive_group()
+    incremental_group.add_argument(
+        '--incremental',
+        action='store_true',
+        default=False,
+        help='Keep paths.OUT_DIR if it exists')
+    incremental_group.add_argument(
+        '--no-incremental',
+        action='store_false',
+        default=False,
+        dest='incremental',
+        help='Delete paths.OUT_DIR if it exists')
+
     parser.add_argument(
         '--sccache',
         action='store_true',
@@ -930,8 +943,17 @@ def parse_args():
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
     dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     args = parse_args()
+
+    if paths.OUT_DIR.exists():
+        if not args.incremental:
+            logger().info(f'Removing {paths.OUT_DIR}')
+            utils.clean_out_dir()
+        else:
+            logger().info(f'Keeping older build in {paths.OUT_DIR}')
+
     timer.Timer.register_atexit(dist_dir / 'build_times.txt')
 
     if args.skip_build:
@@ -966,8 +988,6 @@ def main():
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
     need_windows_libcxx = hosts.build_host().is_linux
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
-
-    logging.basicConfig(level=logging.DEBUG)
 
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r bolt=%r musl=%r' %
                   (not args.skip_build, BuilderRegistry.should_build('stage1'), BuilderRegistry.should_build('stage2'),
