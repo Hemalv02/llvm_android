@@ -60,6 +60,22 @@ def check_output(cmd, *args, **kwargs):
     return subprocess_run(cmd, *args, **kwargs, check=True, stdout=subprocess.PIPE).stdout
 
 
+def create_tarball(source_dir, input, output):
+    xz_env = os.environ.copy()
+    xz_env["XZ_OPT"] = "-T0"
+    subprocess.run([
+        'tar', '-cJC',
+        str(source_dir), str(input), '-f',
+        str(output)
+    ], env=xz_env)
+
+
+def extract_tarball(output_dir, input):
+    xz_env = os.environ.copy()
+    xz_env["XZ_OPT"] = "-T0"
+    subprocess.run(['tar', '-JxC', str(output_dir), '-f', str(input)], env=xz_env)
+
+
 def is_available_mac_ver(ver: str) -> bool:
     """Returns whether a version string is equal to or under MAC_MIN_VERSION."""
     _parse_version = lambda ver: list(int(v) for v in ver.split('.'))
