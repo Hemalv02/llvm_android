@@ -21,6 +21,7 @@ import logging
 import os
 from pathlib import Path
 import shlex
+import shutil
 import subprocess
 from typing import Dict, List
 
@@ -128,3 +129,17 @@ def prebuilt_repo_upload(host: str, topic: str, hashtag: str, is_testing: bool):
         # -2 a testing prebuilt so we don't accidentally submit it.
         cmd.append('--label=Code-Review-2')
     check_output(cmd, cwd=prebuilt_dir)
+
+
+def clean_out_dir():
+    """Delete files from older build (paths.OUT_DIR) but retain paths.OUT_DIR /
+    prebuilt_cached, which is input for a chained build.
+    """
+
+    for child in paths.OUT_DIR.iterdir():
+        if child.name == 'prebuilt_cached':
+            continue
+        if child.is_dir():
+            shutil.rmtree(child)
+        else:
+            child.unlink()
