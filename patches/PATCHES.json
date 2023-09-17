@@ -385,6 +385,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISCV] Do a more complete job of disabling extending loads and truncating stores for fixed vector types."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/1c676e08d0ac4626b6347d01c4e110a85c97f9d2.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 509890
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
