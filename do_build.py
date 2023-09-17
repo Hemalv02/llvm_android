@@ -986,7 +986,7 @@ def main():
         raise ValueError("MLGO is not supported for macOS.")
 
     need_host = hosts.build_host().is_darwin or ('linux' not in args.no_build)
-    need_windows_libcxx = hosts.build_host().is_linux
+    need_windows_libcxx = hosts.build_host().is_linux and do_runtimes
     need_windows = hosts.build_host().is_linux and ('windows' not in args.no_build)
 
     logger().info('do_build=%r do_stage1=%r do_stage2=%r do_runtimes=%r do_package=%r need_windows=%r lto=%r bolt=%r musl=%r' %
@@ -1115,7 +1115,7 @@ def main():
                            host_config=configs.host_config(musl),
                            host_32bit_config=configs.host_32bit_config(musl))
 
-    if need_windows_libcxx:
+    if need_windows or need_windows_libcxx:
         # Host sysroots are currently setup only for Windows
         builders.HostSysrootsBuilder().build()
         if args.windows_sdk:
