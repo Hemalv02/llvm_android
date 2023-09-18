@@ -1027,15 +1027,11 @@ def main():
         set_default_toolchain(stage1.installed_toolchain)
     if args.bootstrap_use:
         with timer.Timer(f'extract_bootstrap'):
-            utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(args.bootstrap_use)])
+            utils.extract_tarball(paths.OUT_DIR, args.bootstrap_use)
         set_default_toolchain(toolchains.Toolchain(paths.OUT_DIR / 'stage1-install', Path('.')))
     if args.bootstrap_build_only:
         with timer.Timer(f'package_bootstrap'):
-            utils.check_call([
-                'tar', '-cjC',
-                str(paths.OUT_DIR), 'stage1-install', '-f',
-                str(dist_dir / 'stage1-install.tar.bz2')
-            ])
+            utils.create_tarball(paths.OUT_DIR, 'stage1-install', dist_dir / 'stage1-install.tar.xz')
         return
 
     if build_lldb:
