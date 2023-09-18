@@ -399,6 +399,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [ARM][ISel] Fix crash of ISD::FMINNUM/FMAXNUM."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/347b3f120903fcdc255b78177cb584e4c0aa4b54.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 509890
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [
