@@ -343,6 +343,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISCV] Do a more complete job of disabling extending loads and truncating stores for fixed vector types."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/1c676e08d0ac4626b6347d01c4e110a85c97f9d2.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 503900
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [compiler-rt][AArch64] Correct how FMV use ifunc resolver abi."
         },
         "platforms": [
@@ -385,20 +399,6 @@
     {
         "metadata": {
             "info": [],
-            "title": "[UPSTREAM] [RISCV] Do a more complete job of disabling extending loads and truncating stores for fixed vector types."
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "cherry/1c676e08d0ac4626b6347d01c4e110a85c97f9d2.patch",
-        "version_range": {
-            "from": 498229,
-            "until": 509890
-        }
-    },
-    {
-        "metadata": {
-            "info": [],
             "title": "[UPSTREAM] [ARM][ISel] Fix crash of ISD::FMINNUM/FMAXNUM."
         },
         "platforms": [
@@ -407,7 +407,7 @@
         "rel_patch_path": "cherry/347b3f120903fcdc255b78177cb584e4c0aa4b54.patch",
         "version_range": {
             "from": 498229,
-            "until": 509890
+            "until": 512577
         }
     },
     {
