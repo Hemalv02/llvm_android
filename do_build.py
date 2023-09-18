@@ -375,7 +375,7 @@ def verify_file_exists(lib_dir: Path, name: str):
 
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
-                      strip=True, create_tar=True, llvm_next=False):
+                      strip=True, with_runtimes=True, create_tar=True, llvm_next=False):
     dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     build_dir = toolchain_builder.install_dir
     host_config = toolchain_builder.config_list[0]
@@ -514,39 +514,40 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
             raise RuntimeError(f'Did not find {necessary_bin_file} in {bin_dir}')
 
     necessary_lib_files = set()
-    if not (host.is_windows and win_sdk.is_enabled()):
-        necessary_lib_files |= {
-            'libc++.a',
-            'libc++abi.a',
-        }
-    if host.is_linux:
-        necessary_lib_files |= {
-            'libbolt_rt_instr.a',
-            'libc++.so',
-            'libc++.so.1',
-            'libc++abi.so',
-            'libc++abi.so.1',
-            'libsimpleperf_readelf.a',
-        }
-    if host.is_darwin:
-        necessary_lib_files |= {
-            'libc++.dylib',
-            'libc++abi.dylib',
-            'libsimpleperf_readelf.a',
-        }
+    if with_runtimes:
+        if not (host.is_windows and win_sdk.is_enabled()):
+            necessary_lib_files |= {
+                'libc++.a',
+                'libc++abi.a',
+            }
+        if host.is_linux:
+            necessary_lib_files |= {
+                'libbolt_rt_instr.a',
+                'libc++.so',
+                'libc++.so.1',
+                'libc++abi.so',
+                'libc++abi.so.1',
+                'libsimpleperf_readelf.a',
+            }
+        if host.is_darwin:
+            necessary_lib_files |= {
+                'libc++.dylib',
+                'libc++abi.dylib',
+                'libsimpleperf_readelf.a',
+            }
 
-    if host.is_windows and not win_sdk.is_enabled():
-        necessary_lib_files.add('libwinpthread-1' + shlib_ext)
-        # For Windows, add other relevant libraries.
-        install_winpthreads(bin_dir, lib_dir)
+        if host.is_windows and not win_sdk.is_enabled():
+            necessary_lib_files.add('libwinpthread-1' + shlib_ext)
+            # For Windows, add other relevant libraries.
+            install_winpthreads(bin_dir, lib_dir)
 
-    # Archive libsimpleperf_readelf.a for linux and darwin hosts from stage2 build.
-    if host.is_linux:
-        builders.LibSimpleperfReadElfBuilder().build_readelf_lib(lib_dir,
-                                                                 lib_dir / host_config.llvm_triple)
-    elif host.is_darwin:
-        builders.LibSimpleperfReadElfBuilder().build_readelf_lib(lib_dir, lib_dir,
-                                                                 is_darwin_lib=True)
+        # Archive libsimpleperf_readelf.a for linux and darwin hosts from stage2 build.
+        if host.is_linux:
+            builders.LibSimpleperfReadElfBuilder().build_readelf_lib(lib_dir,
+                                                                     lib_dir / host_config.llvm_triple)
+        elif host.is_darwin:
+            builders.LibSimpleperfReadElfBuilder().build_readelf_lib(lib_dir, lib_dir,
+                                                                     is_darwin_lib=True)
 
     # Remove unnecessary static libraries.
     remove_static_libraries(lib_dir, necessary_lib_files)
@@ -1142,6 +1143,7 @@ def main():
         package_toolchain(
             stage2,
             strip=do_strip_host_package,
+            with_runtimes=do_runtimes,
             create_tar=args.create_tar,
             llvm_next=args.build_llvm_next)
 
@@ -1150,6 +1152,7 @@ def main():
             win_builder,
             necessary_bin_files=win_lldb_bins,
             strip=do_strip,
+            with_runtimes=do_runtimes,
             create_tar=args.create_tar)
 
     return 0
