@@ -71,11 +71,8 @@ class PgoProfileHandler(ProfileHandler):
         ])
 
         dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
-        utils.check_call([
-            'tar', '-cjC',
-            str(profdata_dir), profdata_filename, '-f',
-            str(dist_dir / paths.pgo_profdata_tarname())
-        ])
+        utils.create_tarball(profdata_dir, profdata_filename,
+                             dist_dir / paths.pgo_profdata_tarname())
 
 
 class BoltProfileHandler(ProfileHandler):
@@ -95,11 +92,8 @@ class BoltProfileHandler(ProfileHandler):
         ])
 
         dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
-        utils.check_call([
-            'tar', '-cjC',
-            str(bolt_collection_path), clang_fdata_filename, '-f',
-            str(dist_dir / paths.bolt_fdata_tarname())
-        ])
+        utils.create_tarball(bolt_collection_path, clang_fdata_filename,
+                             dist_dir / paths.bolt_fdata_tarname())
 
 
 def parse_args():
@@ -112,7 +106,7 @@ def parse_args():
     parser.add_argument(
         '--clang-package-path',
         nargs='?',
-        help='Directory of a pre-packaged (.tar.bz2) Clang. '
+        help='Directory of a pre-packaged (.tar.xz) Clang. '
         'Toolchain extracted from the package will be used.')
     parser.add_argument(
         '-k',
@@ -346,10 +340,10 @@ def test_device(android_base: Path, clang_version: version.Version, device: List
 
 def extract_packaged_clang(package_path: Path) -> Path:
     # Find package to extract
-    tarballs: List[Path] = sorted(package_path.rglob('*-linux-*.tar.bz2'))
+    tarballs: List[Path] = sorted(package_path.rglob('*-linux-*.tar.xz'))
     if len(tarballs) != 1:
         raise RuntimeError(
-            f'No clang packages (.tar.bz2) found in {package_path}')
+            f'No clang packages (.tar.xz) found in {package_path}')
 
     tarball = tarballs[0]
 
@@ -359,8 +353,7 @@ def extract_packaged_clang(package_path: Path) -> Path:
         shutil.rmtree(extract_dir)
     extract_dir.mkdir(parents=True, exist_ok=True)
 
-    args: List[str] = ['tar', '-xjC', str(extract_dir), '-f', str(tarball)]
-    subprocess.check_call(args)
+    utils.extract_tarball(extract_dir, tarball)
 
     # Find and return a singleton subdir
     extracted: List[Path] = list(extract_dir.iterdir())

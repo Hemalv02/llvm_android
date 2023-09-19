@@ -61,7 +61,7 @@ def extract_profiles() -> Profile:
     pgo_profdata_tar = paths.pgo_profdata_tar()
     if not pgo_profdata_tar:
         return Profile(None, None)
-    utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(pgo_profdata_tar)])
+    utils.extract_tarball(paths.OUT_DIR, pgo_profdata_tar)
     profdata_file = paths.OUT_DIR / paths.pgo_profdata_filename()
     if not profdata_file.exists():
         logger().info('PGO profdata missing')
@@ -70,7 +70,7 @@ def extract_profiles() -> Profile:
     bolt_fdata_tar = paths.bolt_fdata_tar()
     if not bolt_fdata_tar:
         return Profile(profdata_file, None)
-    utils.check_call(['tar', '-jxC', str(paths.OUT_DIR), '-f', str(bolt_fdata_tar)])
+    utils.extract_tarball(paths.OUT_DIR, bolt_fdata_tar)
     clang_bolt_fdata_file = paths.OUT_DIR / 'clang.fdata'
     if not clang_bolt_fdata_file.exists():
         logger().info('Clang BOLT profile missing')
@@ -703,11 +703,10 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         tag = host.os_tag
         if isinstance(toolchain_builder.config_list[0], configs.LinuxMuslConfig):
             tag = host.os_tag_musl
-        tarball_name = package_name + '-' + tag + '.tar.bz2'
+        tarball_name = package_name + '-' + tag + '.tar.xz'
         package_path = dist_dir / tarball_name
         logger().info(f'Packaging {package_path}')
-        args = ['tar', '-cjC', install_host_dir, '-f', package_path, package_name]
-        utils.check_call(args)
+        utils.create_tarball(install_host_dir, package_name, package_path)
 
 
 def parse_args():
