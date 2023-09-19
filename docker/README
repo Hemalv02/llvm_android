@@ -22,6 +22,6 @@ Tag the build with `prod` on Cloud Artifact Registry.
 # Generate requirements.txt
 
 docker/prod_env.sh
-pip install pip-compile
+pip install pip-tools
 echo tensorflow-cpu > requirements.in
 ~/.local/bin/pip-compile --upgrade --generate-hashes --output-file=requirements.txt requirements.in
