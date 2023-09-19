@@ -24,6 +24,7 @@ import os
 import unittest
 import subprocess
 
+import merge_orderfile
 import orderfile_utils as utils
 
 class TestCreateOrderfile(unittest.TestCase):
@@ -388,6 +389,372 @@ class TestValidateOrderfile(unittest.TestCase):
         last_line = context.exception.output.split("\n")[-2]
         self.assertEqual(last_line,
                         "RuntimeError: Orderfile should not contain _Z5mergePiiii")
+
+class TestMergeOrderfile(unittest.TestCase):
+
+    def setUp(self):
+        top = utils.android_build_top()
+        THIS_DIR = os.path.realpath(os.path.dirname(__file__))
+        self.validate_script = top+"/toolchain/llvm_android/orderfiles//scripts/validate_orderfile.py"
+        self.merge_script = top+"/toolchain/llvm_android/orderfiles/scripts/merge_orderfile.py"
+        self.output_file = THIS_DIR+"/default.orderfile"
+        self.folder = top+"/toolchain/llvm_android/orderfiles/test/merge-test"
+        self.file = top+"/toolchain/llvm_android/orderfiles/test/merge-test/merge.txt"
+
+    # Test if the order files are merged correctly
+    def test_merge_orderfile_normal(self):
+        # Test a folder input
+        utils.check_call(["python3", self.merge_script,
+                            "--order-files", f"^{self.folder}"])
+        self.assertTrue(os.path.isfile(self.output_file))
+
+        output = utils.check_output(["python3", self.validate_script,
+                                        "--order-file", self.output_file,
+                                        "--partial", "main,b,c,d,a,e,f"])
+        self.assertTrue(output, "Order file is valid")
+
+        # Clean up at the end
+        os.remove(self.output_file)
+
+        # Test the file format with different weights
+        utils.check_call(["python3", self.merge_script,
+                            "--order-files", f"@{self.file}"])
+        self.assertTrue(os.path.isfile(self.output_file))
+
+        output = utils.check_output(["python3", self.validate_script,
+                                        "--order-file", self.output_file,
+                                        "--partial", "main,b,c,d,e,f,a"])
+        self.assertTrue(output, "Order file is valid")
+
+        # Clean up at the end
+        os.remove(self.output_file)
+
+        # Test with CSV format
+        lst = ["1.orderfile", "2.orderfile"]
+        lst = [self.folder + "/" + orderfile for orderfile in lst]
+        param = ",".join(lst)
+        utils.check_call(["python3", self.merge_script,
+                            "--order-files", param])
+        self.assertTrue(os.path.isfile(self.output_file))
+
+        output = utils.check_output(["python3", self.validate_script,
+                                        "--order-file", self.output_file,
+                                        "--partial", "main,b,c,d,e,f"])
+        self.assertTrue(output, "Order file is valid")
+
+        # Clean up at the end
+        os.remove(self.output_file)
+
+    # Test if the simple graph functions work correctly
+    def test_graph_simple_function(self):
+        graph = merge_orderfile.Graph()
+
+        # Add 0-9 to the graph
+        prev = None
+        for i in range(10):
+            name = str(i)
+
+            graph.addVertex(name)
+            self.assertTrue(graph.checkVertex(name))
+
+            if prev != None:
+                graph.addEdge(prev, name)
+                self.assertTrue(graph.checkEdgeWeight(prev, name, 1))
+
+            prev = name
+
+        # Numbers were never added so they should be no edge to or from them
+        # and they should not be a vertex
+        self.assertFalse(graph.checkVertex("100"))
+        self.assertFalse(graph.checkEdge("0", "10"))
+        self.assertFalse(graph.checkEdge("100", "10"))
+        self.assertFalse(graph.checkEdge("0", "100"))
+
+        # As we add an edge for two vertices, the edge weight increases
+        graph.addVertex("11")
+        graph.addVertex("12")
+        self.assertTrue(graph.checkVertex("11"))
+        self.assertTrue(graph.checkVertex("12"))
+        for i in range(5):
+            graph.addEdge("11","12")
+            self.assertTrue(graph.checkEdgeWeight("11","12",i+1))
+
+        # Edge got deleted so it should not be in the graph anymore
+        graph.removeEdgeCompletely("11", "12")
+        self.assertFalse(graph.checkEdge("11", "12"))
+
+        # Check if you add many successors for a vertex then getOutEdges
+        # will return the correct number of successor and has the edge weight
+        for i in range(20, 26):
+            graph.addVertex(str(i))
+            self.assertTrue(graph.checkVertex(str(i)))
+
+        for j in range(21, 26):
+            graph.addEdge("20", str(j))
+            self.assertTrue(graph.checkEdge("20",str(j)))
+
+        out_edges = graph.getOutEdges("20")
+        self.assertTrue(len(out_edges) == 5)
+        out_vertices = [x[0].name for x in out_edges]
+        out_weights = [x[1] for x in out_edges]
+        for j in range(21, 26):
+            self.assertTrue(str(j) in out_vertices)
+            index = out_vertices.index(str(j))
+            self.assertTrue(out_weights[index] == 1)
+
+        # Check if you add many predecessors for a vertex then getOutEdges
+        # will return the correct number of predecessor and has the edge weight
+        for i in range(30, 33):
+            graph.addVertex(str(i))
+            self.assertTrue(graph.checkVertex(str(i)))
+
+        for j in range(31, 33):
+            graph.addEdge(str(j), "30")
+            self.assertTrue(graph.checkEdge(str(j), "30"))
+
+        in_edges = graph.getInEdges("30")
+        self.assertTrue(len(in_edges) == 2)
+        in_vertices = [x[0].name for x in in_edges]
+        in_weights = [x[1] for x in in_edges]
+        for j in range(31, 33):
+            self.assertTrue(str(j) in in_vertices)
+            index = in_vertices.index(str(j))
+            self.assertTrue(in_weights[index] == 1)
+
+        # Check if the roots are correct
+        roots = graph.getRoots()
+        self.assertTrue(len(roots) == 6)
+        for v in roots:
+            if v in ["0", "11", "12", "20", "31", "32"]:
+                continue
+
+            self.assertTrue(False)
+
+        # Check if the endings (0 out-edges) are corrects
+        endings = graph.getRoots(True)
+        self.assertTrue(len(endings) == 9)
+        for v in endings:
+            if v in ["9", "11", "12", "21", "22", "23", "24", "25", "30"]:
+                continue
+
+            self.assertTrue(False)
+
+    # Test if the graphs correctly removes cycles
+    def test_graph_remove_cycles(self):
+        simple_cycle = merge_orderfile.Graph()
+        long_cycle = merge_orderfile.Graph()
+        many_cycles = merge_orderfile.Graph()
+
+        ############## Example 1 ###############
+        # Add vertices to make sure no cycles
+        simple_cycle.addVertex("a")
+        simple_cycle.addVertex("b")
+        simple_cycle.addVertex("c")
+        simple_cycle.addVertex("d")
+
+        simple_cycle.addEdge("a","b")
+        simple_cycle.addEdge("a","b")
+        simple_cycle.addEdge("a","c")
+        simple_cycle.addEdge("b","c")
+        simple_cycle.addEdge("b","d")
+        simple_cycle.addEdge("c","d")
+        self.assertTrue(len(simple_cycle.getCycles()) == 0)
+
+        # Added a cycle (b,c)
+        simple_cycle.addEdge("c","b")
+        self.assertTrue(len(simple_cycle.getCycles()) == 1)
+
+        # Since b has a higher in-edge weights than c, the edge c->b
+        # gets removed
+        self.assertTrue(simple_cycle.checkEdgeWeight("a","b",2))
+        self.assertTrue(simple_cycle.checkEdgeWeight("a","c",1))
+
+        merge_orderfile.removeCycles(simple_cycle)
+        self.assertTrue(len(simple_cycle.getCycles()) == 0)
+        self.assertFalse(simple_cycle.checkEdge("c","b"))
+
+        ############## Example 2 ###############
+        # Add vertices to make sure no cycles
+        long_cycle.addVertex("a")
+        long_cycle.addVertex("b")
+        long_cycle.addVertex("c")
+        long_cycle.addVertex("d")
+        long_cycle.addVertex("e")
+        long_cycle.addVertex("f")
+        long_cycle.addVertex("g")
+
+        long_cycle.addEdge("a","b")
+        long_cycle.addEdge("a","c")
+        long_cycle.addEdge("c","e")
+        long_cycle.addEdge("c","f")
+        long_cycle.addEdge("b","e")
+        long_cycle.addEdge("b","g")
+        long_cycle.addEdge("a","d")
+        long_cycle.addEdge("d","e")
+        long_cycle.addEdge("e","f")
+        long_cycle.addEdge("f","g")
+        self.assertTrue(len(long_cycle.getCycles()) == 0)
+
+        # Added a cycle (d, e, f, g)
+        long_cycle.addEdge("g","d")
+        self.assertTrue(len(long_cycle.getCycles()) == 1)
+
+        # Since e has a higher in-edge weights than the other vertices in the cycle,
+        # the edge d->e gets removed.
+        # d's in-edges excluding cycle edges are (a->d): 1
+        # e's in-edges excluding cycle edges are (b->e) and (c->e): 2
+        # f's in-edges excluding cycle edges are (c->f): 1
+        # g's in-edges excluding cycle edges are (b->g): 1
+        merge_orderfile.removeCycles(long_cycle)
+        self.assertTrue(len(long_cycle.getCycles()) == 0)
+        self.assertFalse(long_cycle.checkEdge("d","e"))
+
+        ############## Example 3 ###############
+        # Add vertices to make sure no cycles
+        many_cycles.addVertex("a")
+        many_cycles.addVertex("b")
+        many_cycles.addVertex("c")
+        many_cycles.addVertex("d")
+        many_cycles.addVertex("e")
+        many_cycles.addVertex("f")
+        many_cycles.addVertex("g")
+
+        many_cycles.addEdge("a","b")
+        many_cycles.addEdge("a","b")
+        many_cycles.addEdge("a","b")
+        many_cycles.addEdge("a","d")
+        many_cycles.addEdge("b","c")
+        many_cycles.addEdge("c","d")
+        many_cycles.addEdge("d","e")
+        many_cycles.addEdge("e","f")
+        many_cycles.addEdge("f","g")
+        self.assertTrue(len(many_cycles.getCycles()) == 0)
+
+        # Added cycles (b,c,d), (d, e, f), (b,c,d,e,f,g)
+        many_cycles.addEdge("f","d")
+        many_cycles.addEdge("g","b")
+        many_cycles.addEdge("d","b")
+
+        self.assertTrue(len(many_cycles.getCycles()) == 3)
+
+        # Since in_edges(b) > in_edges(d) > the other vertices in the cycle,
+        # the edge g->b gets removed in the big cycle, d->b from the first small cycle,
+        # and edge f->d from the second small cycle
+        # b's in-edges excluding cycle edges is (a->d) with weight 3: 1
+        # c's in-edges excluding cycle edges: 0
+        # d's in-edges excluding cycle edges is (a->d) with weight 1: 1
+        # e's in-edges excluding cycle edges: 0
+        # f's in-edges excluding cycle edges: 0
+        # g's in-edges excluding cycle edges: 0
+        merge_orderfile.removeCycles(many_cycles)
+        self.assertTrue(len(many_cycles.getCycles()) == 0)
+        self.assertFalse(many_cycles.checkEdge("g","b"))
+        self.assertFalse(many_cycles.checkEdge("d","b"))
+        self.assertFalse(many_cycles.checkEdge("f","d"))
+
+    # Test if the graphs correctly orders based on our algorithm.
+    # Assume we have no cycles because the script will remove cycles
+    # before creating the order file.
+    def test_graph_order(self):
+        linear_graph = merge_orderfile.Graph()
+        merge_to_postdominator = merge_orderfile.Graph()
+        fernando_example = merge_orderfile.Graph()
+
+        ############## Example 1 ###############
+        # You only have a simple order file that have one successor
+        # along the way.
+        linear_graph.addVertex("a")
+        linear_graph.addVertex("b")
+        linear_graph.addVertex("c")
+        linear_graph.addVertex("d")
+
+        linear_graph.addEdge("a","b")
+        linear_graph.addEdge("b","c")
+        linear_graph.addEdge("c","d")
+
+        linear_graph.printOrder(self.output_file)
+        self.assertTrue(os.path.isfile(self.output_file))
+
+        output = utils.check_output(["python3", self.validate_script,
+                                        "--order-file", self.output_file,
+                                        "--partial", "a,b,c,d"])
+        self.assertTrue(output, "Order file is valid")
+
+        linear_graph.exportGraph("example1.dot")
+        self.assertTrue(os.path.isfile("example1.dot"))
+
+        # Clean up at the end
+        os.remove(self.output_file)
+        os.remove("example1.dot")
+        os.remove("example1.dot.pdf")
+
+        ############## Example 2 ###############
+        order1 = ["a","b"]
+        order2 = ["a","b","e","h"]
+        order3 = ["a","b","e","h"]
+        order4 = ["a","b","e"]
+        order5 = ["a","b","c","d","h"]
+        order6 = ["a","b","c"]
+        order7 = ["a","b","f","g","h"]
+
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order1)
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order2)
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order3)
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order4)
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order5)
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order6)
+        merge_orderfile.addSymbolsToGraph(merge_to_postdominator, order7)
+
+        merge_to_postdominator.printOrder(self.output_file)
+        self.assertTrue(os.path.isfile(self.output_file))
+
+        output = utils.check_output(["python3", self.validate_script,
+                                        "--order-file", self.output_file,
+                                        "--partial", "a,b,e,h,c,d,f,g"])
+        self.assertTrue(output, "Order file is valid")
+
+        merge_to_postdominator.exportGraph("example2.dot")
+        self.assertTrue(os.path.isfile("example2.dot"))
+
+        # Clean up at the end
+        os.remove(self.output_file)
+        os.remove("example2.dot")
+        os.remove("example2.dot.pdf")
+
+        ############## Example 3 ###############
+        order1 = ["main","a","b","c","d"]
+        order2 = ["main","a","b","c","e","f"]
+        order3 = ["main","f"]
+        order4 = ["main","a","b","c","i"]
+        order5 = ["main","g", "i", "c"]
+        order6 = ["main","g", "i", "j"]
+        order7 = ["main","h", "i"]
+        order8 = ["main","a","b","c","e","f"]
+
+        merge_orderfile.addSymbolsToGraph(fernando_example, order1)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order2)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order3)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order4)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order5)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order6)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order7)
+        merge_orderfile.addSymbolsToGraph(fernando_example, order8)
+
+        fernando_example.printOrder(self.output_file)
+        self.assertTrue(os.path.isfile(self.output_file))
+
+        output = utils.check_output(["python3", self.validate_script,
+                                        "--order-file", self.output_file,
+                                        "--partial", "main,a,b,c,e,f,d,i,j,g,h"])
+        self.assertTrue(output, "Order file is valid")
+
+        fernando_example.exportGraph("example3.dot")
+        self.assertTrue(os.path.isfile("example3.dot"))
+
+        # Clean up at the end
+        os.remove(self.output_file)
+        os.remove("example3.dot")
+        os.remove("example3.dot.pdf")
 
 if __name__ == '__main__':
     unittest.main()
