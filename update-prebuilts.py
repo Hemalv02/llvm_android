@@ -98,11 +98,6 @@ def fetch_artifact(branch, target, build, pattern):
     utils.check_call(cmd)
 
 
-def extract_package(package, install_dir, args=[]):
-    cmd = ['tar', 'xf', package, '-C', install_dir] + args
-    utils.check_call(cmd)
-
-
 def extract_clang_info(clang_dir):
     version_file_path = os.path.join(clang_dir, 'AndroidVersion.txt')
     with open(version_file_path) as version_file:
@@ -200,14 +195,14 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         utils.check_call(
             ['repo', 'start', branch_name, '.'])
 
-    package = f'{download_dir}/clang-{build_number}-{host}.tar.bz2'
+    package = f'{download_dir}/clang-{build_number}-{host}.tar.xz'
 
     # Handle legacy versions of packages (like those from aosp/llvm-r365631).
     if not os.path.exists(package) and host == 'windows-x86':
-        package = f'{download_dir}/clang-{build_number}-windows-x86-64.tar.bz2'
+        package = f'{download_dir}/clang-{build_number}-windows-x86-64.tar.xz'
     manifest_file = f'{download_dir}/{manifest}'
 
-    extract_package(package, prebuilt_dir)
+    utils.extract_tarball(prebuilt_dir, package)
 
     extract_subdir = 'clang-' + build_number
     clang_version_full, clang_version_major, svn_revision = extract_clang_info(extract_subdir)
@@ -220,10 +215,10 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     # Linux prebuilts need to include a few libraries from the linux_musl artifacts
     if host == 'linux-x86':
         musl_install_subdir = install_subdir + '/musl'
-        musl_package = f'{download_dir}/clang-{build_number}-linux_musl-x86.tar.bz2'
+        musl_package = f'{download_dir}/clang-{build_number}-linux_musl-x86.tar.xz'
         if os.path.exists(extract_subdir):
             shutil.rmtree(extract_subdir)
-        extract_package(musl_package, prebuilt_dir, [
+        utils.extract_tarball(prebuilt_dir, musl_package, [
             "--wildcards",
             "*/lib/libclang.so*",
             "*/lib/*/libc++.so*",
@@ -325,7 +320,7 @@ def main():
     targets = [targets_map[h] for h  in hosts]
     if 'linux-x86' in hosts:
         targets.append('linux_musl')
-    clang_pattern = 'clang-*.tar.bz2'
+    clang_pattern = 'clang-*.tar.xz'
     manifest = f'manifest_{args.build}.xml'
 
     branch = args.branch

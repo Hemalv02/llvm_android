@@ -71,10 +71,10 @@ def create_tarball(source_dir, input, output):
     ], env=xz_env)
 
 
-def extract_tarball(output_dir, input):
+def extract_tarball(output_dir, input, args=[]):
     xz_env = os.environ.copy()
     xz_env["XZ_OPT"] = "-T0"
-    subprocess.run(['tar', '-JxC', str(output_dir), '-f', str(input)], env=xz_env)
+    subprocess.run(['tar', '-xC', str(output_dir), '-f', str(input)] + args, env=xz_env)
 
 
 def is_available_mac_ver(ver: str) -> bool:

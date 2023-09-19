@@ -94,7 +94,7 @@ def pgo_profdata_filename() -> str:
 
 def pgo_profdata_tarname() -> str:
     svn_revision = android_version.get_svn_revision_number()
-    return f'pgo-r{svn_revision}.tar.bz2'
+    return f'pgo-r{svn_revision}.tar.xz'
 
 
 def pgo_profdata_tar() -> Optional[Path]:
@@ -105,7 +105,7 @@ def pgo_profdata_tar() -> Optional[Path]:
 
 def bolt_fdata_tarname() -> str:
     svn_revision = android_version.get_svn_revision_number()
-    return f'bolt-r{svn_revision}.tar.bz2'
+    return f'bolt-r{svn_revision}.tar.xz'
 
 
 def bolt_fdata_tar() -> Optional[Path]:
