@@ -64,6 +64,9 @@ $ python toolchain/llvm_android/build.py
 Compiler Update Steps
 ---------------------
 
+This section is out-of-date. The source of truth is moved to
+http://go/android-llvm-update-process
+
 ### Step 1: Update source code
 
 1. Download source code.
