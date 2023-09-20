@@ -399,6 +399,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISCV] Prevent tryToFoldBNEOnCmpXchgResult from deleting AND if it has others users."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ff6d33382faf3709fa270ae0abb8d165142df9ae.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 510708
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [ARM][ISel] Fix crash of ISD::FMINNUM/FMAXNUM."
         },
         "platforms": [
