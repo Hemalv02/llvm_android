@@ -26,6 +26,17 @@ All formats represent a list of values, which is symbols or files in our case.
               We assume every file in the folder ends with ".orderfile".
               Example: ^path/to/folder
 
+Orderfile scripts
+----------------------------------
+Following scripts are provided:
+- [create_orderfile](create_orderfile.py)
+- [validate_orderfile](validate_orderfile.py)
+- [merge_orderfile](merge_orderfile.py)
+
+In order to run the scripts you may need to install the following python3 dependencies:
+- bitarray
+- graphviz
+
 Create Order file
 ----------------------------------
 You can create an orderfile from a mapping file and profile file.
