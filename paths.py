@@ -27,6 +27,7 @@ import hosts
 SCRIPTS_DIR: Path = Path(__file__).resolve().parent
 ANDROID_DIR: Path = SCRIPTS_DIR.parents[1]
 OUT_DIR: Path = Path(os.environ.get('OUT_DIR', ANDROID_DIR / 'out')).resolve()
+DIST_DIR = Path(os.environ.get('DIST_DIR', OUT_DIR)).resolve()
 SYSROOTS: Path = OUT_DIR / 'sysroots'
 LLVM_PATH: Path = OUT_DIR / 'llvm-project'
 PREBUILTS_DIR: Path = ANDROID_DIR / 'prebuilts'

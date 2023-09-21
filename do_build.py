@@ -376,7 +376,6 @@ def verify_file_exists(lib_dir: Path, name: str):
 def package_toolchain(toolchain_builder: LLVMBuilder,
                       necessary_bin_files: Optional[Set[str]]=None,
                       strip=True, with_runtimes=True, create_tar=True, llvm_next=False):
-    dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     build_dir = toolchain_builder.install_dir
     host_config = toolchain_builder.config_list[0]
     host = host_config.target_os
@@ -611,7 +610,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
                            'cherry-picks, see clang_source_info.md\n')
 
     clang_source_info_file = paths.OUT_DIR / 'clang_source_info.md'
-    manifest = list(Path(dist_dir).glob('manifest_*.xml'))
+    manifest = list(paths.DIST_DIR.glob('manifest_*.xml'))
 
     # get revision from manifest, update clang_source_info.md
     if manifest:
@@ -704,7 +703,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         if isinstance(toolchain_builder.config_list[0], configs.LinuxMuslConfig):
             tag = host.os_tag_musl
         tarball_name = package_name + '-' + tag + '.tar.xz'
-        package_path = dist_dir / tarball_name
+        package_path = paths.DIST_DIR / tarball_name
         logger().info(f'Packaging {package_path}')
         utils.create_tarball(install_host_dir, package_name, package_path)
 
@@ -944,7 +943,6 @@ def parse_args():
 
 def main():
     logging.basicConfig(level=logging.DEBUG)
-    dist_dir = Path(utils.ORIG_ENV.get('DIST_DIR', paths.OUT_DIR))
     args = parse_args()
 
     if paths.OUT_DIR.exists():
@@ -954,7 +952,7 @@ def main():
         else:
             logger().info(f'Keeping older build in {paths.OUT_DIR}')
 
-    timer.Timer.register_atexit(dist_dir / 'build_times.txt')
+    timer.Timer.register_atexit(paths.DIST_DIR / 'build_times.txt')
 
     if args.skip_build:
         # Skips all builds
@@ -1031,7 +1029,7 @@ def main():
         set_default_toolchain(toolchains.Toolchain(paths.OUT_DIR / 'stage1-install', Path('.')))
     if args.bootstrap_build_only:
         with timer.Timer(f'package_bootstrap'):
-            utils.create_tarball(paths.OUT_DIR, 'stage1-install', dist_dir / 'stage1-install.tar.xz')
+            utils.create_tarball(paths.OUT_DIR, 'stage1-install', paths.DIST_DIR / 'stage1-install.tar.xz')
         return
 
     if build_lldb:
