@@ -99,8 +99,12 @@ def pgo_profdata_tarname() -> str:
 
 
 def pgo_profdata_tar() -> Optional[Path]:
-    profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
-               pgo_profdata_tarname())
+    profile_env = os.getenv('LLVM_PGO_PROFILE')
+    if profile_env is not None:
+        profile = Path(profile_env)
+    else:
+        profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
+                   pgo_profdata_tarname())
     return profile if profile.exists() else None
 
 
@@ -110,8 +114,12 @@ def bolt_fdata_tarname() -> str:
 
 
 def bolt_fdata_tar() -> Optional[Path]:
-    profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
-               bolt_fdata_tarname())
+    profile_env = os.getenv('LLVM_BOLT_PROFILE')
+    if profile_env is not None:
+        profile = Path(profile_env)
+    else:
+        profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
+                   bolt_fdata_tarname())
     return profile if profile.exists() else None
 
 
