@@ -1,0 +1,145 @@
+From f5b42eaadb068641c175e39303421818354e7ffb Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Wed, 20 Sep 2023 14:50:13 -0700
+Subject: [PATCH] [ELF] -r --compress-debug-sections: update implicit addends
+ for .rel.debug_* referencing STT_SECTION symbols (#66804)
+
+https://reviews.llvm.org/D48929 updated addends for non-SHF_ALLOC sections
+relocated by REL for -r links, but the patch did not update the addends when
+--compress-debug-sections={zlib,zstd} is used (#66738).
+
+https://reviews.llvm.org/D116946 handled tombstone values in debug
+sections in relocatable links. As a side effect, both
+relocateNonAllocForRelocatable (using `sec->relocations`) and
+relocatenonNonAlloc (using raw REL/RELA) may run.
+
+Actually, we can adjust the condition in relocatenonAlloc to completely replace
+relocateNonAllocForRelocatable. This patch implements this idea and fixes #66738.
+
+As relocateNonAlloc processes the raw relocations like copyRelocations() does,
+the condition `if (config->relocatable && type != target.noneRel)` in `copyRelocations`
+(commit 08d6a3f1337238a480225d4caf71b8fec10dc8c6, modified by https://reviews.llvm.org/D62052)
+can be made specific to SHF_ALLOC sections.
+
+As a side effect, we can now report diagnostics for PC-relative relocations for
+-r. This is a less useful diagnostic that is not worth too much code. As
+https://github.com/ClangBuiltLinux/linux/issues/1937 has violations, just
+suppress the warning for -r. Tested by commit 561b98f9e025363b416f4e89af750d01d1e8c4cc.
+---
+ lld/ELF/InputSection.cpp                  | 40 ++++++++++-------------
+ lld/test/ELF/relocatable-section-symbol.s | 12 +++----
+ 2 files changed, 22 insertions(+), 30 deletions(-)
+
+diff --git a/lld/ELF/InputSection.cpp b/lld/ELF/InputSection.cpp
+index 3023cbfae4a5..413fa3856a14 100644
+--- a/lld/ELF/InputSection.cpp
++++ b/lld/ELF/InputSection.cpp
+@@ -463,7 +463,13 @@ void InputSection::copyRelocations(uint8_t *buf,
+ 
+       if (RelTy::IsRela)
+         p->r_addend = sym.getVA(addend) - section->getOutputSection()->addr;
+-      else if (config->relocatable && type != target.noneRel)
++      // For SHF_ALLOC sections relocated by REL, append a relocation to
++      // sec->relocations so that relocateAlloc transitively called by
++      // writeSections will update the implicit addend. Non-SHF_ALLOC sections
++      // utilize relocateNonAlloc to process raw relocations and do not need
++      // this sec->relocations change.
++      else if (config->relocatable && (sec->flags & SHF_ALLOC) &&
++               type != target.noneRel)
+         sec->addReloc({R_ABS, type, rel.offset, addend, &sym});
+     } else if (config->emachine == EM_PPC && type == R_PPC_PLTREL24 &&
+                p->r_addend >= 0x8000 && sec->file->ppc32Got2) {
+@@ -954,8 +960,10 @@ void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
+       }
+     }
+ 
+-    // For a relocatable link, only tombstone values are applied.
+-    if (config->relocatable)
++    // For a relocatable link, content relocated by RELA remains unchanged and
++    // we can stop here, while content relocated by REL referencing STT_SECTION
++    // needs updating implicit addends.
++    if (config->relocatable && (RelTy::IsRela || sym.type != STT_SECTION))
+       continue;
+ 
+     if (expr == R_SIZE) {
+@@ -987,30 +995,18 @@ void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
+     // relocations without any errors and relocate them as if they were at
+     // address 0. For bug-compatibility, we accept them with warnings. We
+     // know Steel Bank Common Lisp as of 2018 have this bug.
+-    warn(msg);
++    //
++    // RELA -r stopped earlier and does not get the warning. Suppress the
++    // warning for REL -r as well
++    // (https://github.com/ClangBuiltLinux/linux/issues/1937).
++    if (RelTy::IsRela || !config->relocatable)
++      warn(msg);
+     target.relocateNoSym(
+         bufLoc, type,
+         SignExtend64<bits>(sym.getVA(addend - offset - outSecOff)));
+   }
+ }
+ 
+-// This is used when '-r' is given.
+-// For REL targets, InputSection::copyRelocations() may store artificial
+-// relocations aimed to update addends. They are handled in relocateAlloc()
+-// for allocatable sections, and this function does the same for
+-// non-allocatable sections, such as sections with debug information.
+-static void relocateNonAllocForRelocatable(InputSection *sec, uint8_t *buf) {
+-  const unsigned bits = config->is64 ? 64 : 32;
+-
+-  for (const Relocation &rel : sec->relocs()) {
+-    // InputSection::copyRelocations() adds only R_ABS relocations.
+-    assert(rel.expr == R_ABS);
+-    uint8_t *bufLoc = buf + rel.offset;
+-    uint64_t targetVA = SignExtend64(rel.sym->getVA(rel.addend), bits);
+-    target->relocate(bufLoc, rel, targetVA);
+-  }
+-}
+-
+ template <class ELFT>
+ void InputSectionBase::relocate(uint8_t *buf, uint8_t *bufEnd) {
+   if ((flags & SHF_EXECINSTR) && LLVM_UNLIKELY(getFile<ELFT>()->splitStack))
+@@ -1022,8 +1018,6 @@ void InputSectionBase::relocate(uint8_t *buf, uint8_t *bufEnd) {
+   }
+ 
+   auto *sec = cast<InputSection>(this);
+-  if (config->relocatable)
+-    relocateNonAllocForRelocatable(sec, buf);
+   // For a relocatable link, also call relocateNonAlloc() to rewrite applicable
+   // locations with tombstone values.
+   const RelsOrRelas<ELFT> rels = sec->template relsOrRelas<ELFT>();
+diff --git a/lld/test/ELF/relocatable-section-symbol.s b/lld/test/ELF/relocatable-section-symbol.s
+index 9d8892236304..2ee1e7692cf2 100644
+--- a/lld/test/ELF/relocatable-section-symbol.s
++++ b/lld/test/ELF/relocatable-section-symbol.s
+@@ -30,10 +30,11 @@
+ 
+ # RUN: llvm-mc -filetype=obj -triple=i686 %s -o %t1.o
+ # RUN: ld.lld -r -o %t1 %t1.o %t1.o
+-# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t1 | FileCheck %s --check-prefixes=REL,REL0
++# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t1 | FileCheck %s --check-prefix=REL
++## https://github.com/llvm/llvm-project/issues/66738 Update implicit addends for -r and --compress-debug-sections
+ # RUN: ld.lld -r --compress-debug-sections=zlib -o %t1.zlib %t1.o %t1.o
+ # RUN: llvm-objcopy --decompress-debug-sections %t1.zlib %t1.zlib.de
+-# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t1.zlib.de | FileCheck %s --check-prefixes=REL,REL1
++# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t1.zlib.de | FileCheck %s --check-prefix=REL
+ 
+ # REL:         Offset   Info   Type                Sym. Value  Symbol's Name
+ # REL-NEXT:  00000000  {{.*}} R_386_32               00000000   .text
+@@ -55,11 +56,8 @@
+ # REL-NEXT:  0x00000000 01000000 05000000                   ........
+ # REL:       Hex dump of section '.bar':
+ # REL-NEXT:  0x00000000 01000000 00000000 02000000 04000000 ................
+-# REL0:      Hex dump of section '.debug_line':
+-# REL0-NEXT: 0x00000000 01000000 00000000 02000000 04000000 ................
+-## FIXME: https://github.com/llvm/llvm-project/issues/66738 The implicit addends for the second input section are wrong.
+-# REL1:      Hex dump of section '.debug_line':
+-# REL1-NEXT: 0x00000000 01000000 00000000 01000000 00000000 ................
++# REL:       Hex dump of section '.debug_line':
++# REL-NEXT:  0x00000000 01000000 00000000 02000000 04000000 ................
+ 
+ .long 42
+ .data
+-- 
+2.42.0.515.g380fc7ccd1-goog
+

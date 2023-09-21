@@ -1,0 +1,236 @@
+From 649cac3b627fa3d466b8807536c8be970cc8c32f Mon Sep 17 00:00:00 2001
+From: Job Noorman <jnoorman@igalia.com>
+Date: Sat, 9 Sep 2023 10:24:16 +0200
+Subject: [PATCH] [ELF][RISCV] Implement --emit-relocs with relaxation
+
+Linker relaxation may change relocations (offsets and types). However,
+when --emit-relocs is used, relocations are simply copied from the input
+section causing a mismatch with the corresponding (relaxed) code
+section.
+
+This patch fixes this as follows: for non-relocatable RISC-V binaries,
+`InputSection::copyRelocations` reads relocations from the relocated
+section's `relocations` array (since this gets updated by the relaxation
+code). For all other cases, relocations are read from the input section
+directly as before.
+
+In order to reuse as much code as possible, and to keep the diff small,
+the original `InputSection::copyRelocations` is changed to accept the
+relocations as a range of `Relocation` objects. This means that, in the
+general case when reading from the input section, raw relocations need
+to be converted to `Relocation`s first, which introduces quite a bit of
+boiler plate. It also means there's a slight code size increase due to
+the extra instantiations of `copyRelocations` (for both range types).
+
+Reviewed By: MaskRay
+
+Differential Revision: https://reviews.llvm.org/D159082
+---
+ lld/ELF/InputSection.cpp               | 56 ++++++++++++++++-----
+ lld/ELF/InputSection.h                 |  6 ++-
+ lld/test/ELF/riscv-relax-emit-relocs.s | 69 ++++++++++++++++++++++++++
+ 3 files changed, 117 insertions(+), 14 deletions(-)
+ create mode 100644 lld/test/ELF/riscv-relax-emit-relocs.s
+
+diff --git a/lld/ELF/InputSection.cpp b/lld/ELF/InputSection.cpp
+index 2edaa2b40493..f97ca96bf4a8 100644
+--- a/lld/ELF/InputSection.cpp
++++ b/lld/ELF/InputSection.cpp
+@@ -349,29 +349,61 @@ InputSectionBase *InputSection::getRelocatedSection() const {
+   return sections[info];
+ }
+ 
++template <class ELFT, class RelTy>
++void InputSection::copyRelocations(uint8_t *buf) {
++  if (config->relax && !config->relocatable && config->emachine == EM_RISCV) {
++    // On RISC-V, relaxation might change relocations: copy from internal ones
++    // that are updated by relaxation.
++    InputSectionBase *sec = getRelocatedSection();
++    copyRelocations<ELFT, RelTy>(buf, llvm::make_range(sec->relocations.begin(),
++                                                       sec->relocations.end()));
++  } else {
++    // Convert the raw relocations in the input section into Relocation objects
++    // suitable to be used by copyRelocations below.
++    struct MapRel {
++      const ObjFile<ELFT> &file;
++      Relocation operator()(const RelTy &rel) const {
++        // RelExpr is not used so set to a dummy value.
++        return Relocation{R_NONE, rel.getType(config->isMips64EL), rel.r_offset,
++                          getAddend<ELFT>(rel), &file.getRelocTargetSym(rel)};
++      }
++    };
++
++    using RawRels = ArrayRef<RelTy>;
++    using MapRelIter =
++        llvm::mapped_iterator<typename RawRels::iterator, MapRel>;
++    auto mapRel = MapRel{*getFile<ELFT>()};
++    RawRels rawRels = getDataAs<RelTy>();
++    auto rels = llvm::make_range(MapRelIter(rawRels.begin(), mapRel),
++                                 MapRelIter(rawRels.end(), mapRel));
++    copyRelocations<ELFT, RelTy>(buf, rels);
++  }
++}
++
+ // This is used for -r and --emit-relocs. We can't use memcpy to copy
+ // relocations because we need to update symbol table offset and section index
+ // for each relocation. So we copy relocations one by one.
+-template <class ELFT, class RelTy>
+-void InputSection::copyRelocations(uint8_t *buf, ArrayRef<RelTy> rels) {
++template <class ELFT, class RelTy, class RelIt>
++void InputSection::copyRelocations(uint8_t *buf,
++                                   llvm::iterator_range<RelIt> rels) {
+   const TargetInfo &target = *elf::target;
+   InputSectionBase *sec = getRelocatedSection();
+   (void)sec->contentMaybeDecompress(); // uncompress if needed
+ 
+-  for (const RelTy &rel : rels) {
+-    RelType type = rel.getType(config->isMips64EL);
++  for (const Relocation &rel : rels) {
++    RelType type = rel.type;
+     const ObjFile<ELFT> *file = getFile<ELFT>();
+-    Symbol &sym = file->getRelocTargetSym(rel);
++    Symbol &sym = *rel.sym;
+ 
+     auto *p = reinterpret_cast<typename ELFT::Rela *>(buf);
+     buf += sizeof(RelTy);
+ 
+     if (RelTy::IsRela)
+-      p->r_addend = getAddend<ELFT>(rel);
++      p->r_addend = rel.addend;
+ 
+     // Output section VA is zero for -r, so r_offset is an offset within the
+     // section, but for --emit-relocs it is a virtual address.
+-    p->r_offset = sec->getVA(rel.r_offset);
++    p->r_offset = sec->getVA(rel.offset);
+     p->setSymbolAndType(in.symTab->getSymbolIndex(&sym), type,
+                         config->isMips64EL);
+ 
+@@ -408,8 +440,8 @@ void InputSection::copyRelocations(uint8_t *buf, ArrayRef<RelTy> rels) {
+         continue;
+       }
+ 
+-      int64_t addend = getAddend<ELFT>(rel);
+-      const uint8_t *bufLoc = sec->content().begin() + rel.r_offset;
++      int64_t addend = rel.addend;
++      const uint8_t *bufLoc = sec->content().begin() + rel.offset;
+       if (!RelTy::IsRela)
+         addend = target.getImplicitAddend(bufLoc, type);
+ 
+@@ -432,7 +464,7 @@ void InputSection::copyRelocations(uint8_t *buf, ArrayRef<RelTy> rels) {
+       if (RelTy::IsRela)
+         p->r_addend = sym.getVA(addend) - section->getOutputSection()->addr;
+       else if (config->relocatable && type != target.noneRel)
+-        sec->addReloc({R_ABS, type, rel.r_offset, addend, &sym});
++        sec->addReloc({R_ABS, type, rel.offset, addend, &sym});
+     } else if (config->emachine == EM_PPC && type == R_PPC_PLTREL24 &&
+                p->r_addend >= 0x8000 && sec->file->ppc32Got2) {
+       // Similar to R_MIPS_GPREL{16,32}. If the addend of R_PPC_PLTREL24
+@@ -1106,11 +1138,11 @@ template <class ELFT> void InputSection::writeTo(uint8_t *buf) {
+   // If -r or --emit-relocs is given, then an InputSection
+   // may be a relocation section.
+   if (LLVM_UNLIKELY(type == SHT_RELA)) {
+-    copyRelocations<ELFT>(buf, getDataAs<typename ELFT::Rela>());
++    copyRelocations<ELFT, typename ELFT::Rela>(buf);
+     return;
+   }
+   if (LLVM_UNLIKELY(type == SHT_REL)) {
+-    copyRelocations<ELFT>(buf, getDataAs<typename ELFT::Rel>());
++    copyRelocations<ELFT, typename ELFT::Rel>(buf);
+     return;
+   }
+ 
+diff --git a/lld/ELF/InputSection.h b/lld/ELF/InputSection.h
+index 15122d6abd6b..2b91711abba3 100644
+--- a/lld/ELF/InputSection.h
++++ b/lld/ELF/InputSection.h
+@@ -396,8 +396,10 @@ public:
+   static InputSection discarded;
+ 
+ private:
+-  template <class ELFT, class RelTy>
+-  void copyRelocations(uint8_t *buf, llvm::ArrayRef<RelTy> rels);
++  template <class ELFT, class RelTy> void copyRelocations(uint8_t *buf);
++
++  template <class ELFT, class RelTy, class RelIt>
++  void copyRelocations(uint8_t *buf, llvm::iterator_range<RelIt> rels);
+ 
+   template <class ELFT> void copyShtGroup(uint8_t *buf);
+ };
+diff --git a/lld/test/ELF/riscv-relax-emit-relocs.s b/lld/test/ELF/riscv-relax-emit-relocs.s
+new file mode 100644
+index 000000000000..ebd69b742d4f
+--- /dev/null
++++ b/lld/test/ELF/riscv-relax-emit-relocs.s
+@@ -0,0 +1,69 @@
++# REQUIRES: riscv
++## Test that we can handle --emit-relocs while relaxing.
++
++# RUN: rm -rf %t && mkdir %t && cd %t
++
++# RUN: llvm-mc -filetype=obj -triple=riscv32 -mattr=+relax %s -o 32.o
++# RUN: ld.lld -Ttext=0x10000 --emit-relocs 32.o -o 32
++# RUN: llvm-objdump -dr --no-show-raw-insn -M no-aliases 32 | FileCheck %s
++
++# RUN: llvm-mc -filetype=obj -triple=riscv64 -mattr=+relax %s -o 64.o
++# RUN: ld.lld -Ttext=0x10000 --emit-relocs 64.o -o 64
++# RUN: llvm-objdump -dr --no-show-raw-insn -M no-aliases 64 | FileCheck %s
++
++## -r should keep original relocations.
++# RUN: ld.lld -r 64.o -o 64.r
++# RUN: llvm-objdump -dr --no-show-raw-insn -M no-aliases 64.r | FileCheck %s --check-prefix=CHECKR
++
++## --no-relax should keep original relocations.
++# RUN: ld.lld --emit-relocs --no-relax 64.o -o 64.norelax
++# RUN: llvm-objdump -dr --no-show-raw-insn -M no-aliases 64.norelax | FileCheck %s --check-prefix=CHECKNORELAX
++
++# CHECK:      <_start>:
++# CHECK-NEXT:     jal ra, 0x10008 <f>
++# CHECK-NEXT:         R_RISCV_JAL f
++# CHECK-NEXT:         R_RISCV_RELAX *ABS*
++# CHECK-NEXT:     jal ra, 0x10008 <f>
++# CHECK-NEXT:         R_RISCV_JAL f
++# CHECK-NEXT:         R_RISCV_RELAX *ABS*
++# CHECK-EMPTY:
++# CHECK-NEXT: <f>:
++# CHECK-NEXT:     jalr zero, 0(ra)
++# CHECK-NEXT:         R_RISCV_ALIGN *ABS*+0x4
++
++# CHECKR:      <_start>:
++# CHECKR-NEXT:     auipc ra, 0
++# CHECKR-NEXT:         R_RISCV_CALL_PLT f
++# CHECKR-NEXT:         R_RISCV_RELAX *ABS*
++# CHECKR-NEXT:     jalr ra, 0(ra)
++# CHECKR-NEXT:     auipc ra, 0
++# CHECKR-NEXT:         R_RISCV_CALL_PLT f
++# CHECKR-NEXT:         R_RISCV_RELAX *ABS*
++# CHECKR-NEXT:     jalr ra, 0(ra)
++# CHECKR-NEXT:     addi zero, zero, 0
++# CHECKR-NEXT:         R_RISCV_ALIGN *ABS*+0x4
++# CHECKR-EMPTY:
++# CHECKR-NEXT: <f>:
++# CHECKR-NEXT:     jalr zero, 0(ra)
++
++# CHECKNORELAX:      <_start>:
++# CHECKNORELAX-NEXT:     auipc ra, 0
++# CHECKNORELAX-NEXT:         R_RISCV_CALL_PLT f
++# CHECKNORELAX-NEXT:         R_RISCV_RELAX *ABS*
++# CHECKNORELAX-NEXT:     jalr ra, 16(ra)
++# CHECKNORELAX-NEXT:     auipc ra, 0
++# CHECKNORELAX-NEXT:         R_RISCV_CALL_PLT f
++# CHECKNORELAX-NEXT:         R_RISCV_RELAX *ABS*
++# CHECKNORELAX-NEXT:     jalr ra, 8(ra)
++# CHECKNORELAX-EMPTY:
++# CHECKNORELAX-NEXT: <f>:
++# CHECKNORELAX-NEXT:     jalr zero, 0(ra)
++# CHECKNORELAX-NEXT:         R_RISCV_ALIGN *ABS*+0x4
++
++.global _start
++_start:
++  call f
++  call f
++  .balign 8
++f:
++  ret
+-- 
+2.42.0.515.g380fc7ccd1-goog
+
