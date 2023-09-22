@@ -99,15 +99,23 @@ class BoltProfileHandler(ProfileHandler):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('android_path', help='Android source directory.')
-    parser.add_argument(
+
+    clang_group = parser.add_mutually_exclusive_group()
+    clang_group.add_argument(
         '--clang-path',
         nargs='?',
-        help='Directory with a previously built Clang.')
-    parser.add_argument(
+        help='Directory with a previously built Clang toolchain.')
+    clang_group.add_argument(
         '--clang-package-path',
         nargs='?',
-        help='Directory of a pre-packaged (.tar.xz) Clang. '
+        help='Directory of a pre-packaged (.tar.xz) Clang toolchain. '
         'Toolchain extracted from the package will be used.')
+    clang_group.add_argument(
+        '--clang-bootstrap-path',
+        nargs='?',
+        help='Directory of a pre-packaged (.tar.xz) bootstrap (stage-1) Clang. '
+        'Clang extracted from the package will be used for building a full toolchain.')
+
     parser.add_argument(
         '-k',
         '--keep-going',
@@ -381,6 +389,8 @@ def main():
         clang_path = extract_packaged_clang(Path(args.clang_package_path))
     else:
         cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb', '--mlgo']
+        if args.bootstrap_clang_path:
+            cmd.append(f'--bootstrap-use={args.bootstrap_clang_path}')
         if args.profile:
             cmd.append('--build-instrumented')
             cmd.append('--skip-tests')
