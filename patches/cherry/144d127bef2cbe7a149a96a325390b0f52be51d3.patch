@@ -1,0 +1,203 @@
+From 144d127bef2cbe7a149a96a325390b0f52be51d3 Mon Sep 17 00:00:00 2001
+From: Mitch Phillips <31459023+hctim@users.noreply.github.com>
+Date: Tue, 10 Oct 2023 17:32:10 +0200
+Subject: [PATCH] [lld] [MTE] Drop MTE globals for fully static executables,
+ not ban (#68217)
+
+Integrating MTE globals on Android revealed a lot of cases where
+libraries are built as both archives and DSOs, and they're linked into
+fully static and dynamic executables respectively.
+
+MTE globals doesn't work for fully static executables. They need a
+dynamic loader to process the special R_AARCH64_RELATIVE relocation
+semantics with the encoded offset. Fully static executables that had
+out-of-bounds derived symbols (like 'int* foo_end = foo[16]') crash
+under MTE globals w/ static executables. So, LLD in its current form
+simply errors out when you try and compile a fully static executable
+that has a single MTE global variable in it.
+
+It seems like a much better idea to simply have LLD not do the special
+work for MTE globals in fully static contexts, and to drop any
+unnecessary metadata. This means that you can build archives with MTE
+globals and link them into both fully-static and dynamic executables.
+---
+ lld/ELF/Driver.cpp                           |  3 +-
+ lld/ELF/InputFiles.cpp                       | 10 ++++++
+ lld/ELF/Writer.cpp                           | 18 +++++++---
+ lld/ELF/Writer.h                             |  2 ++
+ lld/test/ELF/Inputs/aarch64-memtag-globals.s | 35 ++++++++++++++++++++
+ lld/test/ELF/aarch64-memtag-globals.s        | 31 ++++++++++++++---
+ 6 files changed, 88 insertions(+), 11 deletions(-)
+
+diff --git a/lld/ELF/Driver.cpp b/lld/ELF/Driver.cpp
+index 6272276e94b2..d082463d34e5 100644
+--- a/lld/ELF/Driver.cpp
++++ b/lld/ELF/Driver.cpp
+@@ -3029,8 +3029,7 @@ void LinkerDriver::link(opt::InputArgList &args) {
+   // partition.
+   copySectionsIntoPartitions();
+ 
+-  if (config->emachine == EM_AARCH64 &&
+-      config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE) {
++  if (canHaveMemtagGlobals()) {
+     llvm::TimeTraceScope timeScope("Process memory tagged symbols");
+     createTaggedSymbols(ctx.objectFiles);
+   }
+diff --git a/lld/ELF/InputFiles.cpp b/lld/ELF/InputFiles.cpp
+index a2c83adc18f5..3413586f6b85 100644
+--- a/lld/ELF/InputFiles.cpp
++++ b/lld/ELF/InputFiles.cpp
+@@ -624,6 +624,16 @@ template <class ELFT> void ObjFile<ELFT>::parse(bool ignoreComdats) {
+       }
+     }
+ 
++    // Producing a static binary with MTE globals is not currently supported,
++    // remove all SHT_AARCH64_MEMTAG_GLOBALS_STATIC sections as they're unused
++    // medatada, and we don't want them to end up in the output file for static
++    // executables.
++    if (sec.sh_type == SHT_AARCH64_MEMTAG_GLOBALS_STATIC &&
++        !canHaveMemtagGlobals()) {
++      this->sections[i] = &InputSection::discarded;
++      continue;
++    }
++
+     if (sec.sh_type != SHT_GROUP)
+       continue;
+     StringRef signature = getShtGroupSignature(objSections, sec);
+diff --git a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+index ce7218901534..5077c972658a 100644
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -251,6 +251,18 @@ void elf::addReservedSymbols() {
+   ElfSym::edata2 = add("_edata", -1);
+ }
+ 
++// Fully static executables don't support MTE globals at this point in time, as
++// we currently rely on:
++//   - A dynamic loader to process relocations, and
++//   - Dynamic entries.
++// This restriction could be removed in future by re-using some of the ideas
++// that ifuncs use in fully static executables.
++bool elf::canHaveMemtagGlobals() {
++  return config->emachine == EM_AARCH64 &&
++         config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE &&
++         (config->relocatable || config->shared || needsInterpSection());
++}
++
+ static OutputSection *findSection(StringRef name, unsigned partition = 1) {
+   for (SectionCommand *cmd : script->sectionCommands)
+     if (auto *osd = dyn_cast<OutputDesc>(cmd))
+@@ -345,11 +357,7 @@ template <class ELFT> void elf::createSyntheticSections() {
+         std::make_unique<SymbolTableSection<ELFT>>(*part.dynStrTab);
+     part.dynamic = std::make_unique<DynamicSection<ELFT>>();
+ 
+-    if (config->emachine == EM_AARCH64 &&
+-        config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE) {
+-      if (!config->relocatable && !config->shared && !needsInterpSection())
+-        error("--android-memtag-mode is incompatible with fully-static "
+-              "executables (-static)");
++    if (canHaveMemtagGlobals()) {
+       part.memtagAndroidNote = std::make_unique<MemtagAndroidNote>();
+       add(*part.memtagAndroidNote);
+       part.memtagDescriptors = std::make_unique<MemtagDescriptors>();
+diff --git a/lld/ELF/Writer.h b/lld/ELF/Writer.h
+index c69de54f76e9..eaf021aac42e 100644
+--- a/lld/ELF/Writer.h
++++ b/lld/ELF/Writer.h
+@@ -56,6 +56,8 @@ uint8_t getMipsFpAbiFlag(uint8_t oldFlag, uint8_t newFlag,
+ bool isMipsN32Abi(const InputFile *f);
+ bool isMicroMips();
+ bool isMipsR6();
++
++bool canHaveMemtagGlobals();
+ } // namespace lld::elf
+ 
+ #endif
+diff --git a/lld/test/ELF/Inputs/aarch64-memtag-globals.s b/lld/test/ELF/Inputs/aarch64-memtag-globals.s
+index c48083f5550f..cc7ca6e3d13d 100644
+--- a/lld/test/ELF/Inputs/aarch64-memtag-globals.s
++++ b/lld/test/ELF/Inputs/aarch64-memtag-globals.s
+@@ -380,3 +380,38 @@ global_extern_const_definition_but_nonconst_import:
+ global_extern_untagged_definition_but_tagged_import:
+ 	.word	0
+ 	.size	global_extern_untagged_definition_but_tagged_import, 4
++
++#--- input_3.s
++## Generated with:
++##
++##  - clang <input_file.c> -fsanitize=memtag-globals -O2 -S -o - \
++##          --target=aarch64-linux-android31 -fno-asynchronous-unwind-tables
++##
++## <input_file.c> contents:
++##
++##     int global_extern_outside_this_dso;
++##
++##     int main() {
++##       return 0;
++##     }
++
++	.text
++	.file	"main.c"
++	.globl	main                            // -- Begin function main
++	.p2align	2
++	.type	main,@function
++main:                                   // @main
++// %bb.0:                               // %entry
++	mov	w0, wzr
++	ret
++.Lfunc_end0:
++	.size	main, .Lfunc_end0-main
++                                        // -- End function
++	.memtag	global_extern_outside_this_dso  // @global_extern_outside_this_dso
++	.type	global_extern_outside_this_dso,@object
++	.bss
++	.globl	global_extern_outside_this_dso
++	.p2align	4, 0x0
++global_extern_outside_this_dso:
++	.zero	16
++	.size	global_extern_outside_this_dso, 16
+diff --git a/lld/test/ELF/aarch64-memtag-globals.s b/lld/test/ELF/aarch64-memtag-globals.s
+index fab6a032f0ce..cbea01edc704 100644
+--- a/lld/test/ELF/aarch64-memtag-globals.s
++++ b/lld/test/ELF/aarch64-memtag-globals.s
+@@ -73,10 +73,33 @@ Symbols:
+ # RUN:   %t1.o %t2.o -o %t1.so 2>&1 | FileCheck %s --check-prefix=CHECK-DYNRELOC
+ # CHECK-DYNRELOC: --apply-dynamic-relocs cannot be used with MTE globals
+ 
+-## And ensure that fully-static executables are banned.
+-# RUN: not ld.lld --static --android-memtag-mode=sync \
+-# RUN:   %t1.o %t2.o -o %t1.so 2>&1 | FileCheck %s --check-prefix=CHECK-NOSTATIC
+-# CHECK-NOSTATIC: --android-memtag-mode is incompatible with fully-static executables (-static)
++## Ensure that fully statically linked executables just simply drop the MTE
++## globals stuff: special relocations, data in the place to be relocated,
++## dynamic entries, etc.
++# RUN: llvm-mc --filetype=obj -triple=aarch64-none-linux-android \
++# RUN:   %t/input_3.s -o %t3.o
++# RUN: ld.lld -static --android-memtag-mode=sync %t1.o %t2.o %t3.o -o %t.static.so
++# RUN: llvm-readelf -s --section-headers --relocs --memtag %t.static.so | \
++# RUN:   FileCheck %s --check-prefix=CHECK-STATIC
++# CHECK-STATIC-NOT: .memtag.globals.static
++# CHECK-STATIC-NOT: DT_AARCH64_MEMTAG_
++
++# CHECK-STATIC:      There are no relocations in this file
++# CHECK-STATIC:      Memtag Dynamic Entries:
++# CHECK-STATIC-NEXT: < none found >
++
++# RUN: llvm-objdump -tDz %t.static.so | FileCheck %s --check-prefix=CHECK-STATIC-SPECIAL-RELOCS
++# CHECK-STATIC-SPECIAL-RELOCS:      [[#%x,HIDDEN_GLOBAL_ADDR:]] {{.*}} .bss {{0*}}10 hidden_global
++# CHECK-STATIC-SPECIAL-RELOCS:      <pointer_to_hidden_global_end>:
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x{{0*}}[[#HIDDEN_GLOBAL_ADDR + 12]]
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x00000000
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x00000000
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x00000000
++# CHECK-STATIC-SPECIAL-RELOCS:      <pointer_past_hidden_global_end>:
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x{{0*}}[[#HIDDEN_GLOBAL_ADDR + 16]]
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x00000000
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x00000000
++# CHECK-STATIC-SPECIAL-RELOCS-NEXT:   .word 0x00000000
+ 
+ # CHECK:     Symbol table '.dynsym' contains
+ # CHECK-DAG: [[#%x,GLOBAL:]] 32 OBJECT GLOBAL DEFAULT [[#]] global{{$}}
+-- 
+2.42.0.869.gea05f2083d-goog
+
