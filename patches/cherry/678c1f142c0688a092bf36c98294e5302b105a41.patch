@@ -1,0 +1,27 @@
+From 678c1f142c0688a092bf36c98294e5302b105a41 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Tue, 19 Sep 2023 21:04:50 -0700
+Subject: [PATCH] [ELF] Remove a R_ARM_PCA special case from relocateNonAlloc
+
+https://reviews.llvm.org/D75042 added a special case about R_ARM_PCA to
+relocateNonAlloc. This is untested and actually unused in the wild.
+---
+ lld/ELF/InputSection.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lld/ELF/InputSection.cpp b/lld/ELF/InputSection.cpp
+index f97ca96bf4a8..3023cbfae4a5 100644
+--- a/lld/ELF/InputSection.cpp
++++ b/lld/ELF/InputSection.cpp
+@@ -975,7 +975,7 @@ void InputSection::relocateNonAlloc(uint8_t *buf, ArrayRef<RelTy> rels) {
+     std::string msg = getLocation(offset) + ": has non-ABS relocation " +
+                       toString(type) + " against symbol '" + toString(sym) +
+                       "'";
+-    if (expr != R_PC && expr != R_ARM_PCA) {
++    if (expr != R_PC) {
+       error(msg);
+       return;
+     }
+-- 
+2.42.0.515.g380fc7ccd1-goog
+

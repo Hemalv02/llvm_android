@@ -1,0 +1,157 @@
+From 345f532f3fe9bd4b6d55a490683455ee542d90d9 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Mon, 18 Sep 2023 22:46:56 -0700
+Subject: [PATCH] [ELF][test] Improve relocations referencing STT_SECTION tests
+ for -r
+
+Also add a --compress-debug-sections=zlib test to demonstrate issue #66738
+---
+ lld/test/ELF/pr37735.s                    |  12 ---
+ lld/test/ELF/relocatable-section-symbol.s | 109 ++++++++++++++--------
+ 2 files changed, 68 insertions(+), 53 deletions(-)
+ delete mode 100644 lld/test/ELF/pr37735.s
+
+diff --git a/lld/test/ELF/pr37735.s b/lld/test/ELF/pr37735.s
+deleted file mode 100644
+index a9d188a58d6e..000000000000
+--- a/lld/test/ELF/pr37735.s
++++ /dev/null
+@@ -1,12 +0,0 @@
+-# REQUIRES: x86
+-# RUN: llvm-mc -filetype=obj -triple=i386-pc-linux-gnu %s -o %t.o
+-# RUN: ld.lld -r %t.o %t.o -o %t1.o
+-# RUN: llvm-objdump -s --section=.bar %t1.o | FileCheck %s
+-
+-.section .foo
+-	.byte 0
+-
+-# CHECK:      Contents of section .bar:
+-# CHECK-NEXT:  0000 00000000 01000000
+-.section .bar
+-	.dc.a .foo
+diff --git a/lld/test/ELF/relocatable-section-symbol.s b/lld/test/ELF/relocatable-section-symbol.s
+index 6657da2032fc..9d8892236304 100644
+--- a/lld/test/ELF/relocatable-section-symbol.s
++++ b/lld/test/ELF/relocatable-section-symbol.s
+@@ -1,50 +1,77 @@
+-# REQUIRES: x86
+-# RUN: llvm-mc -filetype=obj -triple=x86_64-pc-linux %s -o %t.o
++# REQUIRES: x86, zlib
++# RUN: llvm-mc -filetype=obj -triple=x86_64 %s -o %t.o
+ # RUN: ld.lld -r -o %t %t.o %t.o
+-# RUN: llvm-readobj -r %t | FileCheck --check-prefix=RELA %s
++# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t | FileCheck --check-prefix=RELA %s
+ 
+-# RELA:      Relocations [
+-# RELA-NEXT:   Section ({{.*}}) .rela.data {
+-# RELA-NEXT:     0x0 R_X86_64_32 .text 0x1
+-# RELA-NEXT:     0x4 R_X86_64_32 .text 0x5
+-# RELA-NEXT:   }
+-# RELA-NEXT: ]
++# RELA:         Offset          Info         Type               Symbol's Value  Symbol's Name + Addend
++# RELA-NEXT:  0000000000000000  {{.*}} R_X86_64_32            0000000000000000 .text + 1
++# RELA-NEXT:  0000000000000004  {{.*}} R_X86_64_32            0000000000000000 .text + 5
++# RELA-EMPTY:
++# RELA:         Offset          Info         Type               Symbol's Value  Symbol's Name + Addend
++# RELA-NEXT:  0000000000000000  {{.*}} R_X86_64_64            0000000000000000 .foo + 1
++# RELA-NEXT:  0000000000000008  {{.*}} R_X86_64_32            0000000000000000 .text + 0
++# RELA-NEXT:  000000000000000c  {{.*}} R_X86_64_64            0000000000000000 .foo + 2
++# RELA-NEXT:  0000000000000014  {{.*}} R_X86_64_32            0000000000000000 .text + 4
++# RELA-EMPTY:
++# RELA:         Offset          Info         Type               Symbol's Value  Symbol's Name + Addend
++# RELA-NEXT:  0000000000000000  {{.*}} R_X86_64_64            0000000000000000 .foo + 1
++# RELA-NEXT:  0000000000000008  {{.*}} R_X86_64_32            0000000000000000 .text + 0
++# RELA-NEXT:  000000000000000c  {{.*}} R_X86_64_64            0000000000000000 .foo + 2
++# RELA-NEXT:  0000000000000014  {{.*}} R_X86_64_32            0000000000000000 .text + 4
+ 
++# RELA:       Hex dump of section '.data':
++# RELA-NEXT:  0x00000000 00000000 00000000                   ........
++# RELA:       Hex dump of section '.bar':
++# RELA-NEXT:  0x00000000 00000000 00000000 00000000 00000000 ................
++# RELA-NEXT:  0x00000010 00000000 00000000                   ........
++# RELA:       Hex dump of section '.debug_line':
++# RELA-NEXT:  0x00000000 00000000 00000000 00000000 00000000 ................
++# RELA-NEXT:  0x00000010 00000000 00000000                   ........
+ 
+-# RUN: llvm-mc -filetype=obj -triple=i686-pc-linux %s -o %t.o
+-# RUN: ld.lld -r -o %t %t.o %t.o
+-# RUN: llvm-readobj -r -S --section-data %t | FileCheck --check-prefix=REL %s
+-
+-
+-# REL:      Section {
+-# REL:        Index:
+-# REL:        Name: .data
+-# REL-NEXT:   Type: SHT_PROGBITS
+-# REL-NEXT:   Flags [
+-# REL-NEXT:     SHF_ALLOC
+-# REL-NEXT:     SHF_WRITE
+-# REL-NEXT:   ]
+-# REL-NEXT:   Address:
+-# REL-NEXT:   Offset:
+-# REL-NEXT:   Size:
+-# REL-NEXT:   Link:
+-# REL-NEXT:   Info:
+-# REL-NEXT:   AddressAlignment:
+-# REL-NEXT:   EntrySize:
+-# REL-NEXT:   SectionData (
+-# REL-NEXT:     0000: 01000000 05000000                    |
+-# REL-NEXT:   )
+-# REL-NEXT: }
+-
+-
+-# REL:      Relocations [
+-# REL-NEXT:   Section ({{.*}}) .rel.data {
+-# REL-NEXT:     0x0 R_386_32 .text
+-# REL-NEXT:     0x4 R_386_32 .text
+-# REL-NEXT:   }
+-# REL-NEXT: ]
++# RUN: llvm-mc -filetype=obj -triple=i686 %s -o %t1.o
++# RUN: ld.lld -r -o %t1 %t1.o %t1.o
++# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t1 | FileCheck %s --check-prefixes=REL,REL0
++# RUN: ld.lld -r --compress-debug-sections=zlib -o %t1.zlib %t1.o %t1.o
++# RUN: llvm-objcopy --decompress-debug-sections %t1.zlib %t1.zlib.de
++# RUN: llvm-readelf -r -x .data -x .bar -x .debug_line %t1.zlib.de | FileCheck %s --check-prefixes=REL,REL1
++
++# REL:         Offset   Info   Type                Sym. Value  Symbol's Name
++# REL-NEXT:  00000000  {{.*}} R_386_32               00000000   .text
++# REL-NEXT:  00000004  {{.*}} R_386_32               00000000   .text
++# REL-EMPTY:
++# REL:        Offset    Info   Type                Sym. Value  Symbol's Name
++# REL-NEXT:  00000000  {{.*}} R_386_32               00000000   .foo
++# REL-NEXT:  00000004  {{.*}} R_386_32               00000000   .text
++# REL-NEXT:  00000008  {{.*}} R_386_32               00000000   .foo
++# REL-NEXT:  0000000c  {{.*}} R_386_32               00000000   .text
++# REL-EMPTY:
++# REL:         Offset   Info   Type                Sym. Value  Symbol's Name
++# REL-NEXT:  00000000  {{.*}} R_386_32               00000000   .foo
++# REL-NEXT:  00000004  {{.*}} R_386_32               00000000   .text
++# REL-NEXT:  00000008  {{.*}} R_386_32               00000000   .foo
++# REL-NEXT:  0000000c  {{.*}} R_386_32               00000000   .text
+ 
++# REL:       Hex dump of section '.data':
++# REL-NEXT:  0x00000000 01000000 05000000                   ........
++# REL:       Hex dump of section '.bar':
++# REL-NEXT:  0x00000000 01000000 00000000 02000000 04000000 ................
++# REL0:      Hex dump of section '.debug_line':
++# REL0-NEXT: 0x00000000 01000000 00000000 02000000 04000000 ................
++## FIXME: https://github.com/llvm/llvm-project/issues/66738 The implicit addends for the second input section are wrong.
++# REL1:      Hex dump of section '.debug_line':
++# REL1-NEXT: 0x00000000 01000000 00000000 01000000 00000000 ................
+ 
+ .long 42
+ .data
+ .long .text + 1
++
++.section .foo
++.byte 0
++
++.section .bar
++.dc.a .foo + 1
++.dc.l .text
++
++.section .debug_line
++.dc.a .foo + 1
++.dc.l .text
+-- 
+2.42.0.515.g380fc7ccd1-goog
+

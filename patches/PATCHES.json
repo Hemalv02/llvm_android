@@ -413,6 +413,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [ELF][RISCV] Implement --emit-relocs with relaxation"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/649cac3b627fa3d466b8807536c8be970cc8c32f.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 512052
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [ARM][ISel] Fix crash of ISD::FMINNUM/FMAXNUM."
         },
         "platforms": [
@@ -422,6 +436,76 @@
         "version_range": {
             "from": 498229,
             "until": 512577
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ELF][test] Improve relocations referencing STT_SECTION tests for -r"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/345f532f3fe9bd4b6d55a490683455ee542d90d9.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 513062
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ELF][test] Improve tests about non-SHF_ALLOC sections relocated by non-ABS relocations"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a495b2f8cbcadf52dab0d29b7fafdc97f2a8b1da.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 513197
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ELF] Remove a R_ARM_PCA special case from relocateNonAlloc"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/678c1f142c0688a092bf36c98294e5302b105a41.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 513198
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ELF][test] Improve non-abs-reloc.s to test non-STT_SECTION local symbol"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/561b98f9e025363b416f4e89af750d01d1e8c4cc.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 513318
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [ELF] -r --compress-debug-sections: update implicit addends for .rel.debug_* referencing STT_SECTION symbols (#66804)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f5b42eaadb068641c175e39303421818354e7ffb.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 513321
         }
     },
     {
