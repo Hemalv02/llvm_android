@@ -16,8 +16,6 @@ RUN apt-get update \
   zip \
   # Required by android-build buildbot
   tzdata \
-  # clang-3289846 uses host libncurses5
-  libncurses5 \
   # Necessary to test 32-bit runtimes.
   gcc-multilib \
   libc6-dev-i386-cross \
