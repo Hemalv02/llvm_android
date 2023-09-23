@@ -390,7 +390,7 @@ def main():
     else:
         cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb', '--mlgo']
         if args.clang_bootstrap_path:
-            cmd.append(f'--bootstrap-use={args.bootstrap_clang_path}')
+            cmd.append(f'--bootstrap-use={args.clang_bootstrap_path}')
         if args.profile:
             cmd.append('--build-instrumented')
             cmd.append('--skip-tests')
