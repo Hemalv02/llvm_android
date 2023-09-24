@@ -1265,6 +1265,8 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
     install_dir: Path = paths.OUT_DIR / 'windows-x86-64-install'
     toolchain_name: str = 'stage1'
     build_lldb: bool = True
+    lto: bool = False
+    profdata_file: Optional[Path] = None
 
     @property
     def _is_msvc(self) -> bool:
@@ -1300,6 +1302,10 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
             defines['LLDB_PYTHON_RELATIVE_PATH'] = f'lib/python{paths._PYTHON_VER}/site-packages'
             defines['LLDB_PYTHON_EXE_RELATIVE_PATH'] = f'python3'
             defines['LLDB_PYTHON_EXT_SUFFIX'] = '.exe'
+        if self.lto:
+            defines['LLVM_ENABLE_LTO'] = 'Thin'
+        if self.profdata_file:
+            defines['LLVM_PROFDATA_FILE'] = str(self.profdata_file)
 
         defines['CMAKE_CXX_STANDARD'] = '17'
 
@@ -1331,6 +1337,9 @@ class WindowsToolchainBuilder(base_builders.LLVMBuilder):
         cflags.append('-DLZMA_API_STATIC')
         cflags.append('-DMS_WIN64')
         cflags.append(f'-I{paths.WIN_ZLIB_INCLUDE_PATH}')
+        if self.profdata_file:
+            cflags.append('-Wno-profile-instr-out-of-date')
+            cflags.append('-Wno-profile-instr-unprofiled')
         return cflags
 
     @property
