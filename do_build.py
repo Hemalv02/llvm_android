@@ -80,6 +80,8 @@ def extract_profiles() -> Profile:
 
 
 def build_llvm_for_windows(enable_assertions: bool,
+                           enable_lto: bool,
+                           profdata_file: Optional[Path],
                            build_name: str,
                            build_lldb: bool,
                            swig_builder: Optional[builders.SwigBuilder],
@@ -135,6 +137,7 @@ def build_llvm_for_windows(enable_assertions: bool,
         win_builder.build_name = build_name
         win_builder.svn_revision = android_version.get_svn_revision()
         win_builder.enable_assertions = enable_assertions
+        win_builder.lto = enable_lto
         win_builder.build()
 
     if build_simpleperf_readelf:
@@ -1039,12 +1042,12 @@ def main():
     else:
         swig_builder = None
 
-    if need_host:
-        if args.pgo:
-            profdata, clang_bolt_fdata = extract_profiles()
-        else:
-            profdata, clang_bolt_fdata = None, None
+    if args.pgo:
+        profdata, clang_bolt_fdata = extract_profiles()
+    else:
+        profdata, clang_bolt_fdata = None, None
 
+    if need_host:
         stage2 = builders.Stage2Builder(host_configs)
         stage2.build_name = args.build_name
         stage2.svn_revision = android_version.get_svn_revision()
@@ -1116,6 +1119,8 @@ def main():
             win_sdk.set_path(Path(args.windows_sdk))
         win_builder, win_lldb_bins = build_llvm_for_windows(
             enable_assertions=args.enable_assertions,
+            enable_lto=args.lto,
+            profdata_file=profdata,
             build_name=args.build_name,
             build_lldb=build_lldb,
             swig_builder=swig_builder,
