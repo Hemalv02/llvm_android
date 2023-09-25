@@ -15,6 +15,7 @@
 #
 """Helpers for paths."""
 
+import glob
 import os
 from pathlib import Path
 import string
@@ -101,7 +102,7 @@ def pgo_profdata_tarname() -> str:
 def pgo_profdata_tar() -> Optional[Path]:
     profile_env = os.getenv('LLVM_PGO_PROFILE')
     if profile_env is not None:
-        profile = Path(profile_env)
+        profile = Path(glob.glob(profile_env)[0])
     else:
         profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
                    pgo_profdata_tarname())
@@ -116,7 +117,7 @@ def bolt_fdata_tarname() -> str:
 def bolt_fdata_tar() -> Optional[Path]:
     profile_env = os.getenv('LLVM_BOLT_PROFILE')
     if profile_env is not None:
-        profile = Path(profile_env)
+        profile = Path(glob.glob(profile_env)[0])
     else:
         profile = (PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles' /
                    bolt_fdata_tarname())
