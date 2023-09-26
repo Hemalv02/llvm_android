@@ -708,7 +708,7 @@ def package_toolchain(toolchain_builder: LLVMBuilder,
         tarball_name = package_name + '-' + tag + '.tar.xz'
         package_path = paths.DIST_DIR / tarball_name
         logger().info(f'Packaging {package_path}')
-        utils.create_tarball(install_host_dir, package_name, package_path)
+        utils.create_tarball(install_host_dir, [package_name], package_path)
 
 
 def parse_args():
@@ -1029,10 +1029,10 @@ def main():
     if args.bootstrap_use:
         with timer.Timer(f'extract_bootstrap'):
             utils.extract_tarball(paths.OUT_DIR, args.bootstrap_use)
-        set_default_toolchain(toolchains.Toolchain(paths.OUT_DIR / 'stage1-install', Path('.')))
+        set_default_toolchain(toolchains.Toolchain(paths.OUT_DIR / 'stage1-install', paths.OUT_DIR / 'stage1'))
     if args.bootstrap_build_only:
         with timer.Timer(f'package_bootstrap'):
-            utils.create_tarball(paths.OUT_DIR, 'stage1-install', paths.DIST_DIR / 'stage1-install.tar.xz')
+            utils.create_tarball(paths.OUT_DIR, ['stage1', 'stage1-install'], paths.DIST_DIR / 'stage1-install.tar.xz')
         return
 
     if build_lldb:

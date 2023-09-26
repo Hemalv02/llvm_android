@@ -65,9 +65,9 @@ def create_tarball(source_dir, input, output):
     xz_env = os.environ.copy()
     xz_env["XZ_OPT"] = "-T0"
     subprocess.run([
-        'tar', '-cJC',
-        str(source_dir), str(input), '-f',
-        str(output)
+        'tar', '-cJC', str(source_dir),
+        *map(str, input),
+        '-f', str(output)
     ], env=xz_env)
 
 
