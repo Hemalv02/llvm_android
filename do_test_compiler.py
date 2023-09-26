@@ -71,7 +71,7 @@ class PgoProfileHandler(ProfileHandler):
         ])
 
         dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
-        utils.create_tarball(profdata_dir, profdata_filename,
+        utils.create_tarball(profdata_dir, [profdata_filename],
                              dist_dir / paths.pgo_profdata_tarname())
 
 
@@ -92,7 +92,7 @@ class BoltProfileHandler(ProfileHandler):
         ])
 
         dist_dir = Path(os.environ.get('DIST_DIR', paths.OUT_DIR))
-        utils.create_tarball(bolt_collection_path, clang_fdata_filename,
+        utils.create_tarball(bolt_collection_path, [clang_fdata_filename],
                              dist_dir / paths.bolt_fdata_tarname())
 
 
