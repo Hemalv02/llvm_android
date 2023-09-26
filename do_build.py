@@ -51,32 +51,28 @@ def set_default_toolchain(toolchain: toolchains.Toolchain) -> None:
     Builder.toolchain = toolchain
 
 
-class Profile(NamedTuple):
-    """ Optimization profiles including PGO and BOLT. """
-    PgoProfile: Optional[Path]
-    ClangBoltProfile: Optional[Path]
-
-
-def extract_profiles() -> Profile:
+def extract_pgo_profile() -> Optional[Path]:
     pgo_profdata_tar = paths.pgo_profdata_tar()
     if not pgo_profdata_tar:
-        return Profile(None, None)
+        return None
     utils.extract_tarball(paths.OUT_DIR, pgo_profdata_tar)
     profdata_file = paths.OUT_DIR / paths.pgo_profdata_filename()
     if not profdata_file.exists():
         logger().info('PGO profdata missing')
-        return Profile(None, None)
+        return None
+    return profdata_file
 
+
+def extract_bolt_profile() -> Optional[Path]:
     bolt_fdata_tar = paths.bolt_fdata_tar()
     if not bolt_fdata_tar:
-        return Profile(profdata_file, None)
+        return None
     utils.extract_tarball(paths.OUT_DIR, bolt_fdata_tar)
     clang_bolt_fdata_file = paths.OUT_DIR / 'clang.fdata'
     if not clang_bolt_fdata_file.exists():
         logger().info('Clang BOLT profile missing')
-        return Profile(profdata_file, None)
-
-    return Profile(profdata_file, clang_bolt_fdata_file)
+        return None
+    return clang_bolt_fdata_file
 
 
 def build_llvm_for_windows(enable_assertions: bool,
@@ -1043,9 +1039,14 @@ def main():
         swig_builder = None
 
     if args.pgo:
-        profdata, clang_bolt_fdata = extract_profiles()
+        profdata = extract_pgo_profile()
     else:
-        profdata, clang_bolt_fdata = None, None
+        profdata = None
+
+    if args.bolt:
+        clang_bolt_fdata = extract_bolt_profile()
+    else:
+        clang_bolt_fdata = None
 
     if need_host:
         stage2 = builders.Stage2Builder(host_configs)
