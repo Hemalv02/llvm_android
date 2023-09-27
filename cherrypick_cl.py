@@ -23,8 +23,10 @@ from dataclasses import dataclass
 import json
 import logging
 import math
+import os
 from pathlib import Path
 import re
+import sys
 from typing import Any, Dict, List, Optional, Tuple
 import urllib.request
 
@@ -192,6 +194,18 @@ def create_cl(new_patches: PatchList, reason: str, bug: Optional[str], cherry: b
 
     subject = f'[patches] Cherry pick CLS for: {reason}'
     commit_lines = [subject, '']
+    script = os.path.basename(sys.argv[0])
+    for i in range(len(sys.argv)):
+        element = sys.argv[i]
+        if element.startswith('--reason'):
+            del sys.argv[i]
+            if element == '--reason':
+              del sys.argv[i]
+            break
+
+    args = ' '.join(sys.argv[1:])
+    auto_msg = f'This change is generated automatically by the script:\n  {script} {args}'
+    commit_lines = [auto_msg, '']
     if bug:
         if bug.isnumeric():
             commit_lines += [f'Bug: http://b/{bug}', '']
