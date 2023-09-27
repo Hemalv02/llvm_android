@@ -51,27 +51,25 @@ def set_default_toolchain(toolchain: toolchains.Toolchain) -> None:
     Builder.toolchain = toolchain
 
 
-def extract_pgo_profile() -> Optional[Path]:
+def extract_pgo_profile() -> Path:
     pgo_profdata_tar = paths.pgo_profdata_tar()
     if not pgo_profdata_tar:
-        return None
+        raise RuntimeError(f'{pgo_profdata_tar} does not exist')
     utils.extract_tarball(paths.OUT_DIR, pgo_profdata_tar)
     profdata_file = paths.OUT_DIR / paths.pgo_profdata_filename()
     if not profdata_file.exists():
-        logger().info('PGO profdata missing')
-        return None
+        raise RuntimeError(f'{profdata_file} does not exist')
     return profdata_file
 
 
-def extract_bolt_profile() -> Optional[Path]:
+def extract_bolt_profile() -> Path:
     bolt_fdata_tar = paths.bolt_fdata_tar()
     if not bolt_fdata_tar:
-        return None
+        raise RuntimeError(f'{bolt_fdata_tar} does not exist')
     utils.extract_tarball(paths.OUT_DIR, bolt_fdata_tar)
     clang_bolt_fdata_file = paths.OUT_DIR / 'clang.fdata'
     if not clang_bolt_fdata_file.exists():
-        logger().info('Clang BOLT profile missing')
-        return None
+        raise RuntimeError(f'{clang_bolt_fdata_file} does not exist')
     return clang_bolt_fdata_file
 
 
@@ -1059,7 +1057,7 @@ def main():
         stage2.enable_mlgo = mlgo
         stage2.bolt_optimize = args.bolt
         stage2.bolt_instrument = args.bolt_instrument
-        stage2.profdata_file = profdata if profdata else None
+        stage2.profdata_file = profdata
         stage2.build_32bit_runtimes = hosts.build_host().is_linux
 
         libzstd_builder = builders.ZstdBuilder(host_configs)
@@ -1100,7 +1098,7 @@ def main():
 
         stage2.build()
 
-        if do_bolt and clang_bolt_fdata is not None:
+        if do_bolt:
             bolt_optimize(stage2, clang_bolt_fdata)
 
         if not (stage2.build_instrumented or stage2.debug_build):
