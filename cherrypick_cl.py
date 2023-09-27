@@ -18,6 +18,7 @@
 from __future__ import annotations
 import argparse
 import collections
+import copy
 import dataclasses
 from dataclasses import dataclass
 import json
@@ -195,15 +196,16 @@ def create_cl(new_patches: PatchList, reason: str, bug: Optional[str], cherry: b
     subject = f'[patches] Cherry pick CLS for: {reason}'
     commit_lines = [subject, '']
     script = os.path.basename(sys.argv[0])
-    for i in range(len(sys.argv)):
-        element = sys.argv[i]
+    argv_deepcopy = copy.deepcopy(sys.argv[1:])
+    for i in range(len(argv_deepcopy)):
+        element = argv_deepcopy[i]
         if element.startswith('--reason'):
-            del sys.argv[i]
+            del argv_deepcopy[i]
             if element == '--reason':
-              del sys.argv[i]
+              del argv_deepcopy[i]
             break
 
-    args = ' '.join(sys.argv[1:])
+    args = ' '.join(argv_deepcopy)
     auto_msg = f'This change is generated automatically by the script:\n  {script} {args}'
     commit_lines = [auto_msg, '']
     if bug:
