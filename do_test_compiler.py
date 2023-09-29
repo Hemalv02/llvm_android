@@ -380,7 +380,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
 
     args = parse_args()
-    modules = ['dist']
+    modules = ['dist', 'device-tests', 'platform_tests']
     if args.module:
         modules = args.module
     if args.clang_path is not None:
