@@ -52,6 +52,7 @@ def parse_args():
     parser.add_argument('--bug', help='bug to reference in CLs created (if any)')
     parser.add_argument('--reason', help='issue/reason to mention in CL subject line')
     parser.add_argument('--verbose', help='Enable logging')
+    parser.add_argument('--patch-file', help='Use custom patch file')
     args = parser.parse_args()
     return args
 
@@ -150,8 +151,7 @@ class PatchList(list):
             json.dump(array, fh, indent=4, separators=(',', ': '), sort_keys=True)
             fh.write('\n')
 
-
-def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
+def generate_patch_files(sha_list: List[str], start_version: int, patch_list: PatchList) -> PatchList:
     """ generate upstream cherry-pick patch files """
     upstream_dir = paths.TOOLCHAIN_LLVM_PATH
     fetch_upstream()
@@ -159,8 +159,10 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
     for sha in sha_list:
         if len(sha) < 40:
             sha = get_full_sha(upstream_dir, sha)
-        file_path = paths.SCRIPTS_DIR / 'patches' / 'cherry' / f'{sha}.patch'
-        assert not file_path.exists(), f'{file_path} already exists'
+        version = find_version(sha, patch_list, start_version)
+        version_name = '' if version == 1 else f'-v{version}'
+        rel_patch_path = f'cherry/{sha}' + version_name + '.patch'
+        file_path = paths.SCRIPTS_DIR / 'patches' / rel_patch_path
         with open(file_path, 'w') as fh:
             check_call(f'git format-patch -1 {sha} --stdout',
                        stdout=fh, shell=True, cwd=upstream_dir)
@@ -169,7 +171,6 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
             f'git log -n1 --format=%s {sha}', shell=True, cwd=upstream_dir)
         info: Optional[List[str]] = []
         title = '[UPSTREAM] ' + commit_subject.strip()
-        rel_patch_path = f'cherry/{sha}.patch'
         end_version = sha_to_revision(sha)
         metadata = { 'info': info, 'title': title }
         platforms = ['android']
@@ -180,6 +181,32 @@ def generate_patch_files(sha_list: List[str], start_version: int) -> PatchList:
         result.append(PatchItem(metadata, platforms, rel_patch_path, version_range))
     return result
 
+def add_new_patch_for_sha(patch_file: Path, sha: str, start_version: int, patch_list: PatchList) -> PatchList:
+    """ add patch files for sha"""
+    upstream_dir = paths.TOOLCHAIN_LLVM_PATH
+    result = []
+    assert len(sha) >= 40, f'the length of {sha} is {len(sha)} and it is shorter than 40'
+    version = find_version(sha, patch_list, start_version)
+    version_name = '' if version == 1 else f'-v{version}'
+    rel_patch_path = f'cherry/{sha}' + version_name + '.patch'
+    file_path = paths.SCRIPTS_DIR / 'patches' / rel_patch_path
+    with open(patch_file, 'r') as source, open(file_path, 'w') as dest:
+        for line in source:
+           dest.write(line)
+
+    commit_subject = check_output(
+        f'git log -n1 --format=%s {sha}', shell=True, cwd=upstream_dir)
+    info: Optional[List[str]] = []
+    title = '[UPSTREAM] ' + commit_subject.strip()
+    end_version = sha_to_revision(sha)
+    metadata = { 'info': info, 'title': title }
+    platforms = ['android']
+    version_range: Dict[str, Optional[int]] = {
+        'from': start_version,
+        'until': end_version,
+    }
+    result.append(PatchItem(metadata, platforms, rel_patch_path, version_range))
+    return result
 
 def get_full_sha(upstream_dir: Path, short_sha: str) -> str:
     return check_output(['git', 'rev-parse', short_sha], cwd=upstream_dir).strip()
@@ -271,6 +298,29 @@ def create_patch(diff, start_version) -> PatchList:
     result.append(PatchItem(metadata, platforms, rel_patch_path, version_range))
     return result
 
+def find_version(sha, patch_list, start_version) -> int:
+    """ Return the next version for the given SHA and update end_revision if needed"""
+    target = f'cherry/{sha}'
+    last_idx = -1
+    version = 1
+    name = ''
+
+    # Find the latest version
+    for i, item in enumerate(patch_list):
+        if item.rel_patch_path.startswith(target):
+           last_idx = i
+           name = item.rel_patch_path.removesuffix('.patch')
+
+    # If this patch is not new, update the end_revision for Vn
+    if last_idx != -1:
+       patch_list[last_idx].version_range['until'] = start_version
+       if name == target:
+        return 2
+       prefix = target + f'-v'
+       version = int(name.removeprefix(prefix)) + 1
+
+    return version
+
 def main():
     args = parse_args()
     level = logging.DEBUG if args.verbose else logging.INFO
@@ -286,7 +336,11 @@ def main():
         patch_list.extend(new_patches)
     elif args.sha:
         start_version = parse_start_version(args.start_version)
-        new_patches = generate_patch_files(args.sha, start_version)
+        if args.patch_file:
+            assert len(args.sha) == 1,  f'error: --patch-file only requires 1 sha, but the size of sha list is {len(args.sha)}'
+            new_patches = add_new_patch_for_sha(args.patch_file, args.sha[0], start_version, patch_list)
+        else:
+            new_patches = generate_patch_files(args.sha, start_version, patch_list)
         patch_list.extend(new_patches)
 
     patch_list.sort()
