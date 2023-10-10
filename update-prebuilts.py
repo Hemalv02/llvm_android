@@ -200,6 +200,8 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
     # Handle legacy versions of packages (like those from aosp/llvm-r365631).
     if not os.path.exists(package) and host == 'windows-x86':
         package = f'{download_dir}/clang-{build_number}-windows-x86-64.tar.xz'
+
+    build_info_file = f'{download_dir}/BUILD_INFO-{host}'
     manifest_file = f'{download_dir}/{manifest}'
 
     utils.extract_tarball(prebuilt_dir, package)
@@ -257,6 +259,7 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
         if not validity_check(host, install_subdir, clang_version_major):
             sys.exit(1)
 
+    shutil.copy(build_info_file, str(prebuilt_dir / install_subdir / 'BUILD_INFO'))
     shutil.copy(manifest_file, str(prebuilt_dir / install_subdir))
 
     utils.check_call(['git', 'add', install_subdir])
@@ -320,6 +323,8 @@ def main():
     targets = [targets_map[h] for h  in hosts]
     if 'linux-x86' in hosts:
         targets.append('linux_musl')
+
+    build_info = 'BUILD_INFO'
     clang_pattern = 'clang-*.tar.xz'
     manifest = f'manifest_{args.build}.xml'
 
@@ -340,6 +345,10 @@ def main():
     try:
         if do_fetch:
             fetch_artifact(branch, targets[0], args.build, manifest)
+            for host in hosts:
+                target = targets_map[host]
+                fetch_artifact(branch, target, args.build, build_info)
+                os.rename(f'{download_dir}/{build_info}', f'{download_dir}/{build_info}-{host}')
             for target in targets:
                 fetch_artifact(branch, target, args.build, clang_pattern)
 
