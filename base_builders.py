@@ -860,8 +860,8 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         if self.enable_mlgo:
             defines['TENSORFLOW_AOT_PATH'] = paths.get_tensorflow_path()
-            defines['LLVM_INLINER_MODEL_PATH'] = paths.mlgo_model('inlining-Oz-99f0063-v1.1')
-            defines['LLVM_RAEVICT_MODEL_PATH'] = paths.mlgo_model('regalloc-evict-e67430c-v1.0')
+            defines['LLVM_INLINER_MODEL_PATH'] = paths.mlgo_model('x86_64/inlining-Oz-99f0063-v1.1')
+            defines['LLVM_RAEVICT_MODEL_PATH'] = paths.mlgo_model('x86_64/regalloc-evict-e67430c-v1.0')
 
         return defines
 
