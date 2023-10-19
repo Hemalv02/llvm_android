@@ -586,7 +586,7 @@ class LLVMBuilder(LLVMBaseBuilder):
     use_sccache: bool = False
     libzstd: Optional[LibInfo] = None
     runtimes_triples: List[str] = list()
-    build_32bit_runtimes: bool = False
+    build_cross_runtimes: bool = False
 
     # lldb options.
     build_lldb: bool = True
@@ -787,9 +787,11 @@ class LLVMBuilder(LLVMBaseBuilder):
 
         if self._config.target_os.is_linux:
             runtime_configs = [self._config]
-            if self.build_32bit_runtimes:
+            if self.build_cross_runtimes:
                 if self._config.is_musl:
                     runtime_configs.append(configs.LinuxMuslHostConfig(hosts.Arch.I386))
+                    runtime_configs.append(configs.LinuxMuslHostConfig(hosts.Arch.ARM))
+                    runtime_configs.append(configs.LinuxMuslHostConfig(hosts.Arch.AARCH64))
                 else:
                     runtime_configs.append(configs.LinuxConfig(is_32_bit=True))
 
@@ -801,7 +803,7 @@ class LLVMBuilder(LLVMBaseBuilder):
             # With per-target runtime dirs, clang no longer links the builtins
             # for the glibc triple when targetting musl.  In the glibc
             # configuration, build the musl builtins as well.
-            if self.build_32bit_runtimes and not self._config.is_musl:
+            if self.build_cross_runtimes and not self._config.is_musl:
                 defines['LLVM_BUILTIN_TARGETS'] = triples + ';x86_64-unknown-linux-musl;i686-unknown-linux-musl'
 
             # We need to explicitly propagate some CMake flags to the runtimes

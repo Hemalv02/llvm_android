@@ -225,17 +225,28 @@ def update_clang(host, build_number, use_current_branch, download_dir, bug,
             "*/lib/libclang.so*",
             "*/lib/*/libc++.so*",
             "*/lib/libc_musl.so",
+            "*/lib/aarch64-unknown-linux-musl/libc++.a",
+            "*/lib/aarch64-unknown-linux-musl/libc++abi.a",
             "*/lib/x86_64-unknown-linux-musl/libc++.a",
             "*/lib/x86_64-unknown-linux-musl/libc++abi.a",
+            "*/include/aarch64-unknown-linux-musl/c++/v1/__config_site",
+            "*/include/x86_64-unknown-linux-musl/c++/v1/__config_site",
             ])
         install_clang_directory(extract_subdir, musl_install_subdir, overwrite)
 
-        x86_64_linux_musl_lib_dir = (Path(install_subdir) / 'lib' / 'clang' / clang_version_major / 'lib'
-                                     / 'x86_64-unknown-linux-musl')
-        shutil.move(Path(musl_install_subdir) / 'lib' / 'x86_64-unknown-linux-musl' / 'libc++.a',
-                    x86_64_linux_musl_lib_dir)
-        shutil.move(Path(musl_install_subdir) / 'lib' / 'x86_64-unknown-linux-musl' / 'libc++abi.a',
-                    x86_64_linux_musl_lib_dir)
+        for triple in ('aarch64-unknown-linux-musl', 'x86_64-unknown-linux-musl'):
+            # Move archives.
+            src_dir = Path(musl_install_subdir) / 'lib' / triple
+            dest_dir = Path(install_subdir) / 'lib' / 'clang' / clang_version_major / 'lib' / triple
+            dest_dir.mkdir(exist_ok=True)  # The x86_64 triple will already exist.
+            for name in ('libc++.a', 'libc++abi.a'):
+                shutil.move(src_dir / name, dest_dir / name)
+            # Move __config_site include files. The include/${triple}/c++/v1 directories will become
+            # empty; git will exclude them because it only tracks files.
+            src_dir = Path(musl_install_subdir) / 'include' / triple / 'c++' / 'v1'
+            dest_dir = Path(install_subdir) / 'include' / triple / 'c++' / 'v1'
+            dest_dir.mkdir(parents=True)
+            shutil.move(src_dir / '__config_site', dest_dir / '__config_site')
 
         with open(paths.KLEAF_VERSIONS_BZL) as f:
             kleaf_versions_lines = f.read().splitlines()
