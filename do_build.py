@@ -1058,7 +1058,7 @@ def main():
         stage2.bolt_optimize = args.bolt
         stage2.bolt_instrument = args.bolt_instrument
         stage2.profdata_file = profdata
-        stage2.build_32bit_runtimes = hosts.build_host().is_linux
+        stage2.build_cross_runtimes = hosts.build_host().is_linux
 
         libzstd_builder = builders.ZstdBuilder(host_configs)
         libzstd_builder.build()
