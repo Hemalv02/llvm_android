@@ -245,7 +245,7 @@ class TestValidateOrderfile(unittest.TestCase):
         # and has a message saying _Z5mergePiiii must be before _Z9mergeSortPiii in orderfile
         last_line = context.exception.output.split("\n")[-2]
         self.assertEqual(last_line,
-                        "RuntimeError: _Z5mergePiiii must be before _Z9mergeSortPiii in orderfile")
+                        "RuntimeError: `_Z5mergePiiii` must be before `_Z9mergeSortPiii` in orderfile")
 
         # Test a bad partial order in file format
         with self.assertRaises(subprocess.CalledProcessError) as context:
@@ -257,7 +257,7 @@ class TestValidateOrderfile(unittest.TestCase):
         # and has a message saying _Z5mergePiiii must be before _Z9mergeSortPiii in orderfile
         last_line = context.exception.output.split("\n")[-2]
         self.assertEqual(last_line,
-                        "RuntimeError: _Z5mergePiiii must be before _Z9mergeSortPiii in orderfile")
+                        "RuntimeError: `_Z5mergePiiii` must be before `_Z9mergeSortPiii` in orderfile")
 
     # Test if the validate script checks if symbols are present in orderfile based on both format
     def test_validate_orderfile_allowlist_flag(self):
@@ -397,15 +397,16 @@ class TestMergeOrderfile(unittest.TestCase):
         THIS_DIR = os.path.realpath(os.path.dirname(__file__))
         self.validate_script = top+"/toolchain/llvm_android/orderfiles//scripts/validate_orderfile.py"
         self.merge_script = top+"/toolchain/llvm_android/orderfiles/scripts/merge_orderfile.py"
-        self.output_file = THIS_DIR+"/default.orderfile"
-        self.folder = top+"/toolchain/llvm_android/orderfiles/test/merge-test"
+        self.output_file = THIS_DIR+"/merged-normal.orderfile"
+        self.merge_test_folder = top+"/toolchain/llvm_android/orderfiles/test/merge-test"
         self.file = top+"/toolchain/llvm_android/orderfiles/test/merge-test/merge.txt"
 
     # Test if the order files are merged correctly
     def test_merge_orderfile_normal(self):
         # Test a folder input
         utils.check_call(["python3", self.merge_script,
-                            "--order-files", f"^{self.folder}"])
+                            "--order-files", f"^{self.merge_test_folder}",
+                            f"--output={self.output_file}"])
         self.assertTrue(os.path.isfile(self.output_file))
 
         output = utils.check_output(["python3", self.validate_script,
@@ -418,7 +419,8 @@ class TestMergeOrderfile(unittest.TestCase):
 
         # Test the file format with different weights
         utils.check_call(["python3", self.merge_script,
-                            "--order-files", f"@{self.file}"])
+                            "--order-files", f"@{self.file}",
+                            f"--output={self.output_file}"])
         self.assertTrue(os.path.isfile(self.output_file))
 
         output = utils.check_output(["python3", self.validate_script,
@@ -431,10 +433,11 @@ class TestMergeOrderfile(unittest.TestCase):
 
         # Test with CSV format
         lst = ["1.orderfile", "2.orderfile"]
-        lst = [self.folder + "/" + orderfile for orderfile in lst]
+        lst = [self.merge_test_folder + "/" + orderfile for orderfile in lst]
         param = ",".join(lst)
         utils.check_call(["python3", self.merge_script,
-                            "--order-files", param])
+                            "--order-files", param,
+                            f"--output={self.output_file}"])
         self.assertTrue(os.path.isfile(self.output_file))
 
         output = utils.check_output(["python3", self.validate_script,
