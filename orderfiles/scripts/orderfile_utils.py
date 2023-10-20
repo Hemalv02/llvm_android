@@ -65,12 +65,15 @@ def parse_merge_list(param : str) -> list[tuple[str,int]]:
             for line in f:
                 line = line.strip()
                 line_list = line.split(",")
+                # Name, Weight
                 file_list.append((file_dir / line_list[0], int(line_list[1])))
         return file_list
 
     if param[0] == "^":
         file_lst = glob.glob(param[1:]+"/*.orderfile")
-        file_list = [(orderfile, 1) for orderfile in file_lst]
+        # Assumig weight of 1 for all the files. Sorting of files provides
+        # a deterministic order of orderfile.
+        file_list = sorted([(orderfile, 1) for orderfile in file_lst])
         return file_list
 
     file_lst = param.split(",")

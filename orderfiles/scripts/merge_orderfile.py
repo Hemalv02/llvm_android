@@ -311,7 +311,7 @@ def parse_args() -> argparse.Namespace:
         "--order-files",
         required=True,
         help="A collection of order files that need to be merged together."
-             "Format: A file-per-line file with @, a folder with ^, or comma separarted values within a quotation."
+             "Format: A file-per-line file with @, a folder with ^, or comma separated values within a quotation."
              "For example, you can say @file.txt, ^path/to/folder or '1.orderfile,2.orderfile'.")
 
     parser.add_argument(
@@ -321,7 +321,7 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument(
         "--graph-image",
-        help="Provide the output image name for the graph rerpresentation of the order files.")
+        help="Provide the output image name for the graph representation of the order files.")
 
     return parser.parse_args()
 
