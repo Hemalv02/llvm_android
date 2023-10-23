@@ -665,15 +665,6 @@ class LLVMBuilder(LLVMBaseBuilder):
         else:
             defines['LLDB_ENABLE_CURSES'] = 'OFF'
 
-        if self.libzstd:
-            defines['LLVM_ENABLE_ZSTD'] = 'FORCE_ON'
-            defines['LLVM_USE_STATIC_ZSTD'] = 'ON'
-            defines['zstd_LIBRARY'] = self.libzstd.link_libraries[0]
-            defines['zstd_STATIC_LIBRARY'] = self.libzstd.link_libraries[1]
-            defines['zstd_INCLUDE_DIR'] = self.libzstd.include_dir
-        else:
-            defines['LLVM_ENABLE_ZSTD'] = 'OFF'
-
         defines['LLDB_INCLUDE_TESTS'] = 'OFF'
 
     def _install_lib_deps(self, lib_dir, bin_dir=None) -> None:
@@ -760,6 +751,15 @@ class LLVMBuilder(LLVMBaseBuilder):
         if self.libxml2:
             defines['LIBXML2_INCLUDE_DIR'] = str(self.libxml2.include_dir)
             defines['LIBXML2_LIBRARY'] = str(self.libxml2.link_libraries[0])
+
+        if self.libzstd:
+            defines['LLVM_ENABLE_ZSTD'] = 'FORCE_ON'
+            defines['LLVM_USE_STATIC_ZSTD'] = 'ON'
+            defines['zstd_LIBRARY'] = self.libzstd.link_libraries[0]
+            defines['zstd_STATIC_LIBRARY'] = self.libzstd.link_libraries[1]
+            defines['zstd_INCLUDE_DIR'] = self.libzstd.include_dir
+        else:
+            defines['LLVM_ENABLE_ZSTD'] = 'OFF'
 
         if self.build_lldb:
             self._set_lldb_flags(self._config.target_os, defines)
