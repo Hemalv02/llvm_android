@@ -205,14 +205,6 @@ def create_cl(new_patches: PatchList, reason: str, bug: Optional[str], cherry: b
               del argv_deepcopy[i]
             break
 
-    args = ' '.join(argv_deepcopy)
-    auto_msg = f'This change is generated automatically by the script:\n  {script} {args}'
-    commit_lines = [auto_msg, '']
-    if bug:
-        if bug.isnumeric():
-            commit_lines += [f'Bug: http://b/{bug}', '']
-        else:
-            commit_lines += [f'Bug: {bug}', '']
     for patch in new_patches:
         if cherry: # Add SHA and title for each cherry-pick.
             sha = patch.sha[:11]
@@ -222,8 +214,17 @@ def create_cl(new_patches: PatchList, reason: str, bug: Optional[str], cherry: b
             commit_line = sha + ' ' + subject
         else: # Add link to differential revision.
             commit_line = patch.phab_link
-
         commit_lines.append(commit_line)
+    commit_lines.append('')
+
+    args = ' '.join(argv_deepcopy)
+    auto_msg = f'This change is generated automatically by the script:\n  {script} {args}'
+    commit_lines += [auto_msg, '']
+    if bug:
+        if bug.isnumeric():
+            commit_lines += [f'Bug: http://b/{bug}', '']
+        else:
+            commit_lines += [f'Bug: {bug}', '']
 
     commit_lines += ['', 'Test: N/A']
     check_call(['git', 'commit', '-m', '\n'.join(commit_lines)])
