@@ -511,6 +511,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [clang] Provide an SSE4.2 implementation of identifier token lexer (#68962)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9f0f6060810ebd3006f62149d4739fc54af68536.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 515912
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "Add stubs and headers for nl_types APIs."
         },
         "platforms": [

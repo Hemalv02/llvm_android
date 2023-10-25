@@ -1,0 +1,98 @@
+From 9f0f6060810ebd3006f62149d4739fc54af68536 Mon Sep 17 00:00:00 2001
+From: serge-sans-paille <serge.guelton@telecom-bretagne.eu>
+Date: Thu, 19 Oct 2023 08:45:54 +0000
+Subject: [PATCH] [clang] Provide an SSE4.2 implementation of identifier token
+ lexer (#68962)
+
+The _mm_cmpistri instruction can be used to quickly parse identifiers.
+
+With this patch activated, clang pre-processes <iostream> 1.8% faster,
+and sqlite3.c amalgametion 1.5% faster, based on time measurements and
+number of executed instructions as measured by valgrind.
+
+The introduction of an extra helper function in the regular case has no
+impact on performance, see
+
+
+https://llvm-compile-time-tracker.com/compare.php?from=30240e428f0ec7d4a6d1b84f9f807ce12b46cfd1&to=12bcb016cde4579ca7b75397762098c03eb4f264&stat=instructions:u
+
+---------
+
+Co-authored-by: serge-sans-paille <sguelton@mozilla.com>
+---
+ clang/lib/Lex/Lexer.cpp | 46 ++++++++++++++++++++++++++++++++++-------
+ 1 file changed, 39 insertions(+), 7 deletions(-)
+
+diff --git a/clang/lib/Lex/Lexer.cpp b/clang/lib/Lex/Lexer.cpp
+index feed1b9ecd71..675ec28e5147 100644
+--- a/clang/lib/Lex/Lexer.cpp
++++ b/clang/lib/Lex/Lexer.cpp
+@@ -47,6 +47,10 @@
+ #include <tuple>
+ #include <utility>
+ 
++#ifdef __SSE4_2__
++#include <nmmintrin.h>
++#endif
++
+ using namespace clang;
+ 
+ //===----------------------------------------------------------------------===//
+@@ -1847,19 +1851,47 @@ bool Lexer::LexUnicodeIdentifierStart(Token &Result, uint32_t C,
+   return true;
+ }
+ 
++static const char *
++fastParseASCIIIdentifier(const char *CurPtr,
++                         [[maybe_unused]] const char *BufferEnd) {
++#ifdef __SSE4_2__
++  alignas(16) static constexpr char AsciiIdentifierRange[16] = {
++      '_', '_', 'A', 'Z', 'a', 'z', '0', '9',
++  };
++  constexpr ssize_t BytesPerRegister = 16;
++
++  __m128i AsciiIdentifierRangeV =
++      _mm_load_si128((const __m128i *)AsciiIdentifierRange);
++
++  while (LLVM_LIKELY(BufferEnd - CurPtr >= BytesPerRegister)) {
++    __m128i Cv = _mm_loadu_si128((const __m128i *)(CurPtr));
++
++    int Consumed = _mm_cmpistri(AsciiIdentifierRangeV, Cv,
++                                _SIDD_LEAST_SIGNIFICANT | _SIDD_CMP_RANGES |
++                                    _SIDD_UBYTE_OPS | _SIDD_NEGATIVE_POLARITY);
++    CurPtr += Consumed;
++    if (Consumed == BytesPerRegister)
++      continue;
++    return CurPtr;
++  }
++#endif
++
++  unsigned char C = *CurPtr;
++  while (isAsciiIdentifierContinue(C))
++    C = *++CurPtr;
++  return CurPtr;
++}
++
+ bool Lexer::LexIdentifierContinue(Token &Result, const char *CurPtr) {
+   // Match [_A-Za-z0-9]*, we have already matched an identifier start.
++
+   while (true) {
+-    unsigned char C = *CurPtr;
+-    // Fast path.
+-    if (isAsciiIdentifierContinue(C)) {
+-      ++CurPtr;
+-      continue;
+-    }
++
++    CurPtr = fastParseASCIIIdentifier(CurPtr, BufferEnd);
+ 
+     unsigned Size;
+     // Slow path: handle trigraph, unicode codepoints, UCNs.
+-    C = getCharAndSize(CurPtr, Size);
++    unsigned char C = getCharAndSize(CurPtr, Size);
+     if (isAsciiIdentifierContinue(C)) {
+       CurPtr = ConsumeChar(CurPtr, Size, Result);
+       continue;
+-- 
+2.42.0.820.g83a721a137-goog
+
