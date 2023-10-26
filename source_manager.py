@@ -95,6 +95,7 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
     output.append(f'Base revision: [{base_revision}]({github_url})')
     output.append('')
 
+    patch_lines = []
     patches = patch_output.strip().splitlines()
     patches_iter = iter(patches)
     assert next(patches_iter) == 'The following patches applied successfully:'
@@ -109,8 +110,9 @@ def write_source_info(source_dir: str, patch_output: str) -> None:
         elif patch is None:
             break
         assert patch.endswith('.patch')
-        output.append(_format_patch_line(Path(patch)))
+        patch_lines.append(_format_patch_line(Path(patch)))
 
+    output.extend(sorted(patch_lines))
     with open(paths.OUT_DIR / 'clang_source_info.md', 'w') as outfile:
         outfile.write('\n'.join(output))
 
