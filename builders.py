@@ -102,6 +102,10 @@ class Stage1Builder(base_builders.LLVMBuilder):
 
         return ldflags
 
+    def ldflags_for_runtime(self, _config: configs.Config) -> List[str]:
+        # Stage1 doesn't cross-compile runtimes, so just use the same ldflags for LLVM and runtimes.
+        return self.ldflags
+
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
@@ -180,23 +184,30 @@ class Stage2Builder(base_builders.LLVMBuilder):
                     + f':{self.install_dir}/lib')
         return env
 
+    def _common_ldflags(self, config: configs.Config) -> List[str]:
+        """Extra ldflags used for both the main LLVM stage2 and the runtimes builds."""
+        ldflags = []
+        # TODO: Turn on ICF for Darwin once it can be built with LLD.
+        if not config.target_os.is_darwin:
+            ldflags.append('-Wl,--icf=safe')
+        return ldflags
+
     @property
     def ldflags(self) -> List[str]:
         ldflags = super().ldflags
         if self._config.target_os.is_linux:
-            if isinstance(self._config, configs.LinuxMuslConfig):
-                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-musl')
-            else:
-                ldflags.append('-Wl,-rpath,\$ORIGIN/../lib/x86_64-unknown-linux-gnu')
+            ldflags.append(f'-Wl,-rpath,\\$ORIGIN:\\$ORIGIN/../lib/{self._config.llvm_triple}')
         # '$ORIGIN/../lib' is added by llvm's CMake rules.
         if self.bolt_optimize or self.bolt_instrument:
             ldflags.append('-Wl,-q')
-        # TODO: Turn on ICF for Darwin once it can be built with LLD.
-        if not self._config.target_os.is_darwin:
-            ldflags.append('-Wl,--icf=safe')
         if self.lto and self.enable_mlgo:
             ldflags.append('-Wl,-mllvm,-regalloc-enable-advisor=release')
+        ldflags += self._common_ldflags(self._config)
         return ldflags
+
+    def ldflags_for_runtime(self, config: configs.Config) -> List[str]:
+        # N.B. The runtimes build doesn't add '$ORIGIN/../lib' implicitly.
+        return ['-Wl,-rpath,\\$ORIGIN'] + self._common_ldflags(config)
 
     @property
     def cflags(self) -> List[str]:
