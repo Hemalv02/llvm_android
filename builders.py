@@ -1038,7 +1038,7 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
 
     def gen_configs(platform: bool, apex: bool):
         result = configs.android_configs(platform=platform,
-            suppress_libcxx_headers=True, extra_config={'apex': apex})
+            extra_config={'apex': apex})
         # The non-APEX system libc++.so needs to be built against a newer API so
         # it uses the unwinder from libc.so. RISC-V uses API 10000 instead
         # currently.
