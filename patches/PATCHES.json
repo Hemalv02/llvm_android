@@ -511,6 +511,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [RISC-V] Add RISC-V ABI plugin"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/847de9c332775d1841fec9fea5cb5c41592a4c8f.patch",
+        "version_range": {
+            "from": 498229,
+            "until": 514307
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [clang] Provide an SSE4.2 implementation of identifier token lexer (#68962)"
         },
         "platforms": [
