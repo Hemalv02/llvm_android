@@ -1069,6 +1069,13 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         return old_path.parent / (old_path.name + suffix)
 
     @property
+    def cflags(self) -> list[str]:
+        result = super().cflags
+        if self._config.target_arch is hosts.Arch.ARM and self._is_ndk:
+            result.append('-mthumb')
+        return result
+
+    @property
     def cxxflags(self) -> list[str]:
         base = super().cxxflags
         # Required to prevent dlclose from causing crashes on thread exit.
