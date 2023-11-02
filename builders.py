@@ -126,6 +126,11 @@ class Stage1Builder(base_builders.LLVMBuilder):
         # Don't build libfuzzer as part of the first stage build.
         defines['COMPILER_RT_BUILD_LIBFUZZER'] = 'OFF'
 
+        # Use x86_64 models to optimize the release Android Clang.
+        if self.enable_mlgo:
+            defines['LLVM_INLINER_MODEL_PATH'] = paths.mlgo_model('x86_64/inlining-Oz-99f0063-v1.1')
+            defines['LLVM_RAEVICT_MODEL_PATH'] = paths.mlgo_model('x86_64/regalloc-evict-e67430c-v1.0')
+
         return defines
 
     def test(self) -> None:
@@ -261,6 +266,11 @@ class Stage2Builder(base_builders.LLVMBuilder):
         # stdatomic.h.
         if self._config.target_os.is_darwin:
             defines['LLVM_BUILD_EXTERNAL_COMPILER_RT'] = 'ON'
+
+        # Embed ARM64 models for optimizing ARM64 AOSP / NDK.
+        if self.enable_mlgo:
+            defines['LLVM_INLINER_MODEL_PATH'] = paths.mlgo_model('arm64/inlining-Oz-chromium')
+            defines['LLVM_RAEVICT_MODEL_PATH'] = paths.mlgo_model('arm64/regalloc-evict-aosp')
 
         return defines
 
