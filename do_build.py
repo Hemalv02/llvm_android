@@ -24,7 +24,7 @@ import os
 import shutil
 import sys
 import textwrap
-from typing import List, NamedTuple, Optional, Set, Tuple
+from typing import List, Optional, Set
 import re
 
 import android_version
@@ -38,7 +38,6 @@ import source_manager
 import timer
 import toolchains
 import utils
-from version import Version
 import win_sdk
 
 def logger():
