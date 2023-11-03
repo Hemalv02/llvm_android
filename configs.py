@@ -568,7 +568,6 @@ class AndroidConfig(_BaseConfig):
 
     static: bool = False
     platform: bool = False
-    suppress_libcxx_headers: bool = False
     override_api_level: Optional[int] = None
 
     @property
@@ -629,31 +628,6 @@ class AndroidConfig(_BaseConfig):
         cflags.append('-ffunction-sections')
         cflags.append('-fdata-sections')
         return cflags
-
-    @property
-    def _libcxx_header_dirs(self) -> List[Path]:
-        # For the NDK, the sysroot has the C++ headers.
-        assert self.platform
-        if self.suppress_libcxx_headers:
-            return []
-        # <prebuilts>/include/c++/v1 includes the cxxabi headers
-        return [
-            paths.CLANG_PREBUILT_LIBCXX_HEADERS,
-            # The platform sysroot also has Bionic headers from an NDK release,
-            # but override them with the current headers.
-            paths.BIONIC_HEADERS,
-            paths.BIONIC_KERNEL_HEADERS,
-        ]
-
-    @property
-    def cxxflags(self) -> List[str]:
-        cxxflags = super().cxxflags
-        if self.platform:
-            # For the NDK, the sysroot has the C++ headers, but for the
-            # platform, we need to add the headers manually.
-            cxxflags.append('-nostdinc++')
-            cxxflags.extend(f'-isystem {d}' for d in self._libcxx_header_dirs)
-        return cxxflags
 
     @property
     def api_level(self) -> int:
@@ -755,7 +729,6 @@ def host_32bit_config(musl: bool=False) -> Config:
 
 def android_configs(platform: bool=True,
                     static: bool=False,
-                    suppress_libcxx_headers: bool=False,
                     extra_config=None) -> List[Config]:
     """Returns a list of configs for android builds."""
     configs = [
@@ -768,7 +741,6 @@ def android_configs(platform: bool=True,
     for config in configs:
         config.static = static
         config.platform = platform
-        config.suppress_libcxx_headers = suppress_libcxx_headers
         config.extra_config = extra_config
     # List is not covariant. Explicit convert is required to make it List[Config].
     return list(configs)

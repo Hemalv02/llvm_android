@@ -773,5 +773,19 @@
             "from": 498229,
             "until": null
         }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[Fuzzer] Enable custom libc++ for Android"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Fuzzer-enable-custom-libcxx-for-android.patch",
+        "version_range": {
+            "from": 498229,
+            "until": null
+        }
     }
 ]

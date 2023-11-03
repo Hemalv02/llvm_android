@@ -458,6 +458,23 @@ class CompilerRTBuilder(base_builders.LLVMRuntimeBuilder):
         defines = super().cmake_defines
         defines['COMPILER_RT_BUILD_BUILTINS'] = 'OFF'
         defines['COMPILER_RT_USE_BUILTINS_LIBRARY'] = 'ON'
+        # Link an isolated copy of libc++ into the fuzzer archive.
+        defines['COMPILER_RT_USE_LIBCXX'] = 'ON'
+        # Set ANDROID_NATIVE_API_LEVEL for the sake of the custom libc++ built
+        # for the fuzzer. There is a check for ANDROID_NATIVE_API_LEVEL in
+        # HandleLLVMOptions.cmake that determines the value of
+        # LLVM_FORCE_SMALLFILE_FOR_ANDROID and _FILE_OFFSET_BITS.
+        defines['ANDROID_NATIVE_API_LEVEL'] = str(self._config.api_level)
+        # The fuzzer's isolated copy of libc++ is configured using
+        # -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY, which breaks some of
+        # the feature detection. Set some settings manually. These settings are
+        # passed through to a libc++ CMake invocation by `add_custom_libcxx` in
+        # compiler-rt/cmake/Modules/AddCompilerRT.cmake.
+        # TODO: Once github.com/llvm/llvm-project/pull/70534 is merged, these
+        # settings can be removed.
+        defines['LIBCXX_HAS_PTHREAD_LIB'] = 'OFF'
+        defines['LIBCXX_HAS_RT_LIB'] = 'OFF'
+        defines['LIBCXXABI_HAS_PTHREAD_LIB'] = 'OFF'
         # FIXME: Disable WError build until upstream fixed the compiler-rt
         # personality routine warnings caused by r309226.
         # defines['COMPILER_RT_ENABLE_WERROR'] = 'ON'
@@ -1048,7 +1065,7 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
 
     def gen_configs(platform: bool, apex: bool):
         result = configs.android_configs(platform=platform,
-            suppress_libcxx_headers=True, extra_config={'apex': apex})
+            extra_config={'apex': apex})
         # The non-APEX system libc++.so needs to be built against a newer API so
         # it uses the unwinder from libc.so. RISC-V uses API 10000 instead
         # currently.
