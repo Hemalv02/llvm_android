@@ -1001,6 +1001,8 @@ def main():
 
     # Build the stage1 Clang for the build host
     instrumented = hosts.build_host().is_linux and args.build_instrumented
+    libzstd_builder = builders.ZstdBuilder(host_configs)
+    libzstd_builder.build()
 
     if not args.bootstrap_use_prebuilt and not args.bootstrap_use:
         stage1 = builders.Stage1Builder(host_configs)
@@ -1011,6 +1013,7 @@ def main():
         stage1.enable_mlgo = mlgo
         stage1.build_extra_tools = args.run_tests_stage1
         stage1.use_sccache = sccache
+        stage1.libzstd = libzstd_builder
         stage1.build()
         if hosts.build_host().is_linux:
             add_header_links('stage1', host_config=configs.host_config(musl))
@@ -1058,9 +1061,6 @@ def main():
         stage2.bolt_instrument = args.bolt_instrument
         stage2.profdata_file = profdata
         stage2.build_cross_runtimes = hosts.build_host().is_linux
-
-        libzstd_builder = builders.ZstdBuilder(host_configs)
-        libzstd_builder.build()
         stage2.libzstd = libzstd_builder
 
         libxml2_builder = builders.LibXml2Builder(host_configs)
