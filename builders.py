@@ -1098,7 +1098,7 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
     @property
     def cflags(self) -> list[str]:
         result = super().cflags
-        if self._config.target_arch is hosts.Arch.ARM and self._is_ndk:
+        if self._config.target_arch is hosts.Arch.ARM:
             result.append('-mthumb')
         return result
 
