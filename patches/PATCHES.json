@@ -413,6 +413,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Driver] Report warnings for unclaimed TargetSpecific options for assembler input"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/e9d454d1c195958645fb0948f8b97262e7f8b33a.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511186
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [ELF][RISCV] Implement --emit-relocs with relaxation"
         },
         "platforms": [
@@ -422,6 +436,20 @@
         "version_range": {
             "from": 498229,
             "until": 512052
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [Driver] Do not generate error about unsupported target specific options when there is no compiler jobs"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/9272aa9d08cbbf5b8612c264d5d547fdefae26c7.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 512199
         }
     },
     {

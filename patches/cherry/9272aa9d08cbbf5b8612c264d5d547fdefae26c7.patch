@@ -1,0 +1,63 @@
+From 9272aa9d08cbbf5b8612c264d5d547fdefae26c7 Mon Sep 17 00:00:00 2001
+From: Maciej Gabka <maciej.gabka@arm.com>
+Date: Fri, 1 Sep 2023 15:22:43 +0000
+Subject: [PATCH] [Driver] Do not generate error about unsupported target
+ specific options when there is no compiler jobs
+
+The upstream commit: https://reviews.llvm.org/D151590
+added a new flag to mark target specific compiler options.
+
+The side effect of it was that in cases when -### or -v is used without any
+input file, clang started emitting an error.
+It happened like that becasue there is no compilation actions created
+which could consume/verify these target specific options.
+
+This patch changes that error to a warning about unused option in situations
+when there is no actions and still generates error when there are actions.
+
+Fix for https://github.com/llvm/llvm-project/issues/64958
+
+Differential Revision: https://reviews.llvm.org/D159361
+---
+ clang/lib/Driver/Driver.cpp   |  7 ++++++-
+ clang/test/Driver/no-action.c | 10 ++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+ create mode 100644 clang/test/Driver/no-action.c
+
+diff --git a/clang/lib/Driver/Driver.cpp b/clang/lib/Driver/Driver.cpp
+index ba723eac2a7e..9d30159b4b49 100644
+--- a/clang/lib/Driver/Driver.cpp
++++ b/clang/lib/Driver/Driver.cpp
+@@ -4953,7 +4953,12 @@ void Driver::BuildJobs(Compilation &C) const {
+       // already been warned about.
+       if (!IsCLMode() || !A->getOption().matches(options::OPT_UNKNOWN)) {
+         if (A->getOption().hasFlag(options::TargetSpecific) &&
+-            !A->isIgnoredTargetSpecific() && !HasAssembleJob) {
++            !A->isIgnoredTargetSpecific() && !HasAssembleJob &&
++            // When for example -### or -v is used
++            // without a file, target specific options are not
++            // consumed/validated.
++            // Instead emitting an error emit a warning instead.
++            !C.getActions().empty()) {
+           Diag(diag::err_drv_unsupported_opt_for_target)
+               << A->getSpelling() << getTargetTriple();
+         } else {
+diff --git a/clang/test/Driver/no-action.c b/clang/test/Driver/no-action.c
+new file mode 100644
+index 000000000000..bec5960d02ea
+--- /dev/null
++++ b/clang/test/Driver/no-action.c
+@@ -0,0 +1,10 @@
++// RUN: %clang --target=aarch64-none-gnu --verbose -mcpu= -march= 2>&1 | FileCheck %s --check-prefix=WARNING
++// RUN: %clang --target=aarch64-none-gnu -### -mcpu= -march= 2>&1 | FileCheck %s --check-prefix=WARNING
++
++// RUN: %clang --target=x86_64-unknown-linux-gnu --verbose -mcpu= -march= 2>&1 | FileCheck %s --check-prefix=WARNING
++// RUN: %clang --target=x86_64-unknown-linux-gnu -### -mcpu= -march= 2>&1 | FileCheck %s --check-prefix=WARNING
++
++/// In situation when there is no compilation/linking clang should not emit error
++/// about target specific options, but just warn that are not used.
++WARNING: warning: argument unused during compilation
++WARNING: warning: argument unused during compilation
+-- 
+2.42.0.869.gea05f2083d-goog
+

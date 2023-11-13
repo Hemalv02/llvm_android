@@ -1,0 +1,194 @@
+From e9d454d1c195958645fb0948f8b97262e7f8b33a Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Thu, 31 Aug 2023 23:26:46 -0700
+Subject: [PATCH] [Driver] Report warnings for unclaimed TargetSpecific options
+ for assembler input
+
+This patch amends D151590 to not error for unlaimed TargetSpecific
+options for `-x assembler` input files. This input type causes Driver to
+construct tools::ClangAs (-fintegrated-as) or other assemblers (e.g.
+tools::gnutools::Assembler) Their ConstructJobs methods, unlike
+Clang::ConstructJobs, claim very few options. If an option is unclaimed,
+it either leads to a -Wunused-command-line-argument warning or an error
+(if `TargetSpecific` is set):
+```
+% clang '-###' --target=aarch64 -mbranch-protection=bti -c a.s
+clang: error: unsupported option '-mbranch-protection=' for target 'aarch64'
+```
+
+It seems that downgrading the diagnostic to warning is most useful as
+many users use CFLAGS even for `.s` files:
+```
+clang --target=aarch64 -mbranch-protection=bti -S a.c
+clang --target=aarch64 -mbranch-protection=bti -c a.s
+```
+
+I decide not to suppress the warning so that
+-Wunused-command-line-argument lovers still get a warning, and help
+projects use proper ASFLAGS/CFLAGS/etc.
+
+Note: `-mbranch-protection=bti a.S` currently has no warning as `-x assembler-with-cpp`
+instructs clangDriver to select tools::Clang and claim most options.
+
+Revert D159010 to demonstrate that we emit a warning for -mfpmath= for
+`-x assembler` input.
+
+Modify my AIX cleanup cd18efb61d759405956dbd30e4b5f2720d8e1783 to
+add an err_drv_unsupported_opt_for_target.
+
+Reviewed By: thesamesam
+
+Differential Revision: https://reviews.llvm.org/D159173
+---
+ clang/lib/Driver/Driver.cpp                 |  8 +++++++-
+ clang/lib/Driver/ToolChains/AIX.cpp         |  6 ++++++
+ clang/lib/Driver/ToolChains/Arch/X86.cpp    |  8 +-------
+ clang/lib/Driver/ToolChains/Arch/X86.h      |  2 +-
+ clang/lib/Driver/ToolChains/CommonArgs.cpp  |  2 +-
+ clang/test/Driver/aarch64-target-as-march.s |  2 +-
+ clang/test/Driver/target-specific.s         | 12 ++++++++++++
+ clang/test/Driver/x86-mfpmath.c             |  4 ++--
+ 8 files changed, 31 insertions(+), 13 deletions(-)
+ create mode 100644 clang/test/Driver/target-specific.s
+
+diff --git a/clang/lib/Driver/Driver.cpp b/clang/lib/Driver/Driver.cpp
+index 6784b838257c..9d05549f671e 100644
+--- a/clang/lib/Driver/Driver.cpp
++++ b/clang/lib/Driver/Driver.cpp
+@@ -4917,6 +4917,12 @@ void Driver::BuildJobs(Compilation &C) const {
+   (void)C.getArgs().hasArg(options::OPT_driver_mode);
+   (void)C.getArgs().hasArg(options::OPT_rsp_quoting);
+ 
++  bool HasAssembleJob = llvm::any_of(C.getJobs(), [](auto &J) {
++    // Match ClangAs and other derived assemblers of Tool. ClangAs uses a
++    // longer ShortName "clang integrated assembler" while other assemblers just
++    // use "assembler".
++    return strstr(J.getCreator().getShortName(), "assembler");
++  });
+   for (Arg *A : C.getArgs()) {
+     // FIXME: It would be nice to be able to send the argument to the
+     // DiagnosticsEngine, so that extra values, position, and so on could be
+@@ -4946,7 +4952,7 @@ void Driver::BuildJobs(Compilation &C) const {
+       // already been warned about.
+       if (!IsCLMode() || !A->getOption().matches(options::OPT_UNKNOWN)) {
+         if (A->getOption().hasFlag(options::TargetSpecific) &&
+-            !A->isIgnoredTargetSpecific()) {
++            !A->isIgnoredTargetSpecific() && !HasAssembleJob) {
+           Diag(diag::err_drv_unsupported_opt_for_target)
+               << A->getSpelling() << getTargetTriple();
+         } else {
+diff --git a/clang/lib/Driver/ToolChains/AIX.cpp b/clang/lib/Driver/ToolChains/AIX.cpp
+index 6cc92238aa9a..3e5ebafa15eb 100644
+--- a/clang/lib/Driver/ToolChains/AIX.cpp
++++ b/clang/lib/Driver/ToolChains/AIX.cpp
+@@ -30,6 +30,7 @@ void aix::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
+                                   const InputInfoList &Inputs,
+                                   const ArgList &Args,
+                                   const char *LinkingOutput) const {
++  const Driver &D = getToolChain().getDriver();
+   ArgStringList CmdArgs;
+ 
+   const bool IsArch32Bit = getToolChain().getTriple().isArch32Bit();
+@@ -38,6 +39,11 @@ void aix::Assembler::ConstructJob(Compilation &C, const JobAction &JA,
+   if (!IsArch32Bit && !IsArch64Bit)
+     llvm_unreachable("Unsupported bit width value.");
+ 
++  if (Arg *A = C.getArgs().getLastArg(options::OPT_G)) {
++    D.Diag(diag::err_drv_unsupported_opt_for_target)
++        << A->getSpelling() << D.getTargetTriple();
++  }
++
+   // Specify the mode in which the as(1) command operates.
+   if (IsArch32Bit) {
+     CmdArgs.push_back("-a32");
+diff --git a/clang/lib/Driver/ToolChains/Arch/X86.cpp b/clang/lib/Driver/ToolChains/Arch/X86.cpp
+index 4383b8004143..cf2bc63d74ad 100644
+--- a/clang/lib/Driver/ToolChains/Arch/X86.cpp
++++ b/clang/lib/Driver/ToolChains/Arch/X86.cpp
+@@ -118,13 +118,7 @@ std::string x86::getX86TargetCPU(const Driver &D, const ArgList &Args,
+ 
+ void x86::getX86TargetFeatures(const Driver &D, const llvm::Triple &Triple,
+                                const ArgList &Args,
+-                               std::vector<StringRef> &Features, bool ForAS) {
+-  if (ForAS) {
+-    // Some target-specific options are only handled in AddX86TargetArgs, which
+-    // is not called by ClangAs::ConstructJob. Claim them here.
+-    Args.claimAllArgs(options::OPT_mfpmath_EQ);
+-  }
+-
++                               std::vector<StringRef> &Features) {
+   // Claim and report unsupported -mabi=. Note: we don't support "sysv_abi" or
+   // "ms_abi" as default function attributes.
+   if (const Arg *A = Args.getLastArg(clang::driver::options::OPT_mabi_EQ)) {
+diff --git a/clang/lib/Driver/ToolChains/Arch/X86.h b/clang/lib/Driver/ToolChains/Arch/X86.h
+index 762a1fa6f4d5..e07387f3ece3 100644
+--- a/clang/lib/Driver/ToolChains/Arch/X86.h
++++ b/clang/lib/Driver/ToolChains/Arch/X86.h
+@@ -26,7 +26,7 @@ std::string getX86TargetCPU(const Driver &D, const llvm::opt::ArgList &Args,
+ 
+ void getX86TargetFeatures(const Driver &D, const llvm::Triple &Triple,
+                           const llvm::opt::ArgList &Args,
+-                          std::vector<llvm::StringRef> &Features, bool ForAS);
++                          std::vector<llvm::StringRef> &Features);
+ 
+ } // end namespace x86
+ } // end namespace target
+diff --git a/clang/lib/Driver/ToolChains/CommonArgs.cpp b/clang/lib/Driver/ToolChains/CommonArgs.cpp
+index 1a74a3a1e4cc..4daca7ba5fc9 100644
+--- a/clang/lib/Driver/ToolChains/CommonArgs.cpp
++++ b/clang/lib/Driver/ToolChains/CommonArgs.cpp
+@@ -528,7 +528,7 @@ void tools::getTargetFeatures(const Driver &D, const llvm::Triple &Triple,
+     break;
+   case llvm::Triple::x86:
+   case llvm::Triple::x86_64:
+-    x86::getX86TargetFeatures(D, Triple, Args, Features, ForAS);
++    x86::getX86TargetFeatures(D, Triple, Args, Features);
+     break;
+   case llvm::Triple::hexagon:
+     hexagon::getHexagonTargetFeatures(D, Triple, Args, Features);
+diff --git a/clang/test/Driver/aarch64-target-as-march.s b/clang/test/Driver/aarch64-target-as-march.s
+index a0369b4fe4bb..59c0ca41cbe2 100644
+--- a/clang/test/Driver/aarch64-target-as-march.s
++++ b/clang/test/Driver/aarch64-target-as-march.s
+@@ -35,7 +35,7 @@
+ // MULTIPLE-VALUES-NOT: "-target-feature" "+v8.2a
+ 
+ /// march to compiler and assembler, we choose the one suited to the input file type
+-// RUN: not %clang --target=aarch64-linux-gnueabi -### -c -Wa,-march=armv8.3-a -march=armv8.4-a %s 2>&1 | \
++// RUN: %clang --target=aarch64-linux-gnueabi -### -c -Wa,-march=armv8.3-a -march=armv8.4-a %s 2>&1 | \
+ // RUN: FileCheck --check-prefix=TARGET-FEATURE-3 %s
+ // RUN: %clang --target=aarch64-linux-gnueabi -### -c -Wa,-march=armv8.3-a -march=armv8.4-a \
+ // RUN: %S/Inputs/wildcard1.c 2>&1 | FileCheck --check-prefix=TARGET-FEATURE-4 %s
+diff --git a/clang/test/Driver/target-specific.s b/clang/test/Driver/target-specific.s
+new file mode 100644
+index 000000000000..aa4fc7381209
+--- /dev/null
++++ b/clang/test/Driver/target-specific.s
+@@ -0,0 +1,12 @@
++/// Check that we report a warning instead of an error for target-specific compilation only options.
++// RUN: %clang -### --target=aarch64 -faddrsig -mbranch-protection=standard -c %s 2>&1 | FileCheck %s
++// RUN: %clang -### --target=aarch64 -faddrsig -mbranch-protection=standard -c -fno-integrated-as %s 2>&1 | FileCheck %s
++
++/// Report a warning if we perform the link phase.
++// RUN: %clang -### --target=aarch64 -faddrsig -mbranch-protection=standard %s 2>&1 | FileCheck %s
++
++// CHECK: warning: argument unused during compilation: '-faddrsig'
++// CHECK: warning: argument unused during compilation: '-mbranch-protection=standard'
++
++/// assembler-with-cpp claims compile only options. Ideally we should emit a warning.
++// RUN: %clang -### -Werror --target=aarch64 -c -faddrsig -mbranch-protection=standard -x assembler-with-cpp %s
+diff --git a/clang/test/Driver/x86-mfpmath.c b/clang/test/Driver/x86-mfpmath.c
+index 7df594477a92..8f85cced953a 100644
+--- a/clang/test/Driver/x86-mfpmath.c
++++ b/clang/test/Driver/x86-mfpmath.c
+@@ -1,5 +1,5 @@
+ // RUN: %clang -### -c --target=x86_64 -mfpmath=sse %s 2>&1 | FileCheck %s
+ // CHECK: "-mfpmath" "sse"
+ 
+-/// Don't warn for assembler input.
+-// RUN: %clang -### -Werror -c --target=x86_64 -mfpmath=sse -x assembler %s 2>&1 | FileCheck /dev/null --implicit-check-not='"-mfpmath"'
++// RUN: %clang -### -c --target=x86_64 -mfpmath=sse -x assembler %s 2>&1 | FileCheck %s --check-prefix=WARN
++// WARN: warning: argument unused during compilation: '-mfpmath=sse'
+-- 
+2.42.0.869.gea05f2083d-goog
+
