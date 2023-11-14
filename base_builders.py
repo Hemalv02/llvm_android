@@ -583,7 +583,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     enable_assertions: bool = False
     enable_mlgo: bool = False
     toolchain_name: str
-    use_sccache: bool = False
     libzstd: Optional[LibInfo] = None
     runtimes_triples: List[str] = list()
     build_cross_runtimes: bool = False
@@ -716,11 +715,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     @property
     def cmake_defines(self) -> Dict[str, str]:
         defines = super().cmake_defines
-
-        if self.use_sccache:
-            defines['CMAKE_C_COMPILER_LAUNCHER'] = 'sccache'
-            defines['CMAKE_CXX_COMPILER_LAUNCHER'] = 'sccache'
-            defines['LLVM_PARALLEL_COMPILE_JOBS'] = int(multiprocessing.cpu_count()) * 10
 
         defines['LLVM_ENABLE_PROJECTS'] = ';'.join(sorted(self.llvm_projects))
         defines['LLVM_ENABLE_RUNTIMES'] = ';'.join(sorted(self.llvm_runtime_projects))
@@ -888,12 +882,6 @@ class LLVMBuilder(LLVMBaseBuilder):
     def installed_toolchain(self) -> toolchains.Toolchain:
         """Gets the built Toolchain."""
         return toolchains.Toolchain(self.install_dir, self.output_dir)
-
-    def build(self) -> None:
-        super().build()
-        if self.use_sccache:
-            utils.check_call(['sccache', '--show-stats'])
-
 
     def test(self) -> None:
         with timer.Timer(f'stage2_test'):

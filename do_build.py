@@ -928,12 +928,6 @@ def parse_args():
         dest='incremental',
         help='Delete paths.OUT_DIR if it exists')
 
-    parser.add_argument(
-        '--sccache',
-        action='store_true',
-        default=False,
-        help='Use sccache to speed up development builds. (Do not use for release builds)')
-
     return parser.parse_args()
 
 
@@ -967,7 +961,6 @@ def main():
     build_lldb = 'lldb' not in args.no_build
     mlgo = args.mlgo
     musl = args.musl
-    sccache = args.sccache
 
     host_configs = [configs.host_config(musl)]
 
@@ -1012,7 +1005,6 @@ def main():
         stage1.build_lldb = build_lldb
         stage1.enable_mlgo = mlgo
         stage1.build_extra_tools = args.run_tests_stage1
-        stage1.use_sccache = sccache
         stage1.libzstd = libzstd_builder
         stage1.build()
         if hosts.build_host().is_linux:
