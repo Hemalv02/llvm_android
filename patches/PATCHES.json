@@ -687,7 +687,7 @@
         "rel_patch_path": "enable-libcxx-testing-using-adb.patch",
         "version_range": {
             "from": 475365,
-            "until": null
+            "until": 516012
         }
     },
     {
