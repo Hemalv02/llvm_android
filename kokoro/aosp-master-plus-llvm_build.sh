@@ -14,10 +14,10 @@ trap cleanup EXIT
 
 # Fetch aosp-plus-llvm-master repo
 (cd $TOP; \
-  repo init -u https://android.googlesource.com/platform/manifest -b master --depth=1 < /dev/null; \
+  repo init -u https://android.googlesource.com/platform/manifest -b main --depth=1 < /dev/null; \
   repo sync -c -j8)
 
 mkdir "${DIST}"
 DIST_DIR="${DIST}" OUT_DIR="${OUT}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-  $TOP/toolchain/llvm_android/test_compiler.py --build-only --target aosp_arm64-userdebug \
+  $TOP/toolchain/llvm_android/test_compiler.py --build-only --target aosp_cf_arm64_phone-staging-userdebug \
   --clang-package-path ${KOKORO_GFILE_DIR} $TOP
