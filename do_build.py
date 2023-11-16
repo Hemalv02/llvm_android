@@ -869,6 +869,12 @@ def parse_args():
         help='Skip building the bootstrap compiler and use the prebuilt instead.')
 
     parser.add_argument(
+        '--package-stage2-install',
+        action='store_true',
+        default=False,
+        help='Package stage2-install')
+
+    parser.add_argument(
         '--mlgo',
         action='store_true',
         default=False,
@@ -1015,8 +1021,19 @@ def main():
             stage1.test()
         set_default_toolchain(stage1.installed_toolchain)
     if args.bootstrap_use:
+        # Remove previous install directories, since the bootstrap compiler
+        # will overwrite install directories.
+        if (paths.OUT_DIR / 'stage1-install').exists():
+            shutil.rmtree(paths.OUT_DIR / 'stage1-install')
+        if (paths.OUT_DIR / 'stage2-install').exists():
+            shutil.rmtree(paths.OUT_DIR / 'stage2-install')
+
         with timer.Timer(f'extract_bootstrap'):
             utils.extract_tarball(paths.OUT_DIR, args.bootstrap_use)
+
+        # If we were to use the full build as bootstrap, we need to rename it to stage-install.
+        if (paths.OUT_DIR / 'stage2-install').exists():
+            (paths.OUT_DIR / 'stage2-install').rename(paths.OUT_DIR / 'stage1-install')
         set_default_toolchain(toolchains.Toolchain(paths.OUT_DIR / 'stage1-install', paths.OUT_DIR / 'stage1'))
     if args.bootstrap_build_only:
         with timer.Timer(f'package_bootstrap'):
@@ -1130,6 +1147,10 @@ def main():
     if need_host:
         if do_bolt_instrument:
             bolt_instrument(stage2)
+
+    if args.package_stage2_install:
+        utils.create_tarball(paths.OUT_DIR, ['stage2-install'],
+                             paths.DIST_DIR / 'stage2-install.tar.xz')
 
     if do_package and need_host:
         package_toolchain(
