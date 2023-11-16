@@ -34,13 +34,6 @@ elif [ $LLVM_BUILD_TYPE == "linux-master" ]; then
   $python_src/build.py --lto --pgo --bolt --mlgo --create-tar \
   --build-name "${KOKORO_BUILD_NUMBER}" \
   --no-build=windows
-elif [ $LLVM_BUILD_TYPE == "darwin-master" ]; then
-  OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/darwin-x86/bin/python3 \
-  $python_src/build.py --lto --pgo --create-tar --build-name "${KOKORO_BUILD_NUMBER}"
-elif [ $LLVM_BUILD_TYPE == "windows-master" ]; then
-  OUT_DIR="${OUT}" DIST_DIR="${DIST}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-  $python_src/build.py --mlgo --create-tar --build-name "${KOKORO_BUILD_NUMBER}" \
-  --no-build=linux
 else
   echo "Error: requires LLVM_BUILD_TYPE"
 fi
