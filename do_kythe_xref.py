@@ -112,7 +112,8 @@ def package(build_name: str) -> None:
     utils.check_call(['build/soong/soong_ui.bash',
                       '--build-mode', '--all-modules',
                       f'--dir={paths.ANDROID_DIR}',
-                      '-k', 'merge_zips'])
+                      '-k', 'TARGET_RELEASE=trunk_staging',
+                      'merge_zips'])
     merge_zips_path = (paths.OUT_DIR / 'host' / hosts.build_host().os_tag /
                        'bin' / 'merge_zips')
 
