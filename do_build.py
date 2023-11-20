@@ -331,6 +331,7 @@ def bolt_optimize(toolchain_builder: LLVMBuilder, clang_fdata: Path):
         '-icf=1', '--use-gnu-stack', clang_bin_orig
     ]
     utils.check_call(args)
+    os.remove(clang_bin_orig)
 
 
 def bolt_instrument(toolchain_builder: LLVMBuilder):
