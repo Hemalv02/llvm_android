@@ -595,6 +595,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Allow multiple sanitizers on baremetal targets. (#72933)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/fb57f4e0e0b302ec1b3181e952a4bd4b3c57a286.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 519368
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISCV] Correct copyPhysReg for GPRPF64. (#70419)"
         },
         "platforms": [
