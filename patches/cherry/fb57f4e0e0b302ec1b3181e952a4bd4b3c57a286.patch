@@ -1,0 +1,65 @@
+From 2abaf851e48f0b74a2cfb6cc36368d701752eae8 Mon Sep 17 00:00:00 2001
+From: Evgenii Stepanov <eugeni.stepanov@gmail.com>
+Date: Tue, 21 Nov 2023 13:11:12 -0800
+Subject: Allow multiple sanitizers on baremetal targets. (#72933)
+
+Baremetal targets tend to implement their own runtime support for
+sanitizers. Clang driver gatekeeping of allowed sanitizer types is
+counter productive.
+
+This change allows anything that does not crash and burn in compilation,
+and leaves any potential runtime issues for the user to figure out.
+---
+ clang/lib/Driver/ToolChains/BareMetal.cpp | 26 +++++++++++++++++++++++
+ clang/lib/Driver/ToolChains/BareMetal.h   |  1 +
+ 2 files changed, 27 insertions(+)
+
+diff --git a/clang/lib/Driver/ToolChains/BareMetal.cpp b/clang/lib/Driver/ToolChains/BareMetal.cpp
+index 26a6276ae50a..c537a19e6e70 100644
+--- a/clang/lib/Driver/ToolChains/BareMetal.cpp
++++ b/clang/lib/Driver/ToolChains/BareMetal.cpp
+@@ -492,3 +492,29 @@ void baremetal::Linker::ConstructJob(Compilation &C, const JobAction &JA,
+       JA, *this, ResponseFileSupport::AtFileCurCP(),
+       Args.MakeArgString(TC.GetLinkerPath()), CmdArgs, Inputs, Output));
+ }
++
++// BareMetal toolchain allows all sanitizers where the compiler generates valid
++// code, ignoring all runtime library support issues on the assumption that
++// baremetal targets typically implement their own runtime support.
++SanitizerMask BareMetal::getSupportedSanitizers() const {
++  const bool IsX86_64 = getTriple().getArch() == llvm::Triple::x86_64;
++  const bool IsAArch64 = getTriple().getArch() == llvm::Triple::aarch64 ||
++                         getTriple().getArch() == llvm::Triple::aarch64_be;
++  const bool IsRISCV64 = getTriple().getArch() == llvm::Triple::riscv64;
++  SanitizerMask Res = ToolChain::getSupportedSanitizers();
++  Res |= SanitizerKind::Address;
++  Res |= SanitizerKind::KernelAddress;
++  Res |= SanitizerKind::PointerCompare;
++  Res |= SanitizerKind::PointerSubtract;
++  Res |= SanitizerKind::Fuzzer;
++  Res |= SanitizerKind::FuzzerNoLink;
++  Res |= SanitizerKind::Vptr;
++  Res |= SanitizerKind::SafeStack;
++  Res |= SanitizerKind::Thread;
++  Res |= SanitizerKind::Scudo;
++  if (IsX86_64 || IsAArch64 || IsRISCV64) {
++    Res |= SanitizerKind::HWAddress;
++    Res |= SanitizerKind::KernelHWAddress;
++  }
++  return Res;
++}
+diff --git a/clang/lib/Driver/ToolChains/BareMetal.h b/clang/lib/Driver/ToolChains/BareMetal.h
+index fc39a2a10e01..2b425c0ee514 100644
+--- a/clang/lib/Driver/ToolChains/BareMetal.h
++++ b/clang/lib/Driver/ToolChains/BareMetal.h
+@@ -72,6 +72,7 @@ public:
+   void AddLinkRuntimeLib(const llvm::opt::ArgList &Args,
+                          llvm::opt::ArgStringList &CmdArgs) const;
+   std::string computeSysRoot() const override;
++  SanitizerMask getSupportedSanitizers() const override;
+ 
+ private:
+   using OrderedMultilibs =
+-- 
+2.43.0.rc1.413.gea7ed67945-goog
+
