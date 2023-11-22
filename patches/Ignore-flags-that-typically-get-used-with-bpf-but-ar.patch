@@ -1,0 +1,39 @@
+From c908f58217ccbe306da02a5d4769c03f82db0b0f Mon Sep 17 00:00:00 2001
+From: AdityaK <appujee@google.com>
+Date: Wed, 15 Nov 2023 14:59:30 -0800
+Subject: [PATCH] Ignore flags that typically get used with bpf but are x86-64
+ specific
+
+Based on: https://github.com/mstorsjo/llvm-project/commit/419443059f3fc66310168858c6b4ee8efaf59a4e
+Bug: b/308826679
+
+Change-Id: I427aed184272f8ee38508b8c27e17f5fa4890d54
+---
+ clang/lib/Driver/ToolChains/Clang.cpp | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index ca992528ac2e..6e011450b4bf 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -7581,6 +7581,17 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+       D.Diag(diag::err_drv_argument_not_allowed_with) << "-fomit-frame-pointer"
+                                                       << A->getAsString(Args);
+ 
++  // Ignore flags that typically get used with bpf but are x86-64 specific.
++  const llvm::Triple &EffectiveTriple = TC.getEffectiveTriple();
++  if (EffectiveTriple.isBPF()) {
++    for (auto Opt : {options::OPT_mcpu_EQ, options::OPT_march_EQ,
++                     options::OPT_mssse3, options::OPT_msse4_1,
++                     options::OPT_mpopcnt, options::OPT_maes}) {
++      if (Arg *A = Args.getLastArgNoClaim(Opt))
++        A->ignoreTargetSpecific();
++    }
++  }
++
+   // Claim some arguments which clang supports automatically.
+ 
+   // -fpch-preprocess is used with gcc to add a special marker in the output to
+-- 
+2.43.0.rc0.421.g78406f8d94-goog
+

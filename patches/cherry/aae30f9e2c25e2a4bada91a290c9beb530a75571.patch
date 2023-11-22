@@ -1,0 +1,31 @@
+From aae30f9e2c25e2a4bada91a290c9beb530a75571 Mon Sep 17 00:00:00 2001
+From: Craig Topper <craig.topper@sifive.com>
+Date: Thu, 9 Nov 2023 20:33:36 -0800
+Subject: [PATCH] [RISCV] Use Align(8) for the stack temporary created for
+ SPLAT_VECTOR_SPLIT_I64_VL.
+
+The value needs to be read as an 8 byte vector element which requires
+the pointer to be 8 byte aligned according to the vector spec.
+
+Fixes #71787
+---
+ llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp           | 2 +-
+ llvm/test/CodeGen/RISCV/intrinsic-cttz-elts-vscale.ll | 6 +++---
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp b/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp
+index 1266c370cdde..3901ce8352fe 100644
+--- a/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp
++++ b/llvm/lib/Target/RISCV/RISCVISelDAGToDAG.cpp
+@@ -92,7 +92,7 @@ void RISCVDAGToDAGISel::PreprocessISelDAG() {
+ 
+       // Create temporary stack for each expanding node.
+       SDValue StackSlot =
+-          CurDAG->CreateStackTemporary(TypeSize::Fixed(8), Align(4));
++          CurDAG->CreateStackTemporary(TypeSize::Fixed(8), Align(8));
+       int FI = cast<FrameIndexSDNode>(StackSlot.getNode())->getIndex();
+       MachinePointerInfo MPI = MachinePointerInfo::getFixedStack(MF, FI);
+
+-- 
+2.42.0.869.gea05f2083d-goog
+

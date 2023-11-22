@@ -1,0 +1,234 @@
+From 116eb323b15c4bd616775dfb59e2e81badc1453a Mon Sep 17 00:00:00 2001
+From: Craig Topper <craig.topper@sifive.com>
+Date: Thu, 26 Oct 2023 23:54:46 -0700
+Subject: [PATCH] [RISCV] Correct copyPhysReg for GPRPF64. (#70419)
+
+GPRF64 represents a pair of registers. We were only copying the even
+part. We need to copy the odd part too.
+---
+ llvm/lib/Target/RISCV/RISCVInstrInfo.cpp      | 19 ++++++++++++++-----
+ .../CodeGen/RISCV/double-maximum-minimum.ll   | 10 ++++++++++
+ llvm/test/CodeGen/RISCV/double-select-fcmp.ll | 14 ++++++++++++++
+ 3 files changed, 38 insertions(+), 5 deletions(-)
+
+diff --git a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
+index 0abf302bb25e..ad31b2974993 100644
+--- a/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
++++ b/llvm/lib/Target/RISCV/RISCVInstrInfo.cpp
+@@ -300,11 +300,6 @@ void RISCVInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
+                                  MCRegister SrcReg, bool KillSrc) const {
+   const TargetRegisterInfo *TRI = STI.getRegisterInfo();
+ 
+-  if (RISCV::GPRPF64RegClass.contains(DstReg))
+-    DstReg = TRI->getSubReg(DstReg, RISCV::sub_32);
+-  if (RISCV::GPRPF64RegClass.contains(SrcReg))
+-    SrcReg = TRI->getSubReg(SrcReg, RISCV::sub_32);
+-
+   if (RISCV::GPRRegClass.contains(DstReg, SrcReg)) {
+     BuildMI(MBB, MBBI, DL, get(RISCV::ADDI), DstReg)
+         .addReg(SrcReg, getKillRegState(KillSrc))
+@@ -312,6 +307,20 @@ void RISCVInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
+     return;
+   }
+ 
++  if (RISCV::GPRPF64RegClass.contains(DstReg, SrcReg)) {
++    // Emit an ADDI for both parts of GPRPF64.
++    BuildMI(MBB, MBBI, DL, get(RISCV::ADDI),
++            TRI->getSubReg(DstReg, RISCV::sub_32))
++        .addReg(TRI->getSubReg(SrcReg, RISCV::sub_32), getKillRegState(KillSrc))
++        .addImm(0);
++    BuildMI(MBB, MBBI, DL, get(RISCV::ADDI),
++            TRI->getSubReg(DstReg, RISCV::sub_32_hi))
++        .addReg(TRI->getSubReg(SrcReg, RISCV::sub_32_hi),
++                getKillRegState(KillSrc))
++        .addImm(0);
++    return;
++  }
++
+   // Handle copy from csr
+   if (RISCV::VCSRRegClass.contains(SrcReg) &&
+       RISCV::GPRRegClass.contains(DstReg)) {
+diff --git a/llvm/test/CodeGen/RISCV/double-maximum-minimum.ll b/llvm/test/CodeGen/RISCV/double-maximum-minimum.ll
+index 45a31ab70992..0ca20783591a 100644
+--- a/llvm/test/CodeGen/RISCV/double-maximum-minimum.ll
++++ b/llvm/test/CodeGen/RISCV/double-maximum-minimum.ll
+@@ -47,14 +47,17 @@ define double @fminimum_f64(double %a, double %b) nounwind {
+ ; RV32IZFINXZDINX-NEXT:    lw a1, 12(sp)
+ ; RV32IZFINXZDINX-NEXT:    feq.d a6, a0, a0
+ ; RV32IZFINXZDINX-NEXT:    mv a4, a2
++; RV32IZFINXZDINX-NEXT:    mv a5, a3
+ ; RV32IZFINXZDINX-NEXT:    bnez a6, .LBB0_2
+ ; RV32IZFINXZDINX-NEXT:  # %bb.1:
+ ; RV32IZFINXZDINX-NEXT:    mv a4, a0
++; RV32IZFINXZDINX-NEXT:    mv a5, a1
+ ; RV32IZFINXZDINX-NEXT:  .LBB0_2:
+ ; RV32IZFINXZDINX-NEXT:    feq.d a6, a2, a2
+ ; RV32IZFINXZDINX-NEXT:    bnez a6, .LBB0_4
+ ; RV32IZFINXZDINX-NEXT:  # %bb.3:
+ ; RV32IZFINXZDINX-NEXT:    mv a0, a2
++; RV32IZFINXZDINX-NEXT:    mv a1, a3
+ ; RV32IZFINXZDINX-NEXT:  .LBB0_4:
+ ; RV32IZFINXZDINX-NEXT:    fmin.d a0, a0, a4
+ ; RV32IZFINXZDINX-NEXT:    sw a0, 8(sp)
+@@ -121,14 +124,17 @@ define double @fmaximum_f64(double %a, double %b) nounwind {
+ ; RV32IZFINXZDINX-NEXT:    lw a1, 12(sp)
+ ; RV32IZFINXZDINX-NEXT:    feq.d a6, a0, a0
+ ; RV32IZFINXZDINX-NEXT:    mv a4, a2
++; RV32IZFINXZDINX-NEXT:    mv a5, a3
+ ; RV32IZFINXZDINX-NEXT:    bnez a6, .LBB1_2
+ ; RV32IZFINXZDINX-NEXT:  # %bb.1:
+ ; RV32IZFINXZDINX-NEXT:    mv a4, a0
++; RV32IZFINXZDINX-NEXT:    mv a5, a1
+ ; RV32IZFINXZDINX-NEXT:  .LBB1_2:
+ ; RV32IZFINXZDINX-NEXT:    feq.d a6, a2, a2
+ ; RV32IZFINXZDINX-NEXT:    bnez a6, .LBB1_4
+ ; RV32IZFINXZDINX-NEXT:  # %bb.3:
+ ; RV32IZFINXZDINX-NEXT:    mv a0, a2
++; RV32IZFINXZDINX-NEXT:    mv a1, a3
+ ; RV32IZFINXZDINX-NEXT:  .LBB1_4:
+ ; RV32IZFINXZDINX-NEXT:    fmax.d a0, a0, a4
+ ; RV32IZFINXZDINX-NEXT:    sw a0, 8(sp)
+@@ -226,14 +232,17 @@ define double @fmaximum_nnan_f64(double %a, double %b) nounwind {
+ ; RV32IZFINXZDINX-NEXT:    lw a1, 12(sp)
+ ; RV32IZFINXZDINX-NEXT:    feq.d a6, a0, a0
+ ; RV32IZFINXZDINX-NEXT:    mv a4, a2
++; RV32IZFINXZDINX-NEXT:    mv a5, a3
+ ; RV32IZFINXZDINX-NEXT:    bnez a6, .LBB3_2
+ ; RV32IZFINXZDINX-NEXT:  # %bb.1:
+ ; RV32IZFINXZDINX-NEXT:    mv a4, a0
++; RV32IZFINXZDINX-NEXT:    mv a5, a1
+ ; RV32IZFINXZDINX-NEXT:  .LBB3_2:
+ ; RV32IZFINXZDINX-NEXT:    feq.d a6, a2, a2
+ ; RV32IZFINXZDINX-NEXT:    bnez a6, .LBB3_4
+ ; RV32IZFINXZDINX-NEXT:  # %bb.3:
+ ; RV32IZFINXZDINX-NEXT:    mv a0, a2
++; RV32IZFINXZDINX-NEXT:    mv a1, a3
+ ; RV32IZFINXZDINX-NEXT:  .LBB3_4:
+ ; RV32IZFINXZDINX-NEXT:    fmin.d a0, a0, a4
+ ; RV32IZFINXZDINX-NEXT:    sw a0, 8(sp)
+@@ -291,6 +300,7 @@ define double @fminimum_nnan_op_f64(double %a, double %b) nounwind {
+ ; RV32IZFINXZDINX-NEXT:    bnez a0, .LBB4_2
+ ; RV32IZFINXZDINX-NEXT:  # %bb.1:
+ ; RV32IZFINXZDINX-NEXT:    mv a0, a2
++; RV32IZFINXZDINX-NEXT:    mv a1, a3
+ ; RV32IZFINXZDINX-NEXT:    j .LBB4_3
+ ; RV32IZFINXZDINX-NEXT:  .LBB4_2:
+ ; RV32IZFINXZDINX-NEXT:    lw a0, 8(sp)
+diff --git a/llvm/test/CodeGen/RISCV/double-select-fcmp.ll b/llvm/test/CodeGen/RISCV/double-select-fcmp.ll
+index 0c0a5dbc51ed..766da3680ffc 100644
+--- a/llvm/test/CodeGen/RISCV/double-select-fcmp.ll
++++ b/llvm/test/CodeGen/RISCV/double-select-fcmp.ll
+@@ -54,6 +54,7 @@ define double @select_fcmp_oeq(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB1_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB1_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -100,6 +101,7 @@ define double @select_fcmp_ogt(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB2_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB2_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -146,6 +148,7 @@ define double @select_fcmp_oge(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB3_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB3_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -192,6 +195,7 @@ define double @select_fcmp_olt(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB4_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB4_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -238,6 +242,7 @@ define double @select_fcmp_ole(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB5_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB5_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -288,6 +293,7 @@ define double @select_fcmp_one(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB6_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB6_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -340,6 +346,7 @@ define double @select_fcmp_ord(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    bnez a4, .LBB7_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB7_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -392,6 +399,7 @@ define double @select_fcmp_ueq(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB8_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB8_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -440,6 +448,7 @@ define double @select_fcmp_ugt(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB9_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB9_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -486,6 +495,7 @@ define double @select_fcmp_uge(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB10_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB10_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -532,6 +542,7 @@ define double @select_fcmp_ult(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB11_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB11_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -578,6 +589,7 @@ define double @select_fcmp_ule(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB12_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB12_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -624,6 +636,7 @@ define double @select_fcmp_une(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB13_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB13_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+@@ -674,6 +687,7 @@ define double @select_fcmp_uno(double %a, double %b) nounwind {
+ ; CHECKRV32ZDINX-NEXT:    beqz a4, .LBB14_2
+ ; CHECKRV32ZDINX-NEXT:  # %bb.1:
+ ; CHECKRV32ZDINX-NEXT:    mv a0, a2
++; CHECKRV32ZDINX-NEXT:    mv a1, a3
+ ; CHECKRV32ZDINX-NEXT:  .LBB14_2:
+ ; CHECKRV32ZDINX-NEXT:    sw a0, 8(sp)
+ ; CHECKRV32ZDINX-NEXT:    sw a1, 12(sp)
+-- 
+2.42.0.869.gea05f2083d-goog
