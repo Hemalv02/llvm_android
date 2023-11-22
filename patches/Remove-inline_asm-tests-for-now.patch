@@ -1,0 +1,32 @@
+From 35b305f12e3c123a91a8e0d09cd3421b755aba7e Mon Sep 17 00:00:00 2001
+From: AdityaK <appujee@google.com>
+Date: Thu, 5 Oct 2023 11:41:40 -0700
+Subject: [PATCH 2/2] Remove inline_asm tests for now
+
+Change-Id: I2ce9f0df2690265c384694d4692d4707c2c31142
+---
+ llvm/test/CodeGen/BPF/store_imm.ll | 11 -----------
+ 1 file changed, 11 deletions(-)
+
+diff --git a/llvm/test/CodeGen/BPF/store_imm.ll b/llvm/test/CodeGen/BPF/store_imm.ll
+index 778beca176f9..7f2f69d3f2cc 100644
+--- a/llvm/test/CodeGen/BPF/store_imm.ll
++++ b/llvm/test/CodeGen/BPF/store_imm.ll
+@@ -91,14 +91,3 @@ define void @unaligned(ptr %p0) {
+   unreachable
+ }
+ 
+-define void @inline_asm(ptr %p0) {
+-; CHECK-LABEL: inline_asm:
+-; CHECK:       # %bb.0:
+-; CHECK-NEXT:    #APP
+-; CHECK-NEXT:    *(u32 *)(r0 + 42) = 7 # encoding: [0x62,0x00,0x2a,0x00,0x07,0x00,0x00,0x00]
+-; CHECK-EMPTY:
+-; CHECK-NEXT:    #NO_APP
+-  call void asm "*(u32 *)(r0 + 42) = 7;", "~{r0},~{mem}"()
+-
+-  unreachable
+-}
+-- 
+2.42.0.609.gbb76f46606-goog
+

@@ -1,0 +1,29 @@
+From 7aeef9d39a8e4cd82c7440f6ad40a84e47167c58 Mon Sep 17 00:00:00 2001
+From: AdityaK <appujee@google.com>
+Date: Thu, 5 Oct 2023 11:41:21 -0700
+Subject: [PATCH 1/2] Add cmake c,cxx,asm,linker flags
+
+Change-Id: I2299fac0a9df46accd5b81ae46c0ec18284f9503
+---
+ bolt/CMakeLists.txt | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/bolt/CMakeLists.txt b/bolt/CMakeLists.txt
+index f163d4534287..0d07cb43eea8 100644
+--- a/bolt/CMakeLists.txt
++++ b/bolt/CMakeLists.txt
+@@ -97,7 +97,11 @@ if (BOLT_ENABLE_RUNTIME)
+     STAMP_DIR ${CMAKE_CURRENT_BINARY_DIR}/bolt_rt-stamps
+     BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/bolt_rt-bins
+     CMAKE_ARGS -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
++               -DCMAKE_ASM_FLAGS=${CMAKE_ASM_FLAGS}
++               -DCMAKE_C_FLAGS=${CMAKE_C_FLAGS}
++               -DCMAKE_CXX_FLAGS=${CMAKE_CXX_FLAGS}
+                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
++               -DCMAKE_EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS}
+                -DCMAKE_BUILD_TYPE=Release
+                -DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+                -DLLVM_LIBDIR_SUFFIX=${LLVM_LIBDIR_SUFFIX}
+-- 
+2.42.0.609.gbb76f46606-goog
+

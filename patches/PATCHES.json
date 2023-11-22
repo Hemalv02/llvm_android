@@ -553,6 +553,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [lld] [MTE] Drop MTE globals for fully static executables, not ban (#68217)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/144d127bef2cbe7a149a96a325390b0f52be51d3.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 515170
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [clang] Provide an SSE4.2 implementation of identifier token lexer (#68962)"
         },
         "platforms": [
@@ -562,6 +576,48 @@
         "version_range": {
             "from": 498229,
             "until": 515912
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Fix tryMergeAdjacentSTG function in PrologEpilog pass (#68873)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/6726c99f8893c4a7bce00059416cb462237c64a0.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 518698
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [RISCV] Correct copyPhysReg for GPRPF64. (#70419)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/116eb323b15c4bd616775dfb59e2e81badc1453a.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [RISCV] Use Align(8) for the stack temporary created for SPLAT_VECTOR_SPLIT_I64_VL."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/aae30f9e2c25e2a4bada91a290c9beb530a75571.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
         }
     },
     {
@@ -729,7 +785,7 @@
         "rel_patch_path": "hide-locale-lit-features-for-bionic.patch",
         "version_range": {
             "from": 475365,
-            "until": null
+            "until": 510927
         }
     },
     {
@@ -743,7 +799,7 @@
         "rel_patch_path": "android-temp-dir-is-data-local-tmp-v2.patch",
         "version_range": {
             "from": 490301,
-            "until": null
+            "until": 510927
         }
     },
     {
@@ -757,7 +813,7 @@
         "rel_patch_path": "bionic-includes-plus-sign-for-nan.patch",
         "version_range": {
             "from": 475365,
-            "until": null
+            "until": 510927
         }
     },
     {
@@ -799,7 +855,7 @@
         "rel_patch_path": "RISCV-Strengthen-atomic-ordering-for-sequentially-co.patch",
         "version_range": {
             "from": 498229,
-            "until": null
+            "until": 510927
         }
     },
     {
@@ -813,6 +869,90 @@
         "rel_patch_path": "Fuzzer-enable-custom-libcxx-for-android.patch",
         "version_range": {
             "from": 498229,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Add cmake c,cxx,asm,linker flags"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Add-cmake-c-cxx-asm-linker-flags.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Remove inline_asm tests for now"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Remove-inline_asm-tests-for-now.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Ignore flags that typically get used with bpf but ar"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Ignore-flags-that-typically-get-used-with-bpf-but-ar.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] Hide locale Lit features for Bionic"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "hide-locale-lit-features-for-bionic-v2.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[libc++][Android] Bionic also includes + for NAN"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "bionic-includes-plus-sign-for-nan-v2.patch",
+        "version_range": {
+            "from": 510928,
+            "until": null
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert [Clang] Fix member lookup so that we don't ignore ambiguous lookups in some cases"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-Clang-Fix-member-lookup-so-that-we-don-t-igno.patch",
+        "version_range": {
+            "from": 510928,
             "until": null
         }
     }

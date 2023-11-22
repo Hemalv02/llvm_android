@@ -1,0 +1,131 @@
+From 6726c99f8893c4a7bce00059416cb462237c64a0 Mon Sep 17 00:00:00 2001
+From: Karthika Devi C <quic_kartc@quicinc.com>
+Date: Wed, 15 Nov 2023 04:13:33 +0530
+Subject: [PATCH] [AArch64] Fix tryMergeAdjacentSTG function in PrologEpilog
+ pass (#68873)
+
+The tryMergeAdjacentSTG function tries to merge multiple
+stg/st2g/stg_loop instructions. It doesn't verify the liveness of NZCV
+flag before moving around STGloop which also alters NZCV flags. This was
+not issue before the patch 5e612bc as these stack tag stores does not
+alter the NZCV flags. But after the change, this merge function leads to
+miscompilation because of control flow change in instructions. Added the
+check to to see if the first instruction after insert point reads or
+writes to NZCV flag and it's liveout state. This check happens after the
+filling of merge list just before merge and bails out if necessary.
+---
+ .../Target/AArch64/AArch64FrameLowering.cpp   | 19 +++++
+ llvm/test/CodeGen/AArch64/settag-merge.ll     | 69 +++++++++++++++++++
+ 2 files changed, 88 insertions(+)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+index 18e3aa2b0ece..09eeac3c5db6 100644
+--- a/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
++++ b/llvm/lib/Target/AArch64/AArch64FrameLowering.cpp
+@@ -3789,7 +3789,26 @@ MachineBasicBlock::iterator tryMergeAdjacentSTG(MachineBasicBlock::iterator II,
+ 
+   // New code will be inserted after the last tagging instruction we've found.
+   MachineBasicBlock::iterator InsertI = Instrs.back().MI;
++
++  // All the gathered stack tag instructions are merged and placed after
++  // last tag store in the list. The check should be made if the nzcv
++  // flag is live at the point where we are trying to insert. Otherwise
++  // the nzcv flag might get clobbered if any stg loops are present.
++
++  // FIXME : This approach of bailing out from merge is conservative in
++  // some ways like even if stg loops are not present after merge the
++  // insert list, this liveness check is done (which is not needed).
++  LivePhysRegs LiveRegs(*(MBB->getParent()->getSubtarget().getRegisterInfo()));
++  LiveRegs.addLiveOuts(*MBB);
++  for (auto I = MBB->rbegin();; ++I) {
++    MachineInstr &MI = *I;
++    if (MI == InsertI)
++      break;
++    LiveRegs.stepBackward(*I);
++  }
+   InsertI++;
++  if (LiveRegs.contains(AArch64::NZCV))
++    return InsertI;
+ 
+   llvm::stable_sort(Instrs,
+                     [](const TagStoreInstr &Left, const TagStoreInstr &Right) {
+diff --git a/llvm/test/CodeGen/AArch64/settag-merge.ll b/llvm/test/CodeGen/AArch64/settag-merge.ll
+index 0c00931a1fd0..af922b91b221 100644
+--- a/llvm/test/CodeGen/AArch64/settag-merge.ll
++++ b/llvm/test/CodeGen/AArch64/settag-merge.ll
+@@ -289,3 +289,72 @@ entry:
+   call void @llvm.aarch64.settag(ptr %c2, i64 128)
+   ret void
+ }
++
++; Function Attrs: nounwind
++declare i32 @printf(ptr, ...) #0
++
++@.str = private unnamed_addr constant [4 x i8] c"%d\0A\00", align 1
++
++; Case 1
++; Insert point of stg merge is followed by nzcv read
++; Don't merge in this case
++
++define i32 @nzcv_clobber(i32 %in) {
++entry:
++; CHECK-LABEL: nzcv_clobber:
++; CHECK: stg sp, [sp, #528]
++; CHECK-NEXT: .LBB10_1:
++; CHECK: st2g x9, [x9], #32
++; CHECK-NEXT: subs x8, x8, #32
++; CHECK-NEXT: b.ne .LBB10_1
++; CHECK-NEXT: // %bb.2:
++; CHECK-NEXT: cmp w0, #10
++; CHECK-NEXT: stg sp, [sp]
++; CHECK-NEXT: b.ge .LBB10_4
++
++  %a = alloca i8, i32 16, align 16
++  %b = alloca i8, i32 512, align 16
++  %c = alloca i8, i32 16, align 16
++  call void @llvm.aarch64.settag(ptr %a, i64 16)
++  call void @llvm.aarch64.settag(ptr %b, i64 512)
++  %cmp = icmp slt i32 %in, 10
++  call void @llvm.aarch64.settag(ptr %c, i64 16)
++  br i1 %cmp, label %return0, label %return1
++
++return0:                                           ; preds = %entry
++  %call = call i32 (ptr, ...) @printf(ptr @.str, i32 10) #1
++  ret i32 0
++
++return1:
++  ret i32 1
++}
++
++; Case 2
++; Insert point of stg merge is not followed by nzcv read
++; Merge in this case
++
++define i32 @nzcv_no_clobber(i32 %in) {
++entry:
++; CHECK-LABEL: nzcv_no_clobber:
++; CHECK: mov x8, #544
++; CHECK-NEXT: .LBB11_1:
++; CHECK: st2g sp, [sp], #32
++; CHECK-NEXT: subs x8, x8, #32
++; CHECK-NEXT: b.ne .LBB11_1
++
++
++  %a = alloca i8, i32 16, align 16
++  %b = alloca i8, i32 512, align 16
++  %c = alloca i8, i32 16, align 16
++  call void @llvm.aarch64.settag(ptr %a, i64 16)
++  call void @llvm.aarch64.settag(ptr %b, i64 512)
++  call void @llvm.aarch64.settag(ptr %c, i64 16)
++  br label %return1
++
++return0:                                           ; preds = %entry
++  %call = call i32 (ptr, ...) @printf(ptr @.str, i32 10) #1
++  ret i32 0
++
++return1:
++  ret i32 1
++}
+-- 
+2.43.0.rc0.421.g78406f8d94-goog
+
