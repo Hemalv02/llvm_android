@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 
 import android_version
@@ -27,6 +28,11 @@ import configs
 import hosts
 import paths
 import utils
+
+def logger():
+    """Returns the module level logger."""
+    return logging.getLogger(__name__)
+
 
 def build_llvm() -> builders.Stage2Builder:
     host_configs = [configs.host_config()]
@@ -46,8 +52,12 @@ def build_llvm() -> builders.Stage2Builder:
     stage2.enable_assertions = True
     stage2.lto = False
     stage2.build_lldb = False
-    stage2.ninja_targets = ['all', 'UnitTests']
-    stage2.build()
+    stage2.ninja_targets = ['all', 'UnitTests', '-k', '100']
+    try:
+        stage2.build()
+    except subprocess.CalledProcessError:
+        # Ok to fail
+        logger().info('stage2.build() failed, but it\'s ok')
     return stage2
 
 # runextractor is expected to fail on these sources.
