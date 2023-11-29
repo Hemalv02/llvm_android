@@ -1,0 +1,77 @@
+From 001af0f89405a4397773970995a8d8d8328d4235 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Wed, 20 Sep 2023 22:41:28 -0700
+Subject: [PATCH] [MC] Actually make .pseudoprobe created sections
+ deterministic
+
+Fix a18ee8b7c95c6dfa410c6acaaf8cffcfde1220b5 to use a comparator
+that actually works: assign an ordinal to registered section.
+---
+ llvm/lib/MC/MCPseudoProbe.cpp                          |  8 +++++++-
+ .../test/Transforms/SampleProfile/pseudo-probe-emit.ll | 10 +++++-----
+ 2 files changed, 12 insertions(+), 6 deletions(-)
+
+diff --git a/llvm/lib/MC/MCPseudoProbe.cpp b/llvm/lib/MC/MCPseudoProbe.cpp
+index 9df765637975..f493aef14c8a 100644
+--- a/llvm/lib/MC/MCPseudoProbe.cpp
++++ b/llvm/lib/MC/MCPseudoProbe.cpp
+@@ -10,6 +10,7 @@
+ #include "llvm/ADT/STLExtras.h"
+ #include "llvm/IR/PseudoProbe.h"
+ #include "llvm/MC/MCAsmInfo.h"
++#include "llvm/MC/MCAssembler.h"
+ #include "llvm/MC/MCContext.h"
+ #include "llvm/MC/MCExpr.h"
+ #include "llvm/MC/MCFragment.h"
+@@ -213,7 +214,12 @@ void MCPseudoProbeSections::emit(MCObjectStreamer *MCOS) {
+   Vec.reserve(MCProbeDivisions.size());
+   for (auto &ProbeSec : MCProbeDivisions)
+     Vec.emplace_back(ProbeSec.first, &ProbeSec.second);
+-  llvm::sort(Vec, [](auto A, auto B) { return A.second->Guid < B.second->Guid; });
++  for (auto I : llvm::enumerate(MCOS->getAssembler()))
++    I.value().setOrdinal(I.index());
++  llvm::sort(Vec, [](auto A, auto B) {
++    return A.first->getSection().getOrdinal() <
++           B.first->getSection().getOrdinal();
++  });
+   for (auto [FuncSym, RootPtr] : Vec) {
+     const auto &Root = *RootPtr;
+     if (auto *S = Ctx.getObjectFileInfo()->getPseudoProbeSection(
+diff --git a/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll b/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll
+index 5875e4d574f6..13cfd820ae82 100644
+--- a/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll
++++ b/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll
+@@ -109,15 +109,15 @@ entry:
+ ; CHECK-SEC:       [ 5] .text.foo2         PROGBITS {{.*}} 00  AX  0   0 16
+ ; CHECK-SEC:       [ 8] .text.foo3         PROGBITS {{.*}} 00  AXG 0   0 16
+ ; CHECK-SEC-COUNT-3:    .pseudo_probe_desc PROGBITS
+-; CHECK-SEC:            .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
++; CHECK-SEC:            .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
+ ; CHECK-SEC-NEXT:       .pseudo_probe      PROGBITS {{.*}} 00   L  5   0  1
+-; CHECK-SEC-NEXT:       .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
++; CHECK-SEC-NEXT:       .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
+ ; CHECK-SEC-NOT:   .rela.pseudo_probe
+ 
+ ; CHECK-SEC:       COMDAT group section [    7] `.group' [foo3] contains 2 sections:
+ ; CHECK-SEC-NEXT:     [Index]    Name
+ ; CHECK-SEC-NEXT:     [    8]   .text.foo3
+-; CHECK-SEC-NEXT:     [   19]   .pseudo_probe
++; CHECK-SEC-NEXT:     [   21]   .pseudo_probe
+ ; CHECK-SEC-EMPTY:
+ ; CHECK-SEC-NEXT:  COMDAT group section [   10] `.group' [.pseudo_probe_desc_foo] contains 1 sections:
+ ; CHECK-SEC-NEXT:     [Index]    Name
+@@ -137,9 +137,9 @@ entry:
+ ; CHECK-SEC2:      [ 5] .text              PROGBITS {{.*}} 00  AX  0   0 16
+ ; CHECK-SEC2:      [ 8] .text              PROGBITS {{.*}} 00  AXG 0   0 16
+ ; CHECK-SEC2-COUNT-3:   .pseudo_probe_desc PROGBITS
+-; CHECK-SEC2:           .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
++; CHECK-SEC2:           .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
+ ; CHECK-SEC2-NEXT:      .pseudo_probe      PROGBITS {{.*}} 00   L  5   0  1
+-; CHECK-SEC2-NEXT:      .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
++; CHECK-SEC2-NEXT:      .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
+ ; CHECK-SEC2-NOT:  .rela.pseudo_probe
+ 
+ !llvm.dbg.cu = !{!0}
+-- 
+2.43.0.rc2.451.g8631bc7472-goog
+
