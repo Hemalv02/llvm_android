@@ -1,0 +1,109 @@
+From a18ee8b7c95c6dfa410c6acaaf8cffcfde1220b5 Mon Sep 17 00:00:00 2001
+From: Fangrui Song <i@maskray.me>
+Date: Wed, 20 Sep 2023 18:11:14 -0700
+Subject: [PATCH] [MC] Make .pseudo_probe created sections deterministic after
+ D91878
+
+MCPseudoProbeSections::emit iterates over MCProbeDivisions and creates sections.
+When the map key is MCSymbol *, the iteration order is not stable. The
+underlying BumpPtrAllocator largely decreases the flakiness. That said, two
+elements may sit in two different allocations from BumpPtrAllocator, with
+an unpredictable order. Under tcmalloc,
+llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll fails about 7 times per
+1000 runs.
+---
+ llvm/include/llvm/MC/MCPseudoProbe.h                   |  7 ++++---
+ llvm/lib/MC/MCPseudoProbe.cpp                          | 10 +++++++---
+ .../test/Transforms/SampleProfile/pseudo-probe-emit.ll | 10 +++++-----
+ 3 files changed, 16 insertions(+), 11 deletions(-)
+
+diff --git a/llvm/include/llvm/MC/MCPseudoProbe.h b/llvm/include/llvm/MC/MCPseudoProbe.h
+index 4904cb4ca545..7d91c5f7d613 100644
+--- a/llvm/include/llvm/MC/MCPseudoProbe.h
++++ b/llvm/include/llvm/MC/MCPseudoProbe.h
+@@ -54,13 +54,13 @@
+ #ifndef LLVM_MC_MCPSEUDOPROBE_H
+ #define LLVM_MC_MCPSEUDOPROBE_H
+ 
++#include "llvm/ADT/DenseMap.h"
+ #include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/ADT/StringRef.h"
+ #include "llvm/IR/PseudoProbe.h"
+ #include "llvm/Support/ErrorOr.h"
+ #include <list>
+-#include <map>
+ #include <memory>
+ #include <string>
+ #include <tuple>
+@@ -299,8 +299,9 @@ public:
+     MCProbeDivisions[FuncSym].addPseudoProbe(Probe, InlineStack);
+   }
+ 
+-  // TODO: Sort by getOrdinal to ensure a determinstic section order
+-  using MCProbeDivisionMap = std::map<MCSymbol *, MCPseudoProbeInlineTree>;
++  // The addresses of MCPseudoProbeInlineTree are used by the tree structure and
++  // need to be stable.
++  using MCProbeDivisionMap = std::unordered_map<MCSymbol *, MCPseudoProbeInlineTree>;
+ 
+ private:
+   // A collection of MCPseudoProbe for each function. The MCPseudoProbes are
+diff --git a/llvm/lib/MC/MCPseudoProbe.cpp b/llvm/lib/MC/MCPseudoProbe.cpp
+index caec98e9ea6a..9df765637975 100644
+--- a/llvm/lib/MC/MCPseudoProbe.cpp
++++ b/llvm/lib/MC/MCPseudoProbe.cpp
+@@ -209,9 +209,13 @@ void MCPseudoProbeInlineTree::emit(MCObjectStreamer *MCOS,
+ 
+ void MCPseudoProbeSections::emit(MCObjectStreamer *MCOS) {
+   MCContext &Ctx = MCOS->getContext();
+-  for (auto &ProbeSec : MCProbeDivisions) {
+-    const auto *FuncSym = ProbeSec.first;
+-    const auto &Root = ProbeSec.second;
++  SmallVector<std::pair<MCSymbol *, MCPseudoProbeInlineTree *>> Vec;
++  Vec.reserve(MCProbeDivisions.size());
++  for (auto &ProbeSec : MCProbeDivisions)
++    Vec.emplace_back(ProbeSec.first, &ProbeSec.second);
++  llvm::sort(Vec, [](auto A, auto B) { return A.second->Guid < B.second->Guid; });
++  for (auto [FuncSym, RootPtr] : Vec) {
++    const auto &Root = *RootPtr;
+     if (auto *S = Ctx.getObjectFileInfo()->getPseudoProbeSection(
+             FuncSym->getSection())) {
+       // Switch to the .pseudoprobe section or a comdat group.
+diff --git a/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll b/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll
+index 13cfd820ae82..5875e4d574f6 100644
+--- a/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll
++++ b/llvm/test/Transforms/SampleProfile/pseudo-probe-emit.ll
+@@ -109,15 +109,15 @@ entry:
+ ; CHECK-SEC:       [ 5] .text.foo2         PROGBITS {{.*}} 00  AX  0   0 16
+ ; CHECK-SEC:       [ 8] .text.foo3         PROGBITS {{.*}} 00  AXG 0   0 16
+ ; CHECK-SEC-COUNT-3:    .pseudo_probe_desc PROGBITS
+-; CHECK-SEC:            .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
++; CHECK-SEC:            .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
+ ; CHECK-SEC-NEXT:       .pseudo_probe      PROGBITS {{.*}} 00   L  5   0  1
+-; CHECK-SEC-NEXT:       .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
++; CHECK-SEC-NEXT:       .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
+ ; CHECK-SEC-NOT:   .rela.pseudo_probe
+ 
+ ; CHECK-SEC:       COMDAT group section [    7] `.group' [foo3] contains 2 sections:
+ ; CHECK-SEC-NEXT:     [Index]    Name
+ ; CHECK-SEC-NEXT:     [    8]   .text.foo3
+-; CHECK-SEC-NEXT:     [   21]   .pseudo_probe
++; CHECK-SEC-NEXT:     [   19]   .pseudo_probe
+ ; CHECK-SEC-EMPTY:
+ ; CHECK-SEC-NEXT:  COMDAT group section [   10] `.group' [.pseudo_probe_desc_foo] contains 1 sections:
+ ; CHECK-SEC-NEXT:     [Index]    Name
+@@ -137,9 +137,9 @@ entry:
+ ; CHECK-SEC2:      [ 5] .text              PROGBITS {{.*}} 00  AX  0   0 16
+ ; CHECK-SEC2:      [ 8] .text              PROGBITS {{.*}} 00  AXG 0   0 16
+ ; CHECK-SEC2-COUNT-3:   .pseudo_probe_desc PROGBITS
+-; CHECK-SEC2:           .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
++; CHECK-SEC2:           .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
+ ; CHECK-SEC2-NEXT:      .pseudo_probe      PROGBITS {{.*}} 00   L  5   0  1
+-; CHECK-SEC2-NEXT:      .pseudo_probe      PROGBITS {{.*}} 00   LG 8   0  1
++; CHECK-SEC2-NEXT:      .pseudo_probe      PROGBITS {{.*}} 00   L  3   0  1
+ ; CHECK-SEC2-NOT:  .rela.pseudo_probe
+ 
+ !llvm.dbg.cu = !{!0}
+-- 
+2.43.0.rc2.451.g8631bc7472-goog
+
