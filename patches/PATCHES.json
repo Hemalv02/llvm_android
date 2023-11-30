@@ -539,6 +539,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [MC] Make .pseudo_probe created sections deterministic after D91878"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a18ee8b7c95c6dfa410c6acaaf8cffcfde1220b5.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 513340
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [MC] Actually make .pseudoprobe created sections deterministic"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/001af0f89405a4397773970995a8d8d8328d4235.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 513358
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISC-V] Add RISC-V ABI plugin"
         },
         "platforms": [
