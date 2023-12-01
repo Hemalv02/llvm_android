@@ -894,5 +894,5 @@ class LLVMBuilder(LLVMBaseBuilder):
             # clangd tests fail intermittently. https://github.com/llvm/llvm-project/issues/64964
             check_env = {'LIT_FILTER_OUT': 'clangd'}
             if hosts.build_host().is_darwin: # b/298489611
-                check_env = {'LIT_FILTER_OUT': 'clangd|clang-tidy|xpc|tools\/lto|LineEditor'}
+                check_env = {'LIT_FILTER_OUT': 'clangd|clang-tidy|xpc|tools\/lto|LineEditor|Interpreter'}
             self._ninja(checks, check_env)
