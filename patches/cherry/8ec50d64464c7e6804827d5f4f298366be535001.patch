@@ -1,0 +1,315 @@
+From 8ec50d64464c7e6804827d5f4f298366be535001 Mon Sep 17 00:00:00 2001
+From: Pavel Iliin <Pavel.Iliin@arm.com>
+Date: Tue, 22 Aug 2023 20:09:51 +0100
+Subject: [PATCH] [AArch64] Fix FMV ifunc resolver usage on old Android APIs.
+ Rename internal compiler-rt FMV functions.
+
+The patch fixes Function Multi Versioning features detection by ifunc
+resolver on Android API levels < 30.
+Ifunc hwcaps parameters are not supported on Android API levels 23-29,
+so all CPU features are set unsupported if they were not initialized
+before ifunc resolver call.
+There is no support for ifunc on Android API levels < 23, so Function
+Multi Versioning is disabled in this case.
+
+Also use two underscore prefix for FMV runtime support functions to
+avoid conflict with user program ones.
+
+Differential Revision: https://reviews.llvm.org/D158641
+---
+ clang/lib/CodeGen/CGBuiltin.cpp               |  2 +-
+ clang/lib/Driver/ToolChains/Clang.cpp         |  1 +
+ .../test/CodeGen/attr-target-clones-aarch64.c | 14 +++++-----
+ clang/test/CodeGen/attr-target-version.c      |  8 +++---
+ .../CodeGenCXX/attr-target-clones-aarch64.cpp |  8 +++---
+ clang/test/CodeGenCXX/attr-target-version.cpp |  6 ++---
+ clang/test/Driver/aarch64-features.c          |  8 +++---
+ compiler-rt/lib/builtins/cpu_model.c          | 26 +++++++++++++++----
+ 8 files changed, 46 insertions(+), 27 deletions(-)
+
+diff --git a/clang/lib/CodeGen/CGBuiltin.cpp b/clang/lib/CodeGen/CGBuiltin.cpp
+index b0fd38408806..3f68aa2c953c 100644
+--- a/clang/lib/CodeGen/CGBuiltin.cpp
++++ b/clang/lib/CodeGen/CGBuiltin.cpp
+@@ -13524,7 +13524,7 @@ CodeGenFunction::EmitX86CpuSupports(std::array<uint32_t, 4> FeatureMask) {
+ Value *CodeGenFunction::EmitAArch64CpuInit() {
+   llvm::FunctionType *FTy = llvm::FunctionType::get(VoidTy, false);
+   llvm::FunctionCallee Func =
+-      CGM.CreateRuntimeFunction(FTy, "init_cpu_features_resolver");
++      CGM.CreateRuntimeFunction(FTy, "__init_cpu_features_resolver");
+   cast<llvm::GlobalValue>(Func.getCallee())->setDSOLocal(true);
+   cast<llvm::GlobalValue>(Func.getCallee())
+       ->setDLLStorageClass(llvm::GlobalValue::DefaultStorageClass);
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index dda6aef64190..a694d00b569a 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -7524,6 +7524,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+ 
+   if (Triple.isAArch64() &&
+       (Args.hasArg(options::OPT_mno_fmv) ||
++       (Triple.isAndroid() && Triple.isAndroidVersionLT(23)) ||
+        getToolChain().GetRuntimeLibType(Args) != ToolChain::RLT_CompilerRT)) {
+     // Disable Function Multiversioning on AArch64 target.
+     CmdArgs.push_back("-target-feature");
+diff --git a/clang/test/CodeGen/attr-target-clones-aarch64.c b/clang/test/CodeGen/attr-target-clones-aarch64.c
+index 4a5e47306c11..3f2f2fdd24e8 100644
+--- a/clang/test/CodeGen/attr-target-clones-aarch64.c
++++ b/clang/test/CodeGen/attr-target-clones-aarch64.c
+@@ -45,7 +45,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret i32 0
+ // CHECK-LABEL: @ftc.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 16512
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 16512
+@@ -77,7 +77,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret i32 1
+ // CHECK-LABEL: @ftc_def.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 17592186048512
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 17592186048512
+@@ -105,7 +105,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret i32 2
+ // CHECK-LABEL: @ftc_dup1.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 4096
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 4096
+@@ -129,7 +129,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret i32 3
+ // CHECK-LABEL: @ftc_dup2.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 1040
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 1040
+@@ -177,7 +177,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret i32 [[ADD5]]
+ // CHECK-LABEL: @ftc_inline1.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 18014535948435456
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 18014535948435456
+@@ -205,7 +205,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret ptr @ftc_inline1
+ // CHECK-LABEL: @ftc_inline2.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 549757911040
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 549757911040
+@@ -225,7 +225,7 @@ inline int __attribute__((target_clones("fp16", "sve2-bitperm+fcma", "default"))
+ // CHECK-NEXT:    ret ptr @ftc_inline2
+ // CHECK-LABEL: @ftc_inline3.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 70369817919488
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 70369817919488
+diff --git a/clang/test/CodeGen/attr-target-version.c b/clang/test/CodeGen/attr-target-version.c
+index 799433604b00..8d4a4f137569 100644
+--- a/clang/test/CodeGen/attr-target-version.c
++++ b/clang/test/CodeGen/attr-target-version.c
+@@ -153,7 +153,7 @@ int hoo(void) {
+ // CHECK-NEXT:    ret i32 [[ADD3]]
+ // CHECK-LABEL: @fmv.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 11
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 11
+@@ -255,7 +255,7 @@ int hoo(void) {
+ // CHECK-NEXT:    ret i32 [[CALL3]]
+ // CHECK-LABEL: @fmv_inline.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 4398048608256
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 4398048608256
+@@ -358,7 +358,7 @@ int hoo(void) {
+ // CHECK-NEXT:    ret ptr @fmv_e._Mls64
+ // CHECK-LABEL: @fmv_d.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 70368744177664
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 70368744177664
+@@ -370,7 +370,7 @@ int hoo(void) {
+ // CHECK-NEXT:    ret ptr @fmv_d
+ // CHECK-LABEL: @fmv_c.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 281474976710656
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 281474976710656
+diff --git a/clang/test/CodeGenCXX/attr-target-clones-aarch64.cpp b/clang/test/CodeGenCXX/attr-target-clones-aarch64.cpp
+index c9ee59fef284..7cc9a9e03630 100644
+--- a/clang/test/CodeGenCXX/attr-target-clones-aarch64.cpp
++++ b/clang/test/CodeGenCXX/attr-target-clones-aarch64.cpp
+@@ -54,7 +54,7 @@ void run_foo_tml() {
+ // CHECK-NEXT:    ret i32 1
+ // CHECK-LABEL: @_Z7foo_ovli.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 4503599627436032
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 4503599627436032
+@@ -72,7 +72,7 @@ void run_foo_tml() {
+ // CHECK-NEXT:    ret i32 2
+ // CHECK-LABEL: @_Z7foo_ovlv.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 11258999068426240
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 11258999068426240
+@@ -101,7 +101,7 @@ void run_foo_tml() {
+ // CHECK-NEXT:    ret void
+ // CHECK-LABEL: @_ZN7MyClassIssE7foo_tmlEv.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 36310271995674624
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 36310271995674624
+@@ -121,7 +121,7 @@ void run_foo_tml() {
+ // CHECK-NEXT:    ret ptr @_ZN7MyClassIssE7foo_tmlEv
+ // CHECK-LABEL: @_ZN7MyClassIisE7foo_tmlEv.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 36310271995674624
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 36310271995674624
+diff --git a/clang/test/CodeGenCXX/attr-target-version.cpp b/clang/test/CodeGenCXX/attr-target-version.cpp
+index 804620d3c24e..f8a4419f249f 100644
+--- a/clang/test/CodeGenCXX/attr-target-version.cpp
++++ b/clang/test/CodeGenCXX/attr-target-version.cpp
+@@ -78,7 +78,7 @@ int bar() {
+ // CHECK-NEXT:    ret i32 [[ADD3]]
+ // CHECK-LABEL: @_ZN7MyClass3gooEi.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 1024
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 1024
+@@ -98,7 +98,7 @@ int bar() {
+ // CHECK-NEXT:    ret ptr @_ZN7MyClass3gooEi
+ // CHECK-LABEL: @_Z3fooi.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 36028797153181696
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 36028797153181696
+@@ -110,7 +110,7 @@ int bar() {
+ // CHECK-NEXT:    ret ptr @_Z3fooi
+ // CHECK-LABEL: @_Z3foov.resolver(
+ // CHECK-NEXT:  resolver_entry:
+-// CHECK-NEXT:    call void @init_cpu_features_resolver()
++// CHECK-NEXT:    call void @__init_cpu_features_resolver()
+ // CHECK-NEXT:    [[TMP0:%.*]] = load i64, ptr @__aarch64_cpu_features, align 8
+ // CHECK-NEXT:    [[TMP1:%.*]] = and i64 [[TMP0]], 268435488
+ // CHECK-NEXT:    [[TMP2:%.*]] = icmp eq i64 [[TMP1]], 268435488
+diff --git a/clang/test/Driver/aarch64-features.c b/clang/test/Driver/aarch64-features.c
+index 7b990f4c3e5d..a797cc0cf908 100644
+--- a/clang/test/Driver/aarch64-features.c
++++ b/clang/test/Driver/aarch64-features.c
+@@ -7,15 +7,17 @@
+ // CHECK: fno-signed-char
+ 
+ // Check Function Multi Versioning option and rtlib dependency.
+-// RUN: %clang --target=aarch64-linux-android -rtlib=compiler-rt \
++// RUN: %clang --target=aarch64-linux-android23 -rtlib=compiler-rt \
+ // RUN: -### -c %s 2>&1 | FileCheck -check-prefix=CHECK-FMV %s
+-
++// RUN: %clang --target=aarch64-linux-android -rtlib=compiler-rt \
++// RUN: -### -c %s 2>&1 | FileCheck -check-prefix=CHECK-FMV-OFF %s
+ // RUN: %clang --target=aarch64-linux-android -rtlib=compiler-rt -mno-fmv \
+ // RUN: -### -c %s 2>&1 | FileCheck -check-prefix=CHECK-FMV-OFF %s
++// RUN: %clang --target=aarch64-linux-android22 -rtlib=compiler-rt \
++// RUN: -### -c %s 2>&1 | FileCheck -check-prefix=CHECK-FMV-OFF %s
+ 
+ // RUN: %clang --target=aarch64-linux-gnu -rtlib=libgcc \
+ // RUN: -### -c %s 2>&1 | FileCheck -check-prefix=CHECK-FMV-OFF %s
+-
+ // RUN: %clang --target=arm64-unknown-linux -rtlib=libgcc \
+ // RUN: -### -c %s 2>&1 | FileCheck -check-prefix=CHECK-FMV-OFF %s
+ 
+diff --git a/compiler-rt/lib/builtins/cpu_model.c b/compiler-rt/lib/builtins/cpu_model.c
+index 246025ba5ab8..329dd8e6ae92 100644
+--- a/compiler-rt/lib/builtins/cpu_model.c
++++ b/compiler-rt/lib/builtins/cpu_model.c
+@@ -1239,13 +1239,12 @@ struct {
+   // As features grows new fields could be added
+ } __aarch64_cpu_features __attribute__((visibility("hidden"), nocommon));
+ 
+-void init_cpu_features_resolver(unsigned long hwcap, const __ifunc_arg_t *arg) {
++static void __init_cpu_features_constructor(unsigned long hwcap,
++                                            const __ifunc_arg_t *arg) {
+ #define setCPUFeature(F) __aarch64_cpu_features.features |= 1ULL << F
+ #define getCPUFeature(id, ftr) __asm__("mrs %0, " #id : "=r"(ftr))
+ #define extractBits(val, start, number)                                        \
+   (val & ((1ULL << number) - 1ULL) << start) >> start
+-  if (__aarch64_cpu_features.features)
+-    return;
+   unsigned long hwcap2 = 0;
+   if (hwcap & _IFUNC_ARG_HWCAP)
+     hwcap2 = arg->_hwcap2;
+@@ -1427,7 +1426,24 @@ void init_cpu_features_resolver(unsigned long hwcap, const __ifunc_arg_t *arg) {
+   setCPUFeature(FEAT_MAX);
+ }
+ 
+-void CONSTRUCTOR_ATTRIBUTE init_cpu_features(void) {
++void __init_cpu_features_resolver(unsigned long hwcap,
++                                  const __ifunc_arg_t *arg) {
++  if (__aarch64_cpu_features.features)
++    return;
++#if defined(__ANDROID__)
++  // ifunc resolvers don't have hwcaps in arguments on Android API lower
++  // than 30. If so, set feature detection done and keep all CPU features
++  // unsupported (zeros). To detect this case in runtime we check existence
++  // of memfd_create function from Standard C library which was introduced in
++  // Android API 30.
++  int memfd_create(const char *, unsigned int) __attribute__((weak));
++  if (!memfd_create)
++    return;
++#endif // defined(__ANDROID__)
++  __init_cpu_features_constructor(hwcap, arg);
++}
++
++void CONSTRUCTOR_ATTRIBUTE __init_cpu_features(void) {
+   unsigned long hwcap;
+   unsigned long hwcap2;
+   // CPU features already initialized.
+@@ -1452,7 +1468,7 @@ void CONSTRUCTOR_ATTRIBUTE init_cpu_features(void) {
+   arg._size = sizeof(__ifunc_arg_t);
+   arg._hwcap = hwcap;
+   arg._hwcap2 = hwcap2;
+-  init_cpu_features_resolver(hwcap | _IFUNC_ARG_HWCAP, &arg);
++  __init_cpu_features_constructor(hwcap | _IFUNC_ARG_HWCAP, &arg);
+ #undef extractBits
+ #undef getCPUFeature
+ #undef setCPUFeature
+-- 
+2.43.0.472.g3155946c3a-goog
+
