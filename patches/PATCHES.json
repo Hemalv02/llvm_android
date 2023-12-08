@@ -427,6 +427,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [AArch64] Fix FMV crash on unspecified number of parameters function (#65671)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/e5fe3d27fc1d5f27fe107f3380f3727362bac66c.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511957
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [ELF][RISCV] Implement --emit-relocs with relaxation"
         },
         "platforms": [
@@ -576,6 +590,34 @@
         "version_range": {
             "from": 498229,
             "until": 514307
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64] Fix FMV ifunc resolver usage on old Android APIs. Rename internal compiler-rt FMV functions."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/8ec50d64464c7e6804827d5f4f298366be535001.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 514311
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AArch64][FMV] Add rcpc3 support, introduce bits for features extensi\u2026 (#68104)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b04fe222d21277f8359130cd50ae7303b3d15254.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 514633
         }
     },
     {

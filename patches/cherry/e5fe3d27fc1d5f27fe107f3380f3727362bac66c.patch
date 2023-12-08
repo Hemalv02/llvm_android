@@ -1,0 +1,69 @@
+From e5fe3d27fc1d5f27fe107f3380f3727362bac66c Mon Sep 17 00:00:00 2001
+From: Pavel Iliin <61020334+ilinpv@users.noreply.github.com>
+Date: Fri, 8 Sep 2023 16:26:39 +0100
+Subject: [PATCH] [AArch64] Fix FMV crash on unspecified number of parameters
+ function (#65671)
+
+Fix Function Multi Versioning crash reported in
+https://github.com/llvm/llvm-project/issues/65669
+---
+ clang/lib/Sema/SemaDecl.cpp           | 28 ++++++++++++++-------------
+ clang/test/Sema/attr-target-version.c |  5 +++++
+ 2 files changed, 20 insertions(+), 13 deletions(-)
+
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index d94366dac102..027c6c3e4222 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -11680,20 +11680,22 @@ static bool CheckMultiVersionFunction(Sema &S, FunctionDecl *NewFD,
+   FunctionDecl *OldFD = OldDecl->getAsFunction();
+ 
+   if (!OldFD->isMultiVersion() && MVKind == MultiVersionKind::None) {
+-    // No target_version attributes mean default
+-    if (!NewTVA) {
+-      const auto *OldTVA = OldFD->getAttr<TargetVersionAttr>();
+-      if (OldTVA) {
+-        NewFD->addAttr(TargetVersionAttr::CreateImplicit(
+-            S.Context, "default", NewFD->getSourceRange()));
+-        NewFD->setIsMultiVersion();
+-        OldFD->setIsMultiVersion();
+-        OldDecl = OldFD;
+-        Redeclaration = true;
+-        return true;
+-      }
++    if (NewTVA || !OldFD->getAttr<TargetVersionAttr>())
++      return false;
++    if (!NewFD->getType()->getAs<FunctionProtoType>()) {
++      // Multiversion declaration doesn't have prototype.
++      S.Diag(NewFD->getLocation(), diag::err_multiversion_noproto);
++      NewFD->setInvalidDecl();
++    } else {
++      // No "target_version" attribute is equivalent to "default" attribute.
++      NewFD->addAttr(TargetVersionAttr::CreateImplicit(
++          S.Context, "default", NewFD->getSourceRange()));
++      NewFD->setIsMultiVersion();
++      OldFD->setIsMultiVersion();
++      OldDecl = OldFD;
++      Redeclaration = true;
+     }
+-    return false;
++    return true;
+   }
+ 
+   // Multiversioned redeclarations aren't allowed to omit the attribute, except
+diff --git a/clang/test/Sema/attr-target-version.c b/clang/test/Sema/attr-target-version.c
+index 0cfec5ecb49c..587c721de5e3 100644
+--- a/clang/test/Sema/attr-target-version.c
++++ b/clang/test/Sema/attr-target-version.c
+@@ -89,3 +89,8 @@ float __attribute__((target_version("rdm"))) rtype(int);
+ int __attribute__((target_version("sha2"))) combine(void) { return 1; }
+ // expected-error@+1 {{multiversioned function declaration has a different calling convention}}
+ int __attribute__((aarch64_vector_pcs, target_version("sha3"))) combine(void) { return 2; }
++
++int __attribute__((target_version("fp+aes+pmull+rcpc"))) unspec_args() { return -1; }
++// expected-error@+1 {{multiversioned function must have a prototype}}
++int __attribute__((target_version("default"))) unspec_args() { return 0; }
++int cargs() { return unspec_args(); }
+-- 
+2.43.0.472.g3155946c3a-goog
+
