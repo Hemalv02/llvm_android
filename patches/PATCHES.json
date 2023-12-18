@@ -1011,19 +1011,5 @@
             "from": 510928,
             "until": null
         }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert [Clang] Fix member lookup so that we don't ignore ambiguous lookups in some cases"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-Clang-Fix-member-lookup-so-that-we-don-t-igno.patch",
-        "version_range": {
-            "from": 510928,
-            "until": null
-        }
     }
 ]
