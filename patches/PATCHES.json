@@ -679,6 +679,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Honor -fno-sanitize-link-runtime for libclang_rt.asan_static (#66414)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/d9d20bd81f2f95c9b7510725fb76975e8123a542.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 522184
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISCV] Correct copyPhysReg for GPRPF64. (#70419)"
         },
         "platforms": [
