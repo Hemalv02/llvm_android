@@ -413,6 +413,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"Reland \"[Clang][SemaCXX] Add unused warning for variables declared in condition expressions\"\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/f0f395e00e2ec3f1f20ca9021d1554fde73d56c9.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511133
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [Driver] Report warnings for unclaimed TargetSpecific options for assembler input"
         },
         "platforms": [
