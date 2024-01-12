@@ -1,0 +1,208 @@
+From f0f395e00e2ec3f1f20ca9021d1554fde73d56c9 Mon Sep 17 00:00:00 2001
+From: Nick Desaulniers <ndesaulniers@google.com>
+Date: Thu, 31 Aug 2023 11:48:14 -0700
+Subject: [PATCH] Revert "Reland "[Clang][SemaCXX] Add unused warning for
+ variables declared in condition expressions""
+
+This reverts commit 92023b15099012a657da07ebf49dd7d94a260f84.
+
+Further issues were uncovered:
+- False positive -Wunused-variable on function-static variables with the
+  used attribute. https://github.com/ClangBuiltLinux/linux/issues/1926
+  A test case needs to be added for this.
+- Request for a new flag for these.
+  https://reviews.llvm.org/D152495#4628877
+  https://reviews.llvm.org/D152495#4628887
+---
+ clang/docs/ReleaseNotes.rst                   |   3 -
+ clang/lib/Sema/SemaDecl.cpp                   |   2 +-
+ clang/lib/Sema/SemaExprCXX.cpp                |   4 -
+ .../lib/Sema/SemaTemplateInstantiateDecl.cpp  |   2 +-
+ clang/test/SemaCXX/warn-unused-variables.cpp  | 114 +-----------------
+ 5 files changed, 3 insertions(+), 122 deletions(-)
+
+diff --git a/clang/docs/ReleaseNotes.rst b/clang/docs/ReleaseNotes.rst
+index 138730336f74..15d318ef75f0 100644
+--- a/clang/docs/ReleaseNotes.rst
++++ b/clang/docs/ReleaseNotes.rst
+@@ -162,9 +162,6 @@ Improvements to Clang's diagnostics
+   (`#64871: <https://github.com/llvm/llvm-project/issues/64871>`_).
+   Also clang no longer emits false positive warnings about the output length of
+   ``%g`` format specifier.
+-- Clang now warns on unused variables declared and initialized in condition
+-  expressions.
+-  (`#61681: <https://github.com/llvm/llvm-project/issues/61681>`_)
+ 
+ Bug Fixes in This Version
+ -------------------------
+diff --git a/clang/lib/Sema/SemaDecl.cpp b/clang/lib/Sema/SemaDecl.cpp
+index 9facf2187f76..2ee216fffaa2 100644
+--- a/clang/lib/Sema/SemaDecl.cpp
++++ b/clang/lib/Sema/SemaDecl.cpp
+@@ -1995,7 +1995,7 @@ static bool ShouldDiagnoseUnusedDecl(const LangOptions &LangOpts,
+       return false;
+   } else if (!D->getDeclName()) {
+     return false;
+-  } else if (D->isReferenced() || (!isa<VarDecl>(D) && D->isUsed())) {
++  } else if (D->isReferenced() || D->isUsed()) {
+     return false;
+   }
+ 
+diff --git a/clang/lib/Sema/SemaExprCXX.cpp b/clang/lib/Sema/SemaExprCXX.cpp
+index e3b3b7bdad4a..472fbdbdb5d0 100644
+--- a/clang/lib/Sema/SemaExprCXX.cpp
++++ b/clang/lib/Sema/SemaExprCXX.cpp
+@@ -4021,10 +4021,6 @@ ExprResult Sema::CheckConditionVariable(VarDecl *ConditionVar,
+       ConditionVar, ConditionVar->getType().getNonReferenceType(), VK_LValue,
+       ConditionVar->getLocation());
+ 
+-  // Ensure that `-Wunused-variable` will be emitted for condition variables
+-  // that are not referenced later. e.g.: if (int var = init());
+-  ConditionVar->setReferenced(/*R=*/false);
+-
+   switch (CK) {
+   case ConditionKind::Boolean:
+     return CheckBooleanCondition(StmtLoc, Condition.get());
+diff --git a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
+index bb8ea187ecf9..63f022d5c2ff 100644
+--- a/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
++++ b/clang/lib/Sema/SemaTemplateInstantiateDecl.cpp
+@@ -5353,7 +5353,7 @@ void Sema::BuildVariableInstantiation(
+   // will have been deferred.
+   if (!NewVar->isInvalidDecl() &&
+       NewVar->getDeclContext()->isFunctionOrMethod() &&
+-      OldVar->getType()->isDependentType() && !OldVar->isImplicit())
++      OldVar->getType()->isDependentType())
+     DiagnoseUnusedDecl(NewVar);
+ }
+ 
+diff --git a/clang/test/SemaCXX/warn-unused-variables.cpp b/clang/test/SemaCXX/warn-unused-variables.cpp
+index db33086436d3..4db8bdf12e5d 100644
+--- a/clang/test/SemaCXX/warn-unused-variables.cpp
++++ b/clang/test/SemaCXX/warn-unused-variables.cpp
+@@ -1,5 +1,5 @@
+ // RUN: %clang_cc1 -fsyntax-only -Wunused-variable -Wunused-label -Wno-c++1y-extensions -verify %s
+-// RUN: %clang_cc1 -fsyntax-only -Wunused-variable -Wunused-label -Wno-c++14-extensions -Wno-c++17-extensions -verify -std=c++11 %s
++// RUN: %clang_cc1 -fsyntax-only -Wunused-variable -Wunused-label -Wno-c++1y-extensions -verify -std=c++11 %s
+ template<typename T> void f() {
+   T t;
+   t = 17;
+@@ -294,115 +294,3 @@ void RAIIWrapperTest() {
+ }
+ 
+ } // namespace gh54489
+-
+-namespace inside_condition {
+-  void ifs() {
+-    if (int hoge = 0) // expected-warning {{unused variable 'hoge'}}
+-      return;
+-    if (const int const_hoge = 0) // expected-warning {{unused variable 'const_hoge'}}
+-      return;
+-    else if (int fuga = 0)
+-      (void)fuga;
+-    else if (int used = 1; int catched = used) // expected-warning {{unused variable 'catched'}}
+-      return;
+-    else if (int refed = 1; int used = refed)
+-      (void)used;
+-    else if (int unused1 = 2; int unused2 = 3) // expected-warning {{unused variable 'unused1'}} \
+-                                               // expected-warning {{unused variable 'unused2'}}
+-      return;
+-    else if (int unused = 4; int used = 5) // expected-warning {{unused variable 'unused'}}
+-      (void)used;
+-    else if (int used = 6; int unused = 7) // expected-warning {{unused variable 'unused'}}
+-      (void)used;
+-    else if (int used1 = 8; int used2 = 9)
+-      (void)(used1 + used2);
+-    else if (auto [a, b] = (int[2]){ 1, 2 }; 1) // expected-warning {{unused variable '[a, b]'}}
+-      return;
+-    else if (auto [a, b] = (int[2]){ 1, 2 }; a)
+-      return;
+-  }
+-
+-  void fors() {
+-    for (int i = 0;int unused = 0;); // expected-warning {{unused variable 'i'}} \
+-                                     // expected-warning {{unused variable 'unused'}}
+-    for (int i = 0;int used = 0;) // expected-warning {{unused variable 'i'}}
+-      (void)used;
+-      while(int var = 1) // expected-warning {{unused variable 'var'}}
+-        return;
+-  }
+-
+-  void whiles() {
+-    while(int unused = 1) // expected-warning {{unused variable 'unused'}}
+-      return;
+-    while(int used = 1)
+-      (void)used;
+-  }
+-
+-
+-  void switches() {
+-    switch(int unused = 1) { // expected-warning {{unused variable 'unused'}}
+-      case 1: return;
+-    }
+-    switch(constexpr int used = 3; int unused = 4) { // expected-warning {{unused variable 'unused'}}
+-      case used: return;
+-    }
+-    switch(int used = 3; int unused = 4) { // expected-warning {{unused variable 'unused'}}
+-      case 3: (void)used;
+-    }
+-    switch(constexpr int used1 = 0; constexpr int used2 = 6) {
+-      case (used1+used2): return;
+-    }
+-    switch(auto [a, b] = (int[2]){ 1, 2 }; 1) { // expected-warning {{unused variable '[a, b]'}}
+-      case 1: return;
+-    }
+-    switch(auto [a, b] = (int[2]){ 1, 2 }; b) {
+-      case 1: return;
+-    }
+-    switch(auto [a, b] = (int[2]){ 1, 2 }; 1) {
+-      case 1: (void)a;
+-    }
+-  }
+-  template <typename T>
+-  struct Vector {
+-    void doIt() {
+-      for (auto& e : elements){} // expected-warning {{unused variable 'e'}}
+-    }
+-    T elements[10];
+-  };
+-  void ranged_for() {
+-    Vector<int>    vector;
+-    vector.doIt(); // expected-note {{here}}
+-  }
+-
+-
+-  struct RAII {
+-    int &x;
+-    RAII(int &ref) : x(ref) {}
+-    ~RAII() { x = 0;}
+-    operator int() const { return 1; }
+-  };
+-  void aggregate() {
+-    int x = 10;
+-    int y = 10;
+-    if (RAII var = x) {}
+-    for(RAII var = x; RAII var2 = y;) {}
+-    while (RAII var = x) {}
+-    switch (RAII var = x) {}
+-  }
+-
+-  struct TrivialDtor{
+-    int &x;
+-    TrivialDtor(int &ref) : x(ref) { ref = 32; }
+-    operator int() const { return 1; }
+-  };
+-  void trivial_dtor() {
+-    int x = 10;
+-    int y = 10;
+-    if (TrivialDtor var = x) {} // expected-warning {{unused variable 'var'}}
+-    for(TrivialDtor var = x; TrivialDtor var2 = y;) {} // expected-warning {{unused variable 'var'}} \
+-                                         // expected-warning {{unused variable 'var2'}}
+-    while (TrivialDtor var = x) {} // expected-warning {{unused variable 'var'}}
+-    switch (TrivialDtor var = x) {} // expected-warning {{unused variable 'var'}}
+-  }
+-
+-} // namespace inside_condition
+-- 
+2.43.0.275.g3460e3d667-goog
+
