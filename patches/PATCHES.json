@@ -707,6 +707,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [lld] [MTE] Allow android note for static executables. (#77078)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a831a21e4d8d41b044edaf61a90debb2ad756bda.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 523405
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISCV] Correct copyPhysReg for GPRPF64. (#70419)"
         },
         "platforms": [
