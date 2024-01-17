@@ -1,0 +1,164 @@
+From fa65eaeaf2f0ba4ddc71a11ed5870a86cb9d2834 Mon Sep 17 00:00:00 2001
+From: AdityaK <appujee@google.com>
+Date: Thu, 18 Jan 2024 12:20:26 -0800
+Subject: [PATCH] Revert "[CaptureTracking] Ignore ephemeral values in
+ EarliestEscapeInfo"
+
+This reverts commit b22ffc7b98f8700d7d480127ff1c3683a6dac6e5.
+
+Change-Id: Iff3d3730ff1e0cfb1ede078ed09d293a36dbc917
+---
+ llvm/include/llvm/Analysis/AliasAnalysis.h    |  7 +-----
+ llvm/include/llvm/Analysis/CaptureTracking.h  |  9 ++++----
+ llvm/lib/Analysis/BasicAliasAnalysis.cpp      |  2 +-
+ llvm/lib/Analysis/CaptureTracking.cpp         | 22 ++++++-------------
+ .../Scalar/DeadStoreElimination.cpp           |  4 ++--
+ .../Transforms/DeadStoreElimination/assume.ll |  1 +
+ 5 files changed, 15 insertions(+), 29 deletions(-)
+
+diff --git a/llvm/include/llvm/Analysis/AliasAnalysis.h b/llvm/include/llvm/Analysis/AliasAnalysis.h
+index 4f06ae1d38c6..829ed2dff911 100644
+--- a/llvm/include/llvm/Analysis/AliasAnalysis.h
++++ b/llvm/include/llvm/Analysis/AliasAnalysis.h
+@@ -64,7 +64,6 @@ class LoopInfo;
+ class PreservedAnalyses;
+ class TargetLibraryInfo;
+ class Value;
+-template <typename> class SmallPtrSetImpl;
+ 
+ /// The possible results of an alias query.
+ ///
+@@ -184,12 +183,8 @@ class EarliestEscapeInfo final : public CaptureInfo {
+   /// This is used for cache invalidation purposes.
+   DenseMap<Instruction *, TinyPtrVector<const Value *>> Inst2Obj;
+ 
+-  const SmallPtrSetImpl<const Value *> &EphValues;
+-
+ public:
+-  EarliestEscapeInfo(DominatorTree &DT, const LoopInfo &LI,
+-                     const SmallPtrSetImpl<const Value *> &EphValues)
+-      : DT(DT), LI(LI), EphValues(EphValues) {}
++  EarliestEscapeInfo(DominatorTree &DT, const LoopInfo &LI) : DT(DT), LI(LI) {}
+ 
+   bool isNotCapturedBeforeOrAt(const Value *Object,
+                                const Instruction *I) override;
+diff --git a/llvm/include/llvm/Analysis/CaptureTracking.h b/llvm/include/llvm/Analysis/CaptureTracking.h
+index a2d9277745e4..17059da7c993 100644
+--- a/llvm/include/llvm/Analysis/CaptureTracking.h
++++ b/llvm/include/llvm/Analysis/CaptureTracking.h
+@@ -80,11 +80,10 @@ namespace llvm {
+   // nullptr is returned. Note that the caller of the function has to ensure
+   // that the instruction the result value is compared against is not in a
+   // cycle.
+-  Instruction *
+-  FindEarliestCapture(const Value *V, Function &F, bool ReturnCaptures,
+-                      bool StoreCaptures, const DominatorTree &DT,
+-                      const SmallPtrSetImpl<const Value *> &EphValues,
+-                      unsigned MaxUsesToExplore = 0);
++  Instruction *FindEarliestCapture(const Value *V, Function &F,
++                                   bool ReturnCaptures, bool StoreCaptures,
++                                   const DominatorTree &DT,
++                                   unsigned MaxUsesToExplore = 0);
+ 
+   /// This callback is used in conjunction with PointerMayBeCaptured. In
+   /// addition to the interface here, you'll need to provide your own getters
+diff --git a/llvm/lib/Analysis/BasicAliasAnalysis.cpp b/llvm/lib/Analysis/BasicAliasAnalysis.cpp
+index c162b8f6edc1..5f74d3f387c3 100644
+--- a/llvm/lib/Analysis/BasicAliasAnalysis.cpp
++++ b/llvm/lib/Analysis/BasicAliasAnalysis.cpp
+@@ -206,7 +206,7 @@ bool EarliestEscapeInfo::isNotCapturedBeforeOrAt(const Value *Object,
+   if (Iter.second) {
+     Instruction *EarliestCapture = FindEarliestCapture(
+         Object, *const_cast<Function *>(I->getFunction()),
+-        /*ReturnCaptures=*/false, /*StoreCaptures=*/true, DT, EphValues);
++        /*ReturnCaptures=*/false, /*StoreCaptures=*/true, DT);
+     if (EarliestCapture) {
+       auto Ins = Inst2Obj.insert({EarliestCapture, {}});
+       Ins.first->second.push_back(Object);
+diff --git a/llvm/lib/Analysis/CaptureTracking.cpp b/llvm/lib/Analysis/CaptureTracking.cpp
+index 00e096af3110..f94f7d83e772 100644
+--- a/llvm/lib/Analysis/CaptureTracking.cpp
++++ b/llvm/lib/Analysis/CaptureTracking.cpp
+@@ -166,9 +166,8 @@ namespace {
+   // escape are not in a cycle.
+   struct EarliestCaptures : public CaptureTracker {
+ 
+-    EarliestCaptures(bool ReturnCaptures, Function &F, const DominatorTree &DT,
+-                     const SmallPtrSetImpl<const Value *> &EphValues)
+-        : EphValues(EphValues), DT(DT), ReturnCaptures(ReturnCaptures), F(F) {}
++    EarliestCaptures(bool ReturnCaptures, Function &F, const DominatorTree &DT)
++        : DT(DT), ReturnCaptures(ReturnCaptures), F(F) {}
+ 
+     void tooManyUses() override {
+       Captured = true;
+@@ -180,9 +179,6 @@ namespace {
+       if (isa<ReturnInst>(I) && !ReturnCaptures)
+         return false;
+ 
+-      if (EphValues.contains(I))
+-        return false;
+-
+       if (!EarliestCapture)
+         EarliestCapture = I;
+       else
+@@ -194,8 +190,6 @@ namespace {
+       return false;
+     }
+ 
+-    const SmallPtrSetImpl<const Value *> &EphValues;
+-
+     Instruction *EarliestCapture = nullptr;
+ 
+     const DominatorTree &DT;
+@@ -283,16 +277,14 @@ bool llvm::PointerMayBeCapturedBefore(const Value *V, bool ReturnCaptures,
+   return CB.Captured;
+ }
+ 
+-Instruction *
+-llvm::FindEarliestCapture(const Value *V, Function &F, bool ReturnCaptures,
+-                          bool StoreCaptures, const DominatorTree &DT,
+-
+-                          const SmallPtrSetImpl<const Value *> &EphValues,
+-                          unsigned MaxUsesToExplore) {
++Instruction *llvm::FindEarliestCapture(const Value *V, Function &F,
++                                       bool ReturnCaptures, bool StoreCaptures,
++                                       const DominatorTree &DT,
++                                       unsigned MaxUsesToExplore) {
+   assert(!isa<GlobalValue>(V) &&
+          "It doesn't make sense to ask whether a global is captured.");
+ 
+-  EarliestCaptures CB(ReturnCaptures, F, DT, EphValues);
++  EarliestCaptures CB(ReturnCaptures, F, DT);
+   PointerMayBeCaptured(V, &CB, MaxUsesToExplore);
+   if (CB.Captured)
+     ++NumCapturedBefore;
+diff --git a/llvm/lib/Transforms/Scalar/DeadStoreElimination.cpp b/llvm/lib/Transforms/Scalar/DeadStoreElimination.cpp
+index b6f9cb6cd2d0..fb8d7a500086 100644
+--- a/llvm/lib/Transforms/Scalar/DeadStoreElimination.cpp
++++ b/llvm/lib/Transforms/Scalar/DeadStoreElimination.cpp
+@@ -874,8 +874,8 @@ struct DSEState {
+   DSEState(Function &F, AliasAnalysis &AA, MemorySSA &MSSA, DominatorTree &DT,
+            PostDominatorTree &PDT, AssumptionCache &AC,
+            const TargetLibraryInfo &TLI, const LoopInfo &LI)
+-      : F(F), AA(AA), EI(DT, LI, EphValues), BatchAA(AA, &EI), MSSA(MSSA),
+-        DT(DT), PDT(PDT), TLI(TLI), DL(F.getParent()->getDataLayout()), LI(LI) {
++      : F(F), AA(AA), EI(DT, LI), BatchAA(AA, &EI), MSSA(MSSA), DT(DT),
++        PDT(PDT), TLI(TLI), DL(F.getParent()->getDataLayout()), LI(LI) {
+     // Collect blocks with throwing instructions not modeled in MemorySSA and
+     // alloc-like objects.
+     unsigned PO = 0;
+diff --git a/llvm/test/Transforms/DeadStoreElimination/assume.ll b/llvm/test/Transforms/DeadStoreElimination/assume.ll
+index aa767664c52d..443b8375d2dd 100644
+--- a/llvm/test/Transforms/DeadStoreElimination/assume.ll
++++ b/llvm/test/Transforms/DeadStoreElimination/assume.ll
+@@ -22,6 +22,7 @@ define void @f2() {
+ ; CHECK-NEXT:    [[TMP1:%.*]] = call noalias ptr @_Znwm(i64 32)
+ ; CHECK-NEXT:    [[TMP2:%.*]] = icmp ugt ptr [[TMP1]], @global
+ ; CHECK-NEXT:    call void @llvm.assume(i1 [[TMP2]])
++; CHECK-NEXT:    store i8 0, ptr [[TMP1]], align 1
+ ; CHECK-NEXT:    call void @quux(ptr @global)
+ ; CHECK-NEXT:    ret void
+ ;
+-- 
+2.43.0.429.g432eaa2c6b-goog
+

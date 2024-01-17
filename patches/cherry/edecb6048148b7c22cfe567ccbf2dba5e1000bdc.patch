@@ -1,0 +1,866 @@
+From edecb6048148b7c22cfe567ccbf2dba5e1000bdc Mon Sep 17 00:00:00 2001
+From: Matt Arsenault <Matthew.Arsenault@amd.com>
+Date: Fri, 11 Aug 2023 15:05:36 -0400
+Subject: [PATCH] Reapply "AMDGPU: Drop and auto-upgrade llvm.amdgcn.ldexp to
+ llvm.ldexp"
+
+This reverts commit d9333e360a7c52587ab6e4328e7493b357fb2cf3.
+---
+ llvm/include/llvm/IR/IntrinsicsAMDGPU.td      |   6 -
+ llvm/lib/Analysis/ConstantFolding.cpp         |  11 -
+ llvm/lib/IR/AutoUpgrade.cpp                   |   8 +
+ llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp |   3 +-
+ .../AMDGPU/AMDGPUInstCombineIntrinsic.cpp     |  44 ---
+ llvm/lib/Target/AMDGPU/SIISelLowering.cpp     |   4 -
+ llvm/test/Bitcode/amdgcn-ldexp.ll             |  30 ++
+ llvm/test/CodeGen/AMDGPU/known-never-snan.ll  |   4 +-
+ .../CodeGen/AMDGPU/llvm.amdgcn.ldexp.f16.ll   | 233 ------------
+ llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.ll |  31 --
+ .../Transforms/InstCombine/AMDGPU/ldexp.ll    | 342 ------------------
+ 11 files changed, 41 insertions(+), 675 deletions(-)
+ create mode 100644 llvm/test/Bitcode/amdgcn-ldexp.ll
+ delete mode 100644 llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.f16.ll
+ delete mode 100644 llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.ll
+ delete mode 100644 llvm/test/Transforms/InstCombine/AMDGPU/ldexp.ll
+
+diff --git a/llvm/include/llvm/IR/IntrinsicsAMDGPU.td b/llvm/include/llvm/IR/IntrinsicsAMDGPU.td
+index 124f22c1a9b2..4f42462f655e 100644
+--- a/llvm/include/llvm/IR/IntrinsicsAMDGPU.td
++++ b/llvm/include/llvm/IR/IntrinsicsAMDGPU.td
+@@ -362,12 +362,6 @@ def int_amdgcn_rsq_legacy :  ClangBuiltin<"__builtin_amdgcn_rsq_legacy">,
+ def int_amdgcn_rsq_clamp : DefaultAttrsIntrinsic<
+   [llvm_anyfloat_ty], [LLVMMatchType<0>], [IntrNoMem, IntrSpeculatable]>;
+ 
+-// For int_amdgcn_ldexp_f16, only the low 16 bits of the i32 src1 operand will used.
+-def int_amdgcn_ldexp : DefaultAttrsIntrinsic<
+-  [llvm_anyfloat_ty], [LLVMMatchType<0>, llvm_i32_ty],
+-  [IntrNoMem, IntrSpeculatable]
+->;
+-
+ def int_amdgcn_frexp_mant : DefaultAttrsIntrinsic<
+   [llvm_anyfloat_ty], [LLVMMatchType<0>], [IntrNoMem, IntrSpeculatable]
+ >;
+diff --git a/llvm/lib/Analysis/ConstantFolding.cpp b/llvm/lib/Analysis/ConstantFolding.cpp
+index f12a5dd2f552..e08d991dc060 100644
+--- a/llvm/lib/Analysis/ConstantFolding.cpp
++++ b/llvm/lib/Analysis/ConstantFolding.cpp
+@@ -1564,7 +1564,6 @@ bool llvm::canConstantFoldCallTo(const CallBase *Call, const Function *F) {
+   case Intrinsic::amdgcn_fmul_legacy:
+   case Intrinsic::amdgcn_fma_legacy:
+   case Intrinsic::amdgcn_fract:
+-  case Intrinsic::amdgcn_ldexp:
+   case Intrinsic::amdgcn_sin:
+   // The intrinsics below depend on rounding mode in MXCSR.
+   case Intrinsic::x86_sse_cvtss2si:
+@@ -2669,16 +2668,6 @@ static Constant *ConstantFoldScalarCall2(StringRef Name,
+             Ty->getContext(),
+             APFloat((double)std::pow(Op1V.convertToDouble(),
+                                      (int)Op2C->getZExtValue())));
+-
+-      if (IntrinsicID == Intrinsic::amdgcn_ldexp) {
+-        // FIXME: Should flush denorms depending on FP mode, but that's ignored
+-        // everywhere else.
+-
+-        // scalbn is equivalent to ldexp with float radix 2
+-        APFloat Result = scalbn(Op1->getValueAPF(), Op2C->getSExtValue(),
+-                                APFloat::rmNearestTiesToEven);
+-        return ConstantFP::get(Ty->getContext(), Result);
+-      }
+     }
+     return nullptr;
+   }
+diff --git a/llvm/lib/IR/AutoUpgrade.cpp b/llvm/lib/IR/AutoUpgrade.cpp
+index 4e10c6ce5e2b..eedde64203e0 100644
+--- a/llvm/lib/IR/AutoUpgrade.cpp
++++ b/llvm/lib/IR/AutoUpgrade.cpp
+@@ -926,6 +926,14 @@ static bool UpgradeIntrinsicFunction1(Function *F, Function *&NewFn) {
+         NewFn = nullptr;
+         return true;
+       }
++
++      if (Name.startswith("ldexp.")) {
++        // Target specific intrinsic became redundant
++        NewFn = Intrinsic::getDeclaration(
++          F->getParent(), Intrinsic::ldexp,
++          {F->getReturnType(), F->getArg(1)->getType()});
++        return true;
++      }
+     }
+ 
+     break;
+diff --git a/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp b/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp
+index bce7597b9d2a..9698b6e495c4 100644
+--- a/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp
++++ b/llvm/lib/Target/AMDGPU/AMDGPUISelLowering.cpp
+@@ -3745,8 +3745,7 @@ SDValue AMDGPUTargetLowering::performIntrinsicWOChainCombine(
+   case Intrinsic::amdgcn_rsq:
+   case Intrinsic::amdgcn_rcp_legacy:
+   case Intrinsic::amdgcn_rsq_legacy:
+-  case Intrinsic::amdgcn_rsq_clamp:
+-  case Intrinsic::amdgcn_ldexp: {
++  case Intrinsic::amdgcn_rsq_clamp: {
+     // FIXME: This is probably wrong. If src is an sNaN, it won't be quieted
+     SDValue Src = N->getOperand(1);
+     return Src.isUndef() ? Src : SDValue();
+diff --git a/llvm/lib/Target/AMDGPU/AMDGPUInstCombineIntrinsic.cpp b/llvm/lib/Target/AMDGPU/AMDGPUInstCombineIntrinsic.cpp
+index 992f9964bf2e..f49945da0da2 100644
+--- a/llvm/lib/Target/AMDGPU/AMDGPUInstCombineIntrinsic.cpp
++++ b/llvm/lib/Target/AMDGPU/AMDGPUInstCombineIntrinsic.cpp
+@@ -1048,50 +1048,6 @@ GCNTTIImpl::instCombineIntrinsic(InstCombiner &IC, IntrinsicInst &II) const {
+ 
+     break;
+   }
+-  case Intrinsic::amdgcn_ldexp: {
+-    // FIXME: This doesn't introduce new instructions and belongs in
+-    // InstructionSimplify.
+-    Type *Ty = II.getType();
+-    Value *Op0 = II.getArgOperand(0);
+-    Value *Op1 = II.getArgOperand(1);
+-
+-    // Folding undef to qnan is safe regardless of the FP mode.
+-    if (isa<UndefValue>(Op0)) {
+-      auto *QNaN = ConstantFP::get(Ty, APFloat::getQNaN(Ty->getFltSemantics()));
+-      return IC.replaceInstUsesWith(II, QNaN);
+-    }
+-
+-    const APFloat *C = nullptr;
+-    match(Op0, PatternMatch::m_APFloat(C));
+-
+-    // FIXME: Should flush denorms depending on FP mode, but that's ignored
+-    // everywhere else.
+-    //
+-    // These cases should be safe, even with strictfp.
+-    // ldexp(0.0, x) -> 0.0
+-    // ldexp(-0.0, x) -> -0.0
+-    // ldexp(inf, x) -> inf
+-    // ldexp(-inf, x) -> -inf
+-    if (C && (C->isZero() || C->isInfinity())) {
+-      return IC.replaceInstUsesWith(II, Op0);
+-    }
+-
+-    // With strictfp, be more careful about possibly needing to flush denormals
+-    // or not, and snan behavior depends on ieee_mode.
+-    if (II.isStrictFP())
+-      break;
+-
+-    if (C && C->isNaN())
+-      return IC.replaceInstUsesWith(II, ConstantFP::get(Ty, C->makeQuiet()));
+-
+-    // ldexp(x, 0) -> x
+-    // ldexp(x, undef) -> x
+-    if (isa<UndefValue>(Op1) || match(Op1, PatternMatch::m_ZeroInt())) {
+-      return IC.replaceInstUsesWith(II, Op0);
+-    }
+-
+-    break;
+-  }
+   case Intrinsic::amdgcn_fmul_legacy: {
+     Value *Op0 = II.getArgOperand(0);
+     Value *Op1 = II.getArgOperand(1);
+diff --git a/llvm/lib/Target/AMDGPU/SIISelLowering.cpp b/llvm/lib/Target/AMDGPU/SIISelLowering.cpp
+index e87e3dc13932..777fe76df115 100644
+--- a/llvm/lib/Target/AMDGPU/SIISelLowering.cpp
++++ b/llvm/lib/Target/AMDGPU/SIISelLowering.cpp
+@@ -7459,9 +7459,6 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
+ 
+     return emitRemovedIntrinsicError(DAG, DL, VT);
+   }
+-  case Intrinsic::amdgcn_ldexp:
+-    return DAG.getNode(ISD::FLDEXP, DL, VT, Op.getOperand(1), Op.getOperand(2));
+-
+   case Intrinsic::amdgcn_fract:
+     return DAG.getNode(AMDGPUISD::FRACT, DL, VT, Op.getOperand(1));
+ 
+@@ -11619,7 +11616,6 @@ bool SITargetLowering::isCanonicalized(Register Reg, MachineFunction &MF,
+     case Intrinsic::amdgcn_div_fmas:
+     case Intrinsic::amdgcn_div_fixup:
+     case Intrinsic::amdgcn_fract:
+-    case Intrinsic::amdgcn_ldexp:
+     case Intrinsic::amdgcn_cvt_pkrtz:
+     case Intrinsic::amdgcn_cubeid:
+     case Intrinsic::amdgcn_cubema:
+diff --git a/llvm/test/Bitcode/amdgcn-ldexp.ll b/llvm/test/Bitcode/amdgcn-ldexp.ll
+new file mode 100644
+index 000000000000..0ba901af5c75
+--- /dev/null
++++ b/llvm/test/Bitcode/amdgcn-ldexp.ll
+@@ -0,0 +1,30 @@
++; RUN: llvm-as < %s | llvm-dis | FileCheck %s
++
++define float @f32(float %a, i32 %b) {
++  ; CHECK: %call = call float @llvm.ldexp.f32.i32(float %a, i32 %b)
++  ; CHECK-NOT: amdgcn.ldexp
++  %call = call float @llvm.amdgcn.ldexp.f32(float %a, i32 %b)
++  ret float %call
++}
++
++define double @f64(double %a, i32 %b) {
++  ; CHECK: %call = call double @llvm.ldexp.f64.i32(double %a, i32 %b)
++  ; CHECK-NOT: amdgcn.ldexp
++  %call = call double @llvm.amdgcn.ldexp.f64(double %a, i32 %b)
++  ret double %call
++}
++
++define half @f16(half %a, i32 %b) {
++  ; CHECK: %call = call half @llvm.ldexp.f16.i32(half %a, i32 %b)
++  ; CHECK-NOT: amdgcn.ldexp
++  %call = call half @llvm.amdgcn.ldexp.f16(half %a, i32 %b)
++  ret half %call
++}
++
++declare half @llvm.amdgcn.ldexp.f16(half, i32)
++declare float @llvm.amdgcn.ldexp.f32(float, i32)
++declare double @llvm.amdgcn.ldexp.f64(double, i32)
++; CHECK: declare half @llvm.ldexp.f16.i32(half, i32)
++; CHECK: declare float @llvm.ldexp.f32.i32(float, i32)
++; CHECK: declare double @llvm.ldexp.f64.i32(double, i32)
++; CHECK-NOT: amdgcn.ldexp
+diff --git a/llvm/test/CodeGen/AMDGPU/known-never-snan.ll b/llvm/test/CodeGen/AMDGPU/known-never-snan.ll
+index 5ee6eda85f0a..cb544732431a 100644
+--- a/llvm/test/CodeGen/AMDGPU/known-never-snan.ll
++++ b/llvm/test/CodeGen/AMDGPU/known-never-snan.ll
+@@ -516,7 +516,7 @@ define float @v_test_known_not_snan_ldexp_input_fmed3_r_i_i_f32(float %a, i32 %b
+ ; GCN-NEXT:    v_ldexp_f32 v0, v0, v1
+ ; GCN-NEXT:    v_med3_f32 v0, v0, 2.0, 4.0
+ ; GCN-NEXT:    s_setpc_b64 s[30:31]
+-  %known.not.snan = call float @llvm.amdgcn.ldexp.f32(float %a, i32 %b)
++  %known.not.snan = call float @llvm.ldexp.f32.i32(float %a, i32 %b)
+   %max = call float @llvm.maxnum.f32(float %known.not.snan, float 2.0)
+   %med = call float @llvm.minnum.f32(float %max, float 4.0)
+   ret float %med
+@@ -658,7 +658,7 @@ declare float @llvm.maxnum.f32(float, float) #1
+ declare float @llvm.copysign.f32(float, float) #1
+ declare float @llvm.fma.f32(float, float, float) #1
+ declare float @llvm.fmuladd.f32(float, float, float) #1
+-declare float @llvm.amdgcn.ldexp.f32(float, i32) #1
++declare float @llvm.ldexp.f32.i32(float, i32) #1
+ declare float @llvm.amdgcn.fmul.legacy(float, float) #1
+ declare float @llvm.amdgcn.fmed3.f32(float, float, float) #1
+ declare float @llvm.amdgcn.frexp.mant.f32(float) #1
+diff --git a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.f16.ll b/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.f16.ll
+deleted file mode 100644
+index 3b9dfb911f85..000000000000
+--- a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.f16.ll
++++ /dev/null
+@@ -1,233 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_llc_test_checks.py
+-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=fiji -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefixes=VI %s
+-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=gfx1010 -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefixes=GFX10 %s
+-; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=gfx1100 -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefixes=GFX11 %s
+-
+-declare half @llvm.amdgcn.ldexp.f16(half %a, i32 %b)
+-
+-define amdgpu_kernel void @ldexp_f16(
+-; VI-LABEL: ldexp_f16:
+-; VI:       ; %bb.0:
+-; VI-NEXT:    s_load_dwordx4 s[4:7], s[0:1], 0x24
+-; VI-NEXT:    s_load_dwordx2 s[8:9], s[0:1], 0x34
+-; VI-NEXT:    s_mov_b32 s3, 0xf000
+-; VI-NEXT:    s_mov_b32 s2, -1
+-; VI-NEXT:    s_mov_b32 s10, s2
+-; VI-NEXT:    s_mov_b32 s11, s3
+-; VI-NEXT:    s_waitcnt lgkmcnt(0)
+-; VI-NEXT:    s_mov_b32 s12, s6
+-; VI-NEXT:    s_mov_b32 s13, s7
+-; VI-NEXT:    s_mov_b32 s14, s2
+-; VI-NEXT:    s_mov_b32 s15, s3
+-; VI-NEXT:    buffer_load_dword v0, off, s[8:11], 0
+-; VI-NEXT:    buffer_load_ushort v1, off, s[12:15], 0
+-; VI-NEXT:    s_mov_b32 s0, s4
+-; VI-NEXT:    s_movk_i32 s4, 0x8000
+-; VI-NEXT:    v_mov_b32_e32 v2, 0x7fff
+-; VI-NEXT:    s_mov_b32 s1, s5
+-; VI-NEXT:    s_waitcnt vmcnt(1)
+-; VI-NEXT:    v_med3_i32 v0, v0, s4, v2
+-; VI-NEXT:    s_waitcnt vmcnt(0)
+-; VI-NEXT:    v_ldexp_f16_e32 v0, v1, v0
+-; VI-NEXT:    buffer_store_short v0, off, s[0:3], 0
+-; VI-NEXT:    s_endpgm
+-;
+-; GFX10-LABEL: ldexp_f16:
+-; GFX10:       ; %bb.0:
+-; GFX10-NEXT:    s_clause 0x1
+-; GFX10-NEXT:    s_load_dwordx4 s[4:7], s[0:1], 0x24
+-; GFX10-NEXT:    s_load_dwordx2 s[8:9], s[0:1], 0x34
+-; GFX10-NEXT:    s_mov_b32 s2, -1
+-; GFX10-NEXT:    s_mov_b32 s3, 0x31016000
+-; GFX10-NEXT:    s_mov_b32 s10, s2
+-; GFX10-NEXT:    s_mov_b32 s11, s3
+-; GFX10-NEXT:    s_mov_b32 s14, s2
+-; GFX10-NEXT:    s_mov_b32 s15, s3
+-; GFX10-NEXT:    s_movk_i32 s0, 0x8000
+-; GFX10-NEXT:    s_waitcnt lgkmcnt(0)
+-; GFX10-NEXT:    s_mov_b32 s12, s6
+-; GFX10-NEXT:    buffer_load_dword v0, off, s[8:11], 0
+-; GFX10-NEXT:    s_mov_b32 s13, s7
+-; GFX10-NEXT:    s_mov_b32 s1, s5
+-; GFX10-NEXT:    buffer_load_ushort v1, off, s[12:15], 0
+-; GFX10-NEXT:    s_waitcnt vmcnt(1)
+-; GFX10-NEXT:    v_med3_i32 v0, v0, s0, 0x7fff
+-; GFX10-NEXT:    s_mov_b32 s0, s4
+-; GFX10-NEXT:    s_waitcnt vmcnt(0)
+-; GFX10-NEXT:    v_ldexp_f16_e32 v0, v1, v0
+-; GFX10-NEXT:    buffer_store_short v0, off, s[0:3], 0
+-; GFX10-NEXT:    s_endpgm
+-;
+-; GFX11-LABEL: ldexp_f16:
+-; GFX11:       ; %bb.0:
+-; GFX11-NEXT:    s_clause 0x1
+-; GFX11-NEXT:    s_load_b128 s[4:7], s[0:1], 0x24
+-; GFX11-NEXT:    s_load_b64 s[0:1], s[0:1], 0x34
+-; GFX11-NEXT:    s_mov_b32 s10, -1
+-; GFX11-NEXT:    s_mov_b32 s11, 0x31016000
+-; GFX11-NEXT:    s_mov_b32 s2, s10
+-; GFX11-NEXT:    s_mov_b32 s3, s11
+-; GFX11-NEXT:    s_mov_b32 s14, s10
+-; GFX11-NEXT:    s_mov_b32 s15, s11
+-; GFX11-NEXT:    s_waitcnt lgkmcnt(0)
+-; GFX11-NEXT:    s_mov_b32 s12, s6
+-; GFX11-NEXT:    buffer_load_b32 v0, off, s[0:3], 0
+-; GFX11-NEXT:    s_mov_b32 s13, s7
+-; GFX11-NEXT:    s_movk_i32 s0, 0x8000
+-; GFX11-NEXT:    buffer_load_u16 v1, off, s[12:15], 0
+-; GFX11-NEXT:    s_mov_b32 s8, s4
+-; GFX11-NEXT:    s_mov_b32 s9, s5
+-; GFX11-NEXT:    s_waitcnt vmcnt(1)
+-; GFX11-NEXT:    v_med3_i32 v0, v0, s0, 0x7fff
+-; GFX11-NEXT:    s_waitcnt vmcnt(0)
+-; GFX11-NEXT:    s_delay_alu instid0(VALU_DEP_1)
+-; GFX11-NEXT:    v_ldexp_f16_e32 v0, v1, v0
+-; GFX11-NEXT:    buffer_store_b16 v0, off, s[8:11], 0
+-; GFX11-NEXT:    s_nop 0
+-; GFX11-NEXT:    s_sendmsg sendmsg(MSG_DEALLOC_VGPRS)
+-; GFX11-NEXT:    s_endpgm
+-    ptr addrspace(1) %r,
+-    ptr addrspace(1) %a,
+-    ptr addrspace(1) %b) {
+-  %a.val = load half, ptr addrspace(1) %a
+-  %b.val = load i32, ptr addrspace(1) %b
+-  %r.val = call half @llvm.amdgcn.ldexp.f16(half %a.val, i32 %b.val)
+-  store half %r.val, ptr addrspace(1) %r
+-  ret void
+-}
+-
+-define amdgpu_kernel void @ldexp_f16_imm_a(
+-; VI-LABEL: ldexp_f16_imm_a:
+-; VI:       ; %bb.0:
+-; VI-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x24
+-; VI-NEXT:    s_mov_b32 s7, 0xf000
+-; VI-NEXT:    s_mov_b32 s6, -1
+-; VI-NEXT:    s_mov_b32 s10, s6
+-; VI-NEXT:    s_mov_b32 s11, s7
+-; VI-NEXT:    s_waitcnt lgkmcnt(0)
+-; VI-NEXT:    s_mov_b32 s8, s2
+-; VI-NEXT:    s_mov_b32 s9, s3
+-; VI-NEXT:    buffer_load_dword v0, off, s[8:11], 0
+-; VI-NEXT:    s_mov_b32 s4, s0
+-; VI-NEXT:    s_movk_i32 s0, 0x8000
+-; VI-NEXT:    v_mov_b32_e32 v1, 0x7fff
+-; VI-NEXT:    s_mov_b32 s5, s1
+-; VI-NEXT:    s_waitcnt vmcnt(0)
+-; VI-NEXT:    v_med3_i32 v0, v0, s0, v1
+-; VI-NEXT:    v_ldexp_f16_e32 v0, 2.0, v0
+-; VI-NEXT:    buffer_store_short v0, off, s[4:7], 0
+-; VI-NEXT:    s_endpgm
+-;
+-; GFX10-LABEL: ldexp_f16_imm_a:
+-; GFX10:       ; %bb.0:
+-; GFX10-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x24
+-; GFX10-NEXT:    s_mov_b32 s6, -1
+-; GFX10-NEXT:    s_mov_b32 s7, 0x31016000
+-; GFX10-NEXT:    s_mov_b32 s10, s6
+-; GFX10-NEXT:    s_mov_b32 s11, s7
+-; GFX10-NEXT:    s_waitcnt lgkmcnt(0)
+-; GFX10-NEXT:    s_mov_b32 s8, s2
+-; GFX10-NEXT:    s_mov_b32 s9, s3
+-; GFX10-NEXT:    s_movk_i32 s2, 0x8000
+-; GFX10-NEXT:    buffer_load_dword v0, off, s[8:11], 0
+-; GFX10-NEXT:    s_mov_b32 s4, s0
+-; GFX10-NEXT:    s_mov_b32 s5, s1
+-; GFX10-NEXT:    s_waitcnt vmcnt(0)
+-; GFX10-NEXT:    v_med3_i32 v0, v0, s2, 0x7fff
+-; GFX10-NEXT:    v_ldexp_f16_e32 v0, 2.0, v0
+-; GFX10-NEXT:    buffer_store_short v0, off, s[4:7], 0
+-; GFX10-NEXT:    s_endpgm
+-;
+-; GFX11-LABEL: ldexp_f16_imm_a:
+-; GFX11:       ; %bb.0:
+-; GFX11-NEXT:    s_load_b128 s[0:3], s[0:1], 0x24
+-; GFX11-NEXT:    s_mov_b32 s6, -1
+-; GFX11-NEXT:    s_mov_b32 s7, 0x31016000
+-; GFX11-NEXT:    s_mov_b32 s10, s6
+-; GFX11-NEXT:    s_mov_b32 s11, s7
+-; GFX11-NEXT:    s_waitcnt lgkmcnt(0)
+-; GFX11-NEXT:    s_mov_b32 s8, s2
+-; GFX11-NEXT:    s_mov_b32 s9, s3
+-; GFX11-NEXT:    s_movk_i32 s2, 0x8000
+-; GFX11-NEXT:    buffer_load_b32 v0, off, s[8:11], 0
+-; GFX11-NEXT:    s_mov_b32 s4, s0
+-; GFX11-NEXT:    s_mov_b32 s5, s1
+-; GFX11-NEXT:    s_waitcnt vmcnt(0)
+-; GFX11-NEXT:    v_med3_i32 v0, v0, s2, 0x7fff
+-; GFX11-NEXT:    s_delay_alu instid0(VALU_DEP_1)
+-; GFX11-NEXT:    v_ldexp_f16_e32 v0, 2.0, v0
+-; GFX11-NEXT:    buffer_store_b16 v0, off, s[4:7], 0
+-; GFX11-NEXT:    s_nop 0
+-; GFX11-NEXT:    s_sendmsg sendmsg(MSG_DEALLOC_VGPRS)
+-; GFX11-NEXT:    s_endpgm
+-    ptr addrspace(1) %r,
+-    ptr addrspace(1) %b) {
+-  %b.val = load i32, ptr addrspace(1) %b
+-  %r.val = call half @llvm.amdgcn.ldexp.f16(half 2.0, i32 %b.val)
+-  store half %r.val, ptr addrspace(1) %r
+-  ret void
+-}
+-
+-define amdgpu_kernel void @ldexp_f16_imm_b(
+-; VI-LABEL: ldexp_f16_imm_b:
+-; VI:       ; %bb.0:
+-; VI-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x24
+-; VI-NEXT:    s_mov_b32 s7, 0xf000
+-; VI-NEXT:    s_mov_b32 s6, -1
+-; VI-NEXT:    s_mov_b32 s10, s6
+-; VI-NEXT:    s_mov_b32 s11, s7
+-; VI-NEXT:    s_waitcnt lgkmcnt(0)
+-; VI-NEXT:    s_mov_b32 s8, s2
+-; VI-NEXT:    s_mov_b32 s9, s3
+-; VI-NEXT:    buffer_load_ushort v0, off, s[8:11], 0
+-; VI-NEXT:    s_mov_b32 s4, s0
+-; VI-NEXT:    s_mov_b32 s5, s1
+-; VI-NEXT:    s_waitcnt vmcnt(0)
+-; VI-NEXT:    v_ldexp_f16_e64 v0, v0, 2
+-; VI-NEXT:    buffer_store_short v0, off, s[4:7], 0
+-; VI-NEXT:    s_endpgm
+-;
+-; GFX10-LABEL: ldexp_f16_imm_b:
+-; GFX10:       ; %bb.0:
+-; GFX10-NEXT:    s_load_dwordx4 s[0:3], s[0:1], 0x24
+-; GFX10-NEXT:    s_mov_b32 s6, -1
+-; GFX10-NEXT:    s_mov_b32 s7, 0x31016000
+-; GFX10-NEXT:    s_mov_b32 s10, s6
+-; GFX10-NEXT:    s_mov_b32 s11, s7
+-; GFX10-NEXT:    s_waitcnt lgkmcnt(0)
+-; GFX10-NEXT:    s_mov_b32 s8, s2
+-; GFX10-NEXT:    s_mov_b32 s9, s3
+-; GFX10-NEXT:    s_mov_b32 s4, s0
+-; GFX10-NEXT:    buffer_load_ushort v0, off, s[8:11], 0
+-; GFX10-NEXT:    s_mov_b32 s5, s1
+-; GFX10-NEXT:    s_waitcnt vmcnt(0)
+-; GFX10-NEXT:    v_ldexp_f16_e64 v0, v0, 2
+-; GFX10-NEXT:    buffer_store_short v0, off, s[4:7], 0
+-; GFX10-NEXT:    s_endpgm
+-;
+-; GFX11-LABEL: ldexp_f16_imm_b:
+-; GFX11:       ; %bb.0:
+-; GFX11-NEXT:    s_load_b128 s[0:3], s[0:1], 0x24
+-; GFX11-NEXT:    s_mov_b32 s6, -1
+-; GFX11-NEXT:    s_mov_b32 s7, 0x31016000
+-; GFX11-NEXT:    s_mov_b32 s10, s6
+-; GFX11-NEXT:    s_mov_b32 s11, s7
+-; GFX11-NEXT:    s_waitcnt lgkmcnt(0)
+-; GFX11-NEXT:    s_mov_b32 s8, s2
+-; GFX11-NEXT:    s_mov_b32 s9, s3
+-; GFX11-NEXT:    s_mov_b32 s4, s0
+-; GFX11-NEXT:    buffer_load_u16 v0, off, s[8:11], 0
+-; GFX11-NEXT:    s_mov_b32 s5, s1
+-; GFX11-NEXT:    s_waitcnt vmcnt(0)
+-; GFX11-NEXT:    v_ldexp_f16_e64 v0, v0, 2
+-; GFX11-NEXT:    buffer_store_b16 v0, off, s[4:7], 0
+-; GFX11-NEXT:    s_nop 0
+-; GFX11-NEXT:    s_sendmsg sendmsg(MSG_DEALLOC_VGPRS)
+-; GFX11-NEXT:    s_endpgm
+-    ptr addrspace(1) %r,
+-    ptr addrspace(1) %a) {
+-  %a.val = load half, ptr addrspace(1) %a
+-  %r.val = call half @llvm.amdgcn.ldexp.f16(half %a.val, i32 2)
+-  store half %r.val, ptr addrspace(1) %r
+-  ret void
+-}
+diff --git a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.ll b/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.ll
+deleted file mode 100644
+index d4282061a3fc..000000000000
+--- a/llvm/test/CodeGen/AMDGPU/llvm.amdgcn.ldexp.ll
++++ /dev/null
+@@ -1,31 +0,0 @@
+-; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI %s
+-
+-declare float @llvm.amdgcn.ldexp.f32(float, i32) nounwind readnone
+-declare double @llvm.amdgcn.ldexp.f64(double, i32) nounwind readnone
+-
+-; SI-LABEL: {{^}}test_ldexp_f32:
+-; SI: v_ldexp_f32
+-; SI: s_endpgm
+-define amdgpu_kernel void @test_ldexp_f32(ptr addrspace(1) %out, float %a, i32 %b) nounwind {
+-  %result = call float @llvm.amdgcn.ldexp.f32(float %a, i32 %b) nounwind readnone
+-  store float %result, ptr addrspace(1) %out, align 4
+-  ret void
+-}
+-
+-; SI-LABEL: {{^}}test_ldexp_f64:
+-; SI: v_ldexp_f64
+-; SI: s_endpgm
+-define amdgpu_kernel void @test_ldexp_f64(ptr addrspace(1) %out, double %a, i32 %b) nounwind {
+-  %result = call double @llvm.amdgcn.ldexp.f64(double %a, i32 %b) nounwind readnone
+-  store double %result, ptr addrspace(1) %out, align 8
+-  ret void
+-}
+-
+-; SI-LABEL: {{^}}test_ldexp_undef_f32:
+-; SI-NOT: v_ldexp_f32
+-define amdgpu_kernel void @test_ldexp_undef_f32(ptr addrspace(1) %out, i32 %b) nounwind {
+-  %result = call float @llvm.amdgcn.ldexp.f32(float undef, i32 %b) nounwind readnone
+-  store float %result, ptr addrspace(1) %out, align 4
+-  ret void
+-}
+diff --git a/llvm/test/Transforms/InstCombine/AMDGPU/ldexp.ll b/llvm/test/Transforms/InstCombine/AMDGPU/ldexp.ll
+deleted file mode 100644
+index 8b2bb8b48ff8..000000000000
+--- a/llvm/test/Transforms/InstCombine/AMDGPU/ldexp.ll
++++ /dev/null
+@@ -1,342 +0,0 @@
+-; NOTE: Assertions have been autogenerated by utils/update_test_checks.py
+-; RUN: opt < %s -mtriple=amdgcn-amd-amdhsa -passes=instcombine -S | FileCheck %s
+-
+-define float @ldexp_f32_undef_undef() {
+-; CHECK-LABEL: @ldexp_f32_undef_undef(
+-; CHECK-NEXT:    ret float 0x7FF8000000000000
+-;
+-  %call = call float @llvm.amdgcn.ldexp.f32(float undef, i32 undef)
+-  ret float %call
+-}
+-
+-; If the exponent is 0, it doesn't matter if the first argument is
+-; constant or not.
+-define void @ldexp_f32_exp0(float %x) {
+-; CHECK-LABEL: @ldexp_f32_exp0(
+-; CHECK-NEXT:    store volatile float [[X:%.*]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float [[X]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[ONE:%.*]] = call float @llvm.amdgcn.ldexp.f32(float [[X]], i32 1)
+-; CHECK-NEXT:    store volatile float [[ONE]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %zero = call float @llvm.amdgcn.ldexp.f32(float %x, i32 0)
+-  store volatile float %zero, ptr addrspace(1) undef
+-
+-  %undef = call float @llvm.amdgcn.ldexp.f32(float %x, i32 undef)
+-  store volatile float %undef, ptr addrspace(1) undef
+-
+-  %one = call float @llvm.amdgcn.ldexp.f32(float %x, i32 1)
+-  store volatile float %one, ptr addrspace(1) undef
+-  ret void
+-}
+-
+-; Test variable exponent but zero or undef value.
+-define void @ldexp_f32_val0(i32 %y) {
+-; CHECK-LABEL: @ldexp_f32_val0(
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x7FF8000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %zero = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 %y)
+-  store volatile float %zero, ptr addrspace(1) undef
+-
+-  %neg.zero = call float @llvm.amdgcn.ldexp.f32(float -0.0, i32 %y)
+-  store volatile float %neg.zero, ptr addrspace(1) undef
+-
+-  %undef = call float @llvm.amdgcn.ldexp.f32(float undef, i32 %y)
+-  store volatile float %undef, ptr addrspace(1) undef
+-  ret void
+-}
+-
+-define void @ldexp_f32_val_infinity(i32 %y) {
+-; CHECK-LABEL: @ldexp_f32_val_infinity(
+-; CHECK-NEXT:    store volatile float 0x7FF0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xFFF0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x7FF0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xFFF0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %inf = call float @llvm.amdgcn.ldexp.f32(float 0x7ff0000000000000, i32 %y)
+-  store volatile float %inf, ptr addrspace(1) undef
+-
+-  %neg.inf = call float @llvm.amdgcn.ldexp.f32(float 0xfff0000000000000, i32 %y)
+-  store volatile float %neg.inf, ptr addrspace(1) undef
+-
+-  %inf.zero = call float @llvm.amdgcn.ldexp.f32(float 0x7ff0000000000000, i32 0)
+-  store volatile float %inf.zero, ptr addrspace(1) undef
+-
+-  %neg.inf.zero = call float @llvm.amdgcn.ldexp.f32(float 0xfff0000000000000, i32 0)
+-  store volatile float %neg.inf.zero, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-; Signaling nan should be quieted.
+-; Technically this depends on the ieee_mode in the mode register.
+-define void @ldexp_f32_val_nan(i32 %y) {
+-; CHECK-LABEL: @ldexp_f32_val_nan(
+-; CHECK-NEXT:    store volatile float 0x7FF8001000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xFFF8000100000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x7FF8000020000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xFFFFFFFFE0000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %plus.qnan = call float @llvm.amdgcn.ldexp.f32(float 0x7ff0001000000000, i32 %y)
+-  store volatile float %plus.qnan, ptr addrspace(1) undef
+-
+-  %neg.qnan = call float @llvm.amdgcn.ldexp.f32(float 0xfff0000100000000, i32 %y)
+-  store volatile float %neg.qnan, ptr addrspace(1) undef
+-
+-  %plus.snan = call float @llvm.amdgcn.ldexp.f32(float 0x7FF0000020000000, i32 %y)
+-  store volatile float %plus.snan, ptr addrspace(1) undef
+-
+-  %neg.snan = call float @llvm.amdgcn.ldexp.f32(float 0xFFF7FFFFE0000000, i32 %y)
+-  store volatile float %neg.snan, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-define void @ldexp_f32_val_nan_strictfp(i32 %y) #0 {
+-; CHECK-LABEL: @ldexp_f32_val_nan_strictfp(
+-; CHECK-NEXT:    [[PLUS_QNAN:%.*]] = call float @llvm.amdgcn.ldexp.f32(float 0x7FF0001000000000, i32 [[Y:%.*]]) #[[ATTR0:[0-9]+]]
+-; CHECK-NEXT:    store volatile float [[PLUS_QNAN]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[NEG_QNAN:%.*]] = call float @llvm.amdgcn.ldexp.f32(float 0xFFF0000100000000, i32 [[Y]]) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[NEG_QNAN]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[PLUS_SNAN:%.*]] = call float @llvm.amdgcn.ldexp.f32(float 0x7FF0000020000000, i32 [[Y]]) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[PLUS_SNAN]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[NEG_SNAN:%.*]] = call float @llvm.amdgcn.ldexp.f32(float 0xFFF7FFFFE0000000, i32 [[Y]]) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[NEG_SNAN]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x7FF8000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %plus.qnan = call float @llvm.amdgcn.ldexp.f32(float 0x7ff0001000000000, i32 %y) #0
+-  store volatile float %plus.qnan, ptr addrspace(1) undef
+-
+-  %neg.qnan = call float @llvm.amdgcn.ldexp.f32(float 0xfff0000100000000, i32 %y) #0
+-  store volatile float %neg.qnan, ptr addrspace(1) undef
+-
+-  %plus.snan = call float @llvm.amdgcn.ldexp.f32(float 0x7FF0000020000000, i32 %y) #0
+-  store volatile float %plus.snan, ptr addrspace(1) undef
+-
+-  %neg.snan = call float @llvm.amdgcn.ldexp.f32(float 0xFFF7FFFFE0000000, i32 %y) #0
+-  store volatile float %neg.snan, ptr addrspace(1) undef
+-
+-  %undef = call float @llvm.amdgcn.ldexp.f32(float undef, i32 %y) #0
+-  store volatile float %undef, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-define void @ldexp_f32_0() {
+-; CHECK-LABEL: @ldexp_f32_0(
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %zero = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 0)
+-  store volatile float %zero, ptr addrspace(1) undef
+-
+-  %neg.zero = call float @llvm.amdgcn.ldexp.f32(float -0.0, i32 0)
+-  store volatile float %neg.zero, ptr addrspace(1) undef
+-
+-  %one = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 1)
+-  store volatile float %one, ptr addrspace(1) undef
+-
+-  %min.exp = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 -126)
+-  store volatile float %min.exp, ptr addrspace(1) undef
+-
+-  %min.exp.sub1 = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 -127)
+-  store volatile float %min.exp.sub1, ptr addrspace(1) undef
+-
+-  %max.exp = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 127)
+-  store volatile float %max.exp, ptr addrspace(1) undef
+-
+-  %max.exp.plus1 = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 128)
+-  store volatile float %max.exp.plus1, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-; Should be able to ignore strictfp in this case
+-define void @ldexp_f32_0_strictfp(float %x) #0 {
+-; CHECK-LABEL: @ldexp_f32_0_strictfp(
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[UNKNOWN_ZERO:%.*]] = call float @llvm.amdgcn.ldexp.f32(float [[X:%.*]], i32 0) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[UNKNOWN_ZERO]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[UNKNOWN_UNDEF:%.*]] = call float @llvm.amdgcn.ldexp.f32(float [[X]], i32 undef) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[UNKNOWN_UNDEF]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[DENORMAL_0:%.*]] = call float @llvm.amdgcn.ldexp.f32(float 0x380FFFFFC0000000, i32 0) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[DENORMAL_0]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    [[DENORMAL_1:%.*]] = call float @llvm.amdgcn.ldexp.f32(float 0x380FFFFFC0000000, i32 1) #[[ATTR0]]
+-; CHECK-NEXT:    store volatile float [[DENORMAL_1]], ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %zero = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 0) #0
+-  store volatile float %zero, ptr addrspace(1) undef
+-
+-  %neg.zero = call float @llvm.amdgcn.ldexp.f32(float -0.0, i32 0) #0
+-  store volatile float %neg.zero, ptr addrspace(1) undef
+-
+-  %one = call float @llvm.amdgcn.ldexp.f32(float 0.0, i32 1) #0
+-  store volatile float %one, ptr addrspace(1) undef
+-
+-  %unknown.zero = call float @llvm.amdgcn.ldexp.f32(float %x, i32 0) #0
+-  store volatile float %unknown.zero, ptr addrspace(1) undef
+-
+-  %unknown.undef = call float @llvm.amdgcn.ldexp.f32(float %x, i32 undef) #0
+-  store volatile float %unknown.undef, ptr addrspace(1) undef
+-
+-  %denormal.0 = call float @llvm.amdgcn.ldexp.f32(float 0x380FFFFFC0000000, i32 0) #0
+-  store volatile float %denormal.0, ptr addrspace(1) undef
+-
+-  %denormal.1 = call float @llvm.amdgcn.ldexp.f32(float 0x380FFFFFC0000000, i32 1) #0
+-  store volatile float %denormal.1, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-define void @ldexp_f32() {
+-; CHECK-LABEL: @ldexp_f32(
+-; CHECK-NEXT:    store volatile float 2.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 4.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 8.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 5.000000e-01, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x3810000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x3800000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x47E0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x7FF0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -2.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -4.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -8.000000e+00, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float -5.000000e-01, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xB810000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xB800000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xC7E0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0xFFF0000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x44D5000000000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %one.one = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 1)
+-  store volatile float %one.one, ptr addrspace(1) undef
+-
+-  %one.two = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 2)
+-  store volatile float %one.two, ptr addrspace(1) undef
+-
+-  %one.three = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 3)
+-  store volatile float %one.three, ptr addrspace(1) undef
+-
+-  %one.negone = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 -1)
+-  store volatile float %one.negone, ptr addrspace(1) undef
+-
+-  %one.min.exp = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 -126)
+-  store volatile float %one.min.exp, ptr addrspace(1) undef
+-
+-  %one.min.exp.sub1 = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 -127)
+-  store volatile float %one.min.exp.sub1, ptr addrspace(1) undef
+-
+-  %one.max.exp = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 127)
+-  store volatile float %one.max.exp, ptr addrspace(1) undef
+-
+-  %one.max.exp.plus1 = call float @llvm.amdgcn.ldexp.f32(float 1.0, i32 128)
+-  store volatile float %one.max.exp.plus1, ptr addrspace(1) undef
+-
+-  %neg.one.one = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 1)
+-  store volatile float %neg.one.one, ptr addrspace(1) undef
+-
+-  %neg.one.two = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 2)
+-  store volatile float %neg.one.two, ptr addrspace(1) undef
+-
+-  %neg.one.three = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 3)
+-  store volatile float %neg.one.three, ptr addrspace(1) undef
+-
+-  %neg.one.negone = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 -1)
+-  store volatile float %neg.one.negone, ptr addrspace(1) undef
+-
+-  %neg.one.min.exp = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 -126)
+-  store volatile float %neg.one.min.exp, ptr addrspace(1) undef
+-
+-  %neg.one.min.exp.sub1 = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 -127)
+-  store volatile float %neg.one.min.exp.sub1, ptr addrspace(1) undef
+-
+-  %neg.one.max.exp = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 127)
+-  store volatile float %neg.one.max.exp, ptr addrspace(1) undef
+-
+-  %neg.one.max.exp.plus1 = call float @llvm.amdgcn.ldexp.f32(float -1.0, i32 128)
+-  store volatile float %neg.one.max.exp.plus1, ptr addrspace(1) undef
+-
+-  %fortytwo.seven = call float @llvm.amdgcn.ldexp.f32(float 42.0, i32 73)
+-  store volatile float %fortytwo.seven, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-; Technically we should probably flush these depending on the expected
+-; denormal mode of the function, but no other IR constant folding
+-; considers this.
+-define void @ldexp_f32_denormal() {
+-; CHECK-LABEL: @ldexp_f32_denormal(
+-; CHECK-NEXT:    store volatile float 0x380FFFFFC0000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    store volatile float 0x381FFFFFC0000000, ptr addrspace(1) undef, align 4
+-; CHECK-NEXT:    ret void
+-;
+-  %denormal.0 = call float @llvm.amdgcn.ldexp.f32(float 0x380FFFFFC0000000, i32 0)
+-  store volatile float %denormal.0, ptr addrspace(1) undef
+-
+-  %denormal.1 = call float @llvm.amdgcn.ldexp.f32(float 0x380FFFFFC0000000, i32 1)
+-  store volatile float %denormal.1, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-define void @ldexp_f64() {
+-; CHECK-LABEL: @ldexp_f64(
+-; CHECK-NEXT:    store volatile double 2.000000e+00, ptr addrspace(1) undef, align 8
+-; CHECK-NEXT:    store volatile double 4.000000e+00, ptr addrspace(1) undef, align 8
+-; CHECK-NEXT:    store volatile double 0x44D5000000000000, ptr addrspace(1) undef, align 8
+-; CHECK-NEXT:    ret void
+-;
+-  %one.one = call double @llvm.amdgcn.ldexp.f64(double 1.0, i32 1)
+-  store volatile double %one.one, ptr addrspace(1) undef
+-
+-  %one.two = call double @llvm.amdgcn.ldexp.f64(double 1.0, i32 2)
+-  store volatile double %one.two, ptr addrspace(1) undef
+-
+-  %fortytwo.seven = call double @llvm.amdgcn.ldexp.f64(double 42.0, i32 73)
+-  store volatile double %fortytwo.seven, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-define void @ldexp_f16() {
+-; CHECK-LABEL: @ldexp_f16(
+-; CHECK-NEXT:    store volatile half 0xH4000, ptr addrspace(1) undef, align 2
+-; CHECK-NEXT:    store volatile half 0xH4400, ptr addrspace(1) undef, align 2
+-; CHECK-NEXT:    store volatile half 0xH7C00, ptr addrspace(1) undef, align 2
+-; CHECK-NEXT:    ret void
+-;
+-  %one.one = call half @llvm.amdgcn.ldexp.f16(half 1.0, i32 1)
+-  store volatile half %one.one, ptr addrspace(1) undef
+-
+-  %one.two = call half @llvm.amdgcn.ldexp.f16(half 1.0, i32 2)
+-  store volatile half %one.two, ptr addrspace(1) undef
+-
+-  %fortytwo.seven = call half @llvm.amdgcn.ldexp.f16(half 42.0, i32 73)
+-  store volatile half %fortytwo.seven, ptr addrspace(1) undef
+-
+-  ret void
+-}
+-
+-declare half @llvm.amdgcn.ldexp.f16(half, i32) #1
+-declare float @llvm.amdgcn.ldexp.f32(float, i32) #1
+-declare double @llvm.amdgcn.ldexp.f64(double, i32) #1
+-
+-attributes #0 = { strictfp }
+-attributes #1 = { nounwind readnone speculatable }
+-- 
+2.43.0.381.gb435a96ce8-goog
+

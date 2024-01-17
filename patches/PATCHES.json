@@ -413,6 +413,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[CUDA][HIP] Fix overloading resolution in global variable initializer\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/27313b68ef0ec9a94c4288eca9af6ca25cd17f8f.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511082
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [DAGCombiner] Change foldAndOrOfSETCC() to optimize and/or patterns with floating points."
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/17fc78e7a4e178482650f2a1c18954823c5cd4eb.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511129
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"Reland \"[Clang][SemaCXX] Add unused warning for variables declared in condition expressions\"\""
         },
         "platforms": [
@@ -436,6 +464,34 @@
         "version_range": {
             "from": 510928,
             "until": 511186
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"Reapply: [IRGen] Emit lifetime intrinsics around temporary aggregate argument allocas\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b7f4915644844fb9f32e8763922a070f5fe4fd29.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511204
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"Reapply \"Revert \"[MemCpyOpt] implement multi BB stack-move optimization\"\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/efe8aa2e618122e8050af10cc5d6ad83f24ef557.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511835
         }
     },
     {
@@ -478,6 +534,20 @@
         "version_range": {
             "from": 510928,
             "until": 512199
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Reapply \"AMDGPU: Drop and auto-upgrade llvm.amdgcn.ldexp to llvm.ldexp\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/edecb6048148b7c22cfe567ccbf2dba5e1000bdc.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 512433
         }
     },
     {
@@ -595,6 +665,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"[InlineCost] Check for conflicting target attributes early\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/b4301df61fc77a9d54ac236bc88742a731285f1c.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 513444
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Reapply \"[AArch64] Merge LDRSWpre-LD[U]RSW pair into LDPSWpre\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/bcc5b48b0f24bfa73ce1bb14e6031f1dd63f0043.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 513651
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISC-V] Add RISC-V ABI plugin"
         },
         "platforms": [
@@ -637,6 +735,34 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Revert \"MachineSink: Fix sinking VGPR def out of a divergent loop\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/ccf68ab4322962981f71114567c19f7d692f9e06.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 514916
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[SCEV] Don't invalidate past dependency-breaking instructions\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/1c3fdb3d1e187e646f97a305771c48378c5df756.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 515060
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [lld] [MTE] Drop MTE globals for fully static executables, not ban (#68217)"
         },
         "platforms": [
@@ -660,6 +786,76 @@
         "version_range": {
             "from": 498229,
             "until": 515912
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[clang-format] Fix align consecutive declarations over function pointers\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/7bc1031c474ebb2216a5432273dafe4d1490fbce.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 516365
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"Revert \"Inlining: Run the legacy AlwaysInliner before the regular inliner.\"\""
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/1a2e77cf9e11dbf56b5720c607313a566eebb16e.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 516932
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"[CaptureTracking] Ignore ephemeral values when determining po\u2026 (#71066)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/fd95f398c7623ff4a62e5001b4cde21c5b9eb111.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 517486
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] Revert \"Reland [clang] Canonicalize system headers in dependency file when -canonical-prefixes\" (#71697)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/955dd8800b4745784bf6da948ec7992d5b75b4d7.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 518131
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "[UPSTREAM] [AMDGPU] Revert \"Preliminary patch for divergence driven instruction selection. Operands Folding 1.\" (#71710)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/a4196666ac81fc098461559cf301fc7c78aa06f3.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 518519
         }
     },
     {

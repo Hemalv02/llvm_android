@@ -1,0 +1,114 @@
+From b4301df61fc77a9d54ac236bc88742a731285f1c Mon Sep 17 00:00:00 2001
+From: Kazu Hirata <kazu@google.com>
+Date: Thu, 21 Sep 2023 10:29:46 -0700
+Subject: [PATCH] Revert "[InlineCost] Check for conflicting target attributes
+ early"
+
+This reverts commit d6f994acb3d545b80161e24ab742c9c69d4bbf33.
+
+Several people have reported breakage resulting from this patch:
+
+- https://github.com/llvm/llvm-project/issues/65152
+- https://github.com/llvm/llvm-project/issues/65205
+---
+ llvm/lib/Analysis/InlineCost.cpp              | 20 ++++-------
+ .../Inline/target-features-vs-alwaysinline.ll | 36 -------------------
+ 2 files changed, 6 insertions(+), 50 deletions(-)
+ delete mode 100644 llvm/test/Transforms/Inline/target-features-vs-alwaysinline.ll
+
+diff --git a/llvm/lib/Analysis/InlineCost.cpp b/llvm/lib/Analysis/InlineCost.cpp
+index f5a31628f165..7582a43f4f8f 100644
+--- a/llvm/lib/Analysis/InlineCost.cpp
++++ b/llvm/lib/Analysis/InlineCost.cpp
+@@ -2810,14 +2810,16 @@ LLVM_DUMP_METHOD void InlineCostCallAnalyzer::dump() { print(dbgs()); }
+ /// Test that there are no attribute conflicts between Caller and Callee
+ ///        that prevent inlining.
+ static bool functionsHaveCompatibleAttributes(
+-    Function *Caller, Function *Callee,
++    Function *Caller, Function *Callee, TargetTransformInfo &TTI,
+     function_ref<const TargetLibraryInfo &(Function &)> &GetTLI) {
+   // Note that CalleeTLI must be a copy not a reference. The legacy pass manager
+   // caches the most recently created TLI in the TargetLibraryInfoWrapperPass
+   // object, and always returns the same object (which is overwritten on each
+   // GetTLI call). Therefore we copy the first result.
+   auto CalleeTLI = GetTLI(*Callee);
+-  return GetTLI(*Caller).areInlineCompatible(CalleeTLI,
++  return (IgnoreTTIInlineCompatible ||
++          TTI.areInlineCompatible(Caller, Callee)) &&
++         GetTLI(*Caller).areInlineCompatible(CalleeTLI,
+                                              InlineCallerSupersetNoBuiltin) &&
+          AttributeFuncs::areInlineCompatible(*Caller, *Callee);
+ }
+@@ -2933,12 +2935,6 @@ std::optional<InlineResult> llvm::getAttributeBasedInliningDecision(
+                                      " address space");
+     }
+ 
+-  // Never inline functions with conflicting target attributes.
+-  Function *Caller = Call.getCaller();
+-  if (!IgnoreTTIInlineCompatible &&
+-      !CalleeTTI.areInlineCompatible(Caller, Callee))
+-    return InlineResult::failure("conflicting target attributes");
+-
+   // Calls to functions with always-inline attributes should be inlined
+   // whenever possible.
+   if (Call.hasFnAttr(Attribute::AlwaysInline)) {
+@@ -2953,12 +2949,8 @@ std::optional<InlineResult> llvm::getAttributeBasedInliningDecision(
+ 
+   // Never inline functions with conflicting attributes (unless callee has
+   // always-inline attribute).
+-  // FIXME: functionsHaveCompatibleAttributes below checks for compatibilities
+-  // of different kinds of function attributes -- sanitizer-related ones,
+-  // checkDenormMode, no-builtin-memcpy, etc.  It's unclear if we really want
+-  // the always-inline attribute to take precedence over these different types
+-  // of function attributes.
+-  if (!functionsHaveCompatibleAttributes(Caller, Callee, GetTLI))
++  Function *Caller = Call.getCaller();
++  if (!functionsHaveCompatibleAttributes(Caller, Callee, CalleeTTI, GetTLI))
+     return InlineResult::failure("conflicting attributes");
+ 
+   // Don't inline this call if the caller has the optnone attribute.
+diff --git a/llvm/test/Transforms/Inline/target-features-vs-alwaysinline.ll b/llvm/test/Transforms/Inline/target-features-vs-alwaysinline.ll
+deleted file mode 100644
+index 03c6df76f529..000000000000
+--- a/llvm/test/Transforms/Inline/target-features-vs-alwaysinline.ll
++++ /dev/null
+@@ -1,36 +0,0 @@
+-; RUN: opt < %s -passes=inline -pass-remarks-missed=inline -S 2>&1 | FileCheck %s
+-
+-target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
+-target triple = "x86_64-unknown-linux-gnu"
+-
+-; Make sure that we do not inline callee into caller.  If we inline
+-; callee into caller, caller would end pu with AVX512 intrinsics even
+-; though it is not allowed to use AVX512 instructions.
+-; CHECK: remark: [[MSG:.*]] because it should never be inlined (cost=never): conflicting target attributes
+-
+-define void @caller(ptr %0) {
+-; CHECK-LABEL: define void @caller
+-; CHECK-SAME: (ptr [[TMP0:%.*]]) {
+-; CHECK-NEXT:    call void @callee(ptr [[TMP0]], i64 0, i32 0) #[[ATTR2:[0-9]+]]
+-; CHECK-NEXT:    ret void
+-;
+-  call void @callee(ptr %0, i64 0, i32 0) #1
+-  ret void
+-}
+-
+-define available_externally void @callee(ptr %0, i64 %1, i32 %2) #0 {
+-; CHECK-LABEL: define available_externally void @callee
+-; CHECK-SAME: (ptr [[TMP0:%.*]], i64 [[TMP1:%.*]], i32 [[TMP2:%.*]]) #[[ATTR0:[0-9]+]] {
+-; CHECK-NEXT:    [[TMP4:%.*]] = call <16 x float> @llvm.x86.avx512.min.ps.512(<16 x float> zeroinitializer, <16 x float> zeroinitializer, i32 0)
+-; CHECK-NEXT:    store <16 x float> [[TMP4]], ptr [[TMP0]], align 1
+-; CHECK-NEXT:    ret void
+-;
+-  %4 = call <16 x float> @llvm.x86.avx512.min.ps.512(<16 x float> zeroinitializer, <16 x float> zeroinitializer, i32 0)
+-  store <16 x float> %4, ptr %0, align 1
+-  ret void
+-}
+-
+-declare <16 x float> @llvm.x86.avx512.min.ps.512(<16 x float>, <16 x float>, i32 immarg)
+-
+-attributes #0 = { "target-features"="+aes,+avx,+avx2,+avx512bw,+avx512dq,+avx512f,+avx512vl,+bmi,+bmi2,+crc32,+cx16,+cx8,+f16c,+fma,+fsgsbase,+fxsr,+invpcid,+lzcnt,+mmx,+movbe,+pclmul,+popcnt,+rdrnd,+sahf,+sse,+sse2,+sse3,+sse4.1,+sse4.2,+ssse3,+x87,+xsave,+xsaveopt" }
+-attributes #1 = { alwaysinline }
+-- 
+2.43.0.381.gb435a96ce8-goog
+

@@ -1,0 +1,79 @@
+From 7bc1031c474ebb2216a5432273dafe4d1490fbce Mon Sep 17 00:00:00 2001
+From: Owen Pan <owenpiano@gmail.com>
+Date: Tue, 24 Oct 2023 02:13:14 -0700
+Subject: [PATCH] Revert "[clang-format] Fix align consecutive declarations
+ over function pointers"
+
+This reverts commit a84e0b4bdc9999872adbdaafbade8164b197784b.
+
+Fixes #68079.
+---
+ clang/lib/Format/WhitespaceManager.cpp |  2 +-
+ clang/unittests/Format/FormatTest.cpp  | 10 ----------
+ 2 files changed, 1 insertion(+), 11 deletions(-)
+
+diff --git a/clang/lib/Format/WhitespaceManager.cpp b/clang/lib/Format/WhitespaceManager.cpp
+index dc81060671c1..dbe6175fb965 100644
+--- a/clang/lib/Format/WhitespaceManager.cpp
++++ b/clang/lib/Format/WhitespaceManager.cpp
+@@ -980,7 +980,7 @@ void WhitespaceManager::alignConsecutiveDeclarations() {
+   AlignTokens(
+       Style,
+       [](Change const &C) {
+-        if (C.Tok->isOneOf(TT_FunctionDeclarationName, TT_FunctionTypeLParen))
++        if (C.Tok->is(TT_FunctionDeclarationName))
+           return true;
+         if (C.Tok->isNot(TT_StartOfName))
+           return false;
+diff --git a/clang/unittests/Format/FormatTest.cpp b/clang/unittests/Format/FormatTest.cpp
+index d5711782a23e..02447dec840e 100644
+--- a/clang/unittests/Format/FormatTest.cpp
++++ b/clang/unittests/Format/FormatTest.cpp
+@@ -2033,8 +2033,6 @@ TEST_F(FormatTest, SeparatePointerReferenceAlignment) {
+                "const unsigned int *d;\n"
+                "Const unsigned int &e;\n"
+                "const unsigned int &f;\n"
+-               "int                *f1(int *a, int &b, int &&c);\n"
+-               "double             *(*f2)(int *a, double &&b);\n"
+                "const unsigned    &&g;\n"
+                "Const unsigned      h;",
+                Style);
+@@ -2080,8 +2078,6 @@ TEST_F(FormatTest, SeparatePointerReferenceAlignment) {
+                "const unsigned int* d;\n"
+                "Const unsigned int& e;\n"
+                "const unsigned int& f;\n"
+-               "int*                f1(int* a, int& b, int&& c);\n"
+-               "double*             (*f2)(int* a, double&& b);\n"
+                "const unsigned&&    g;\n"
+                "Const unsigned      h;",
+                Style);
+@@ -2107,8 +2103,6 @@ TEST_F(FormatTest, SeparatePointerReferenceAlignment) {
+                "const unsigned int *d;\n"
+                "Const unsigned int& e;\n"
+                "const unsigned int& f;\n"
+-               "int                *f1(int *a, int& b, int&& c);\n"
+-               "double             *(*f2)(int *a, double&& b);\n"
+                "const unsigned      g;\n"
+                "Const unsigned      h;",
+                Style);
+@@ -2149,8 +2143,6 @@ TEST_F(FormatTest, SeparatePointerReferenceAlignment) {
+                "const unsigned int*  d;\n"
+                "Const unsigned int & e;\n"
+                "const unsigned int & f;\n"
+-               "int*                 f1(int* a, int & b, int && c);\n"
+-               "double*              (*f2)(int* a, double && b);\n"
+                "const unsigned &&    g;\n"
+                "Const unsigned       h;",
+                Style);
+@@ -2176,8 +2168,6 @@ TEST_F(FormatTest, SeparatePointerReferenceAlignment) {
+                "const unsigned int * d;\n"
+                "Const unsigned int  &e;\n"
+                "const unsigned int  &f;\n"
+-               "int *                f1(int * a, int &b, int &&c);\n"
+-               "double *             (*f2)(int * a, double &&b);\n"
+                "const unsigned     &&g;\n"
+                "Const unsigned       h;",
+                Style);
+-- 
+2.43.0.381.gb435a96ce8-goog
+

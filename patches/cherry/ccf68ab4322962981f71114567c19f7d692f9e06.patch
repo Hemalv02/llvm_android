@@ -1,0 +1,118 @@
+From ccf68ab4322962981f71114567c19f7d692f9e06 Mon Sep 17 00:00:00 2001
+From: Petar Avramovic <Petar.Avramovic@amd.com>
+Date: Thu, 21 Sep 2023 13:02:43 +0200
+Subject: [PATCH] Revert "MachineSink: Fix sinking VGPR def out of a divergent
+ loop"
+
+This reverts commit 3f8ef57bede94445b1a1042c987cc914a886e7ff.
+---
+ llvm/lib/CodeGen/MachineSink.cpp                  | 15 ++++-----------
+ ...-loop-var-out-of-divergent-loop-swdev407790.ll |  2 +-
+ ...loop-var-out-of-divergent-loop-swdev407790.mir |  2 +-
+ .../CodeGen/AMDGPU/sink-after-control-flow.mir    |  2 +-
+ 4 files changed, 7 insertions(+), 14 deletions(-)
+
+diff --git a/llvm/lib/CodeGen/MachineSink.cpp b/llvm/lib/CodeGen/MachineSink.cpp
+index 073c9a082d12..14de3332f10b 100644
+--- a/llvm/lib/CodeGen/MachineSink.cpp
++++ b/llvm/lib/CodeGen/MachineSink.cpp
+@@ -300,7 +300,8 @@ static bool blockPrologueInterferes(const MachineBasicBlock *BB,
+       if (!Reg)
+         continue;
+       if (MO.isUse()) {
+-        if (Reg.isPhysical() && MRI && MRI->isConstantPhysReg(Reg))
++        if (Reg.isPhysical() &&
++            (TII->isIgnorableUse(MO) || (MRI && MRI->isConstantPhysReg(Reg))))
+           continue;
+         if (PI->modifiesRegister(Reg, TRI))
+           return true;
+@@ -1250,24 +1251,16 @@ MachineSinking::FindSuccToSinkTo(MachineInstr &MI, MachineBasicBlock *MBB,
+   if (MBB == SuccToSinkTo)
+     return nullptr;
+ 
+-  if (!SuccToSinkTo)
+-    return nullptr;
+-
+   // It's not safe to sink instructions to EH landing pad. Control flow into
+   // landing pad is implicitly defined.
+-  if (SuccToSinkTo->isEHPad())
++  if (SuccToSinkTo && SuccToSinkTo->isEHPad())
+     return nullptr;
+ 
+   // It ought to be okay to sink instructions into an INLINEASM_BR target, but
+   // only if we make sure that MI occurs _before_ an INLINEASM_BR instruction in
+   // the source block (which this code does not yet do). So for now, forbid
+   // doing so.
+-  if (SuccToSinkTo->isInlineAsmBrIndirectTarget())
+-    return nullptr;
+-
+-  MachineBasicBlock::const_iterator InsertPos =
+-      SuccToSinkTo->SkipPHIsAndLabels(SuccToSinkTo->begin());
+-  if (blockPrologueInterferes(SuccToSinkTo, InsertPos, MI, TRI, TII, MRI))
++  if (SuccToSinkTo && SuccToSinkTo->isInlineAsmBrIndirectTarget())
+     return nullptr;
+ 
+   return SuccToSinkTo;
+diff --git a/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.ll b/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.ll
+index e2456b74f7ef..b8e74bc7db09 100644
+--- a/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.ll
++++ b/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.ll
+@@ -21,6 +21,7 @@ define void @machinesink_loop_variable_out_of_divergent_loop(i32 %arg, i1 %cmp49
+ ; CHECK-NEXT:  .LBB0_1: ; %Flow
+ ; CHECK-NEXT:    ; in Loop: Header=BB0_3 Depth=1
+ ; CHECK-NEXT:    s_or_b32 exec_lo, exec_lo, s8
++; CHECK-NEXT:    v_add_nc_u32_e32 v4, -4, v4
+ ; CHECK-NEXT:  .LBB0_2: ; %Flow1
+ ; CHECK-NEXT:    ; in Loop: Header=BB0_3 Depth=1
+ ; CHECK-NEXT:    s_or_b32 exec_lo, exec_lo, s7
+@@ -53,7 +54,6 @@ define void @machinesink_loop_variable_out_of_divergent_loop(i32 %arg, i1 %cmp49
+ ; CHECK-NEXT:    ;;#ASMEND
+ ; CHECK-NEXT:    v_add_nc_u32_e32 v4, s9, v2
+ ; CHECK-NEXT:    v_cmp_ge_u32_e64 s4, v4, v0
+-; CHECK-NEXT:    v_add_nc_u32_e32 v4, -4, v4
+ ; CHECK-NEXT:    s_or_b32 s8, s4, s8
+ ; CHECK-NEXT:    s_andn2_b32 exec_lo, exec_lo, s8
+ ; CHECK-NEXT:    s_cbranch_execz .LBB0_1
+diff --git a/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.mir b/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.mir
+index cc14b4a80d58..037a28579412 100644
+--- a/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.mir
++++ b/llvm/test/CodeGen/AMDGPU/machine-sink-loop-var-out-of-divergent-loop-swdev407790.mir
+@@ -42,7 +42,6 @@ body:             |
+   ; CHECK-NEXT:   successors: %bb.2(0x40000000), %bb.5(0x40000000)
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT:   INLINEASM &"", 1 /* sideeffect attdialect */
+-  ; CHECK-NEXT:   [[V_ADD_U32_e64_:%[0-9]+]]:vgpr_32 = V_ADD_U32_e64 [[COPY]], [[COPY1]], 0, implicit $exec
+   ; CHECK-NEXT:   [[SI_IF_BREAK:%[0-9]+]]:sreg_32 = SI_IF_BREAK killed [[SI_IF1]], [[SI_IF]], implicit-def dead $scc
+   ; CHECK-NEXT:   SI_LOOP [[SI_IF_BREAK]], %bb.2, implicit-def dead $exec, implicit-def dead $scc, implicit $exec
+   ; CHECK-NEXT:   S_BRANCH %bb.5
+@@ -52,6 +51,7 @@ body:             |
+   ; CHECK-NEXT: {{  $}}
+   ; CHECK-NEXT:   [[PHI:%[0-9]+]]:vgpr_32 = PHI [[COPY]], %bb.4
+   ; CHECK-NEXT:   SI_END_CF [[SI_IF_BREAK]], implicit-def dead $exec, implicit-def dead $scc, implicit $exec
++  ; CHECK-NEXT:   [[V_ADD_U32_e64_:%[0-9]+]]:vgpr_32 = V_ADD_U32_e64 [[COPY]], [[COPY1]], 0, implicit $exec
+   ; CHECK-NEXT:   INLINEASM &"", 1 /* sideeffect attdialect */, implicit [[V_ADD_U32_e64_]]
+   ; CHECK-NEXT:   S_BRANCH %bb.2
+   ; CHECK-NEXT: {{  $}}
+diff --git a/llvm/test/CodeGen/AMDGPU/sink-after-control-flow.mir b/llvm/test/CodeGen/AMDGPU/sink-after-control-flow.mir
+index ee3d7aeb454f..4feef2149b42 100644
+--- a/llvm/test/CodeGen/AMDGPU/sink-after-control-flow.mir
++++ b/llvm/test/CodeGen/AMDGPU/sink-after-control-flow.mir
+@@ -17,7 +17,6 @@ body:             |
+   ; GFX10-NEXT: {{  $}}
+   ; GFX10-NEXT:   [[DEF:%[0-9]+]]:vgpr_32 = IMPLICIT_DEF
+   ; GFX10-NEXT:   [[S_MOV_B32_:%[0-9]+]]:sreg_32 = S_MOV_B32 8
+-  ; GFX10-NEXT:   [[V_LSHRREV_B32_e64_:%[0-9]+]]:vgpr_32 = V_LSHRREV_B32_e64 [[S_MOV_B32_]], [[DEF]], implicit $exec
+   ; GFX10-NEXT:   [[V_BFE_U32_e64_:%[0-9]+]]:vgpr_32 = V_BFE_U32_e64 [[DEF]], 8, 5, implicit $exec
+   ; GFX10-NEXT:   [[S_MOV_B32_1:%[0-9]+]]:sreg_32 = S_MOV_B32 5
+   ; GFX10-NEXT:   [[V_CMP_NE_U32_e64_:%[0-9]+]]:sreg_32 = V_CMP_NE_U32_e64 [[V_BFE_U32_e64_]], killed [[S_MOV_B32_1]], implicit $exec
+@@ -38,6 +37,7 @@ body:             |
+   ; GFX10-NEXT:   successors: %bb.3(0x40000000), %bb.4(0x40000000)
+   ; GFX10-NEXT: {{  $}}
+   ; GFX10-NEXT:   $exec_lo = S_OR_B32 $exec_lo, [[S_XOR_B32_1]], implicit-def $scc
++  ; GFX10-NEXT:   [[V_LSHRREV_B32_e64_:%[0-9]+]]:vgpr_32 = V_LSHRREV_B32_e64 [[S_MOV_B32_]], [[DEF]], implicit $exec
+   ; GFX10-NEXT:   [[S_MOV_B32_2:%[0-9]+]]:sreg_32 = S_MOV_B32 31
+   ; GFX10-NEXT:   [[V_CMP_NE_U32_e64_1:%[0-9]+]]:sreg_32 = V_CMP_NE_U32_e64 [[V_BFE_U32_e64_]], killed [[S_MOV_B32_2]], implicit $exec
+   ; GFX10-NEXT:   [[S_XOR_B32_2:%[0-9]+]]:sreg_32 = S_XOR_B32 [[V_CMP_NE_U32_e64_1]], -1, implicit-def $scc
+-- 
+2.43.0.381.gb435a96ce8-goog
+

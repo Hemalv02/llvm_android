@@ -1,0 +1,227 @@
+From bcc5b48b0f24bfa73ce1bb14e6031f1dd63f0043 Mon Sep 17 00:00:00 2001
+From: Zhuojia Shen <chaosdefinition@hotmail.com>
+Date: Fri, 22 Sep 2023 21:08:07 -0700
+Subject: [PATCH] Reapply "[AArch64] Merge LDRSWpre-LD[U]RSW pair into
+ LDPSWpre"
+
+This reverts commit 0def4e6b0f638b97a73bd4674365961d8fabda28, applies a
+quick fix that disallows merging two pre-indexed loads, and adds MIR
+regression tests.
+
+Differential Revision: https://reviews.llvm.org/D152407
+---
+ llvm/lib/Target/AArch64/AArch64InstrInfo.cpp  |  7 +-
+ .../AArch64/AArch64LoadStoreOptimizer.cpp     | 12 +++-
+ .../test/CodeGen/AArch64/ldrpre-ldr-merge.mir | 72 ++++++++++++++++---
+ 3 files changed, 81 insertions(+), 10 deletions(-)
+
+diff --git a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+index c839cd690ce6..4666e7b1614a 100644
+--- a/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
++++ b/llvm/lib/Target/AArch64/AArch64InstrInfo.cpp
+@@ -2270,6 +2270,7 @@ bool AArch64InstrInfo::hasUnscaledLdStOffset(unsigned Opc) {
+   case AArch64::LDRWpre:
+   case AArch64::LDURXi:
+   case AArch64::LDRXpre:
++  case AArch64::LDRSWpre:
+   case AArch64::LDURSWi:
+   case AArch64::LDURHHi:
+   case AArch64::LDURBBi:
+@@ -2479,6 +2480,7 @@ bool AArch64InstrInfo::isPairableLdStInst(const MachineInstr &MI) {
+   case AArch64::LDURXi:
+   case AArch64::LDRXpre:
+   case AArch64::LDURSWi:
++  case AArch64::LDRSWpre:
+     return true;
+   }
+ }
+@@ -2599,7 +2601,8 @@ bool AArch64InstrInfo::isCandidateToMergeOrPair(const MachineInstr &MI) const {
+   // Can't merge/pair if the instruction modifies the base register.
+   // e.g., ldr x0, [x0]
+   // This case will never occur with an FI base.
+-  // However, if the instruction is an LDR/STR<S,D,Q,W,X>pre, it can be merged.
++  // However, if the instruction is an LDR<S,D,Q,W,X,SW>pre or
++  // STR<S,D,Q,W,X>pre, it can be merged.
+   // For example:
+   //   ldr q0, [x11, #32]!
+   //   ldr q1, [x11, #16]
+@@ -3176,6 +3179,7 @@ int AArch64InstrInfo::getMemScale(unsigned Opc) {
+   case AArch64::LDRSpre:
+   case AArch64::LDRSWui:
+   case AArch64::LDURSWi:
++  case AArch64::LDRSWpre:
+   case AArch64::LDRWpre:
+   case AArch64::LDRWui:
+   case AArch64::LDURWi:
+@@ -3231,6 +3235,7 @@ bool AArch64InstrInfo::isPreLd(const MachineInstr &MI) {
+     return false;
+   case AArch64::LDRWpre:
+   case AArch64::LDRXpre:
++  case AArch64::LDRSWpre:
+   case AArch64::LDRSpre:
+   case AArch64::LDRDpre:
+   case AArch64::LDRQpre:
+diff --git a/llvm/lib/Target/AArch64/AArch64LoadStoreOptimizer.cpp b/llvm/lib/Target/AArch64/AArch64LoadStoreOptimizer.cpp
+index dc2965178bc2..c93fd02a821d 100644
+--- a/llvm/lib/Target/AArch64/AArch64LoadStoreOptimizer.cpp
++++ b/llvm/lib/Target/AArch64/AArch64LoadStoreOptimizer.cpp
+@@ -293,6 +293,8 @@ static unsigned getMatchingNonSExtOpcode(unsigned Opc,
+     return AArch64::LDRWui;
+   case AArch64::LDURSWi:
+     return AArch64::LDURWi;
++  case AArch64::LDRSWpre:
++    return AArch64::LDRWpre;
+   }
+ }
+ 
+@@ -372,6 +374,8 @@ static unsigned getMatchingPairOpcode(unsigned Opc) {
+   case AArch64::LDRSWui:
+   case AArch64::LDURSWi:
+     return AArch64::LDPSWi;
++  case AArch64::LDRSWpre:
++    return AArch64::LDPSWpre;
+   }
+ }
+ 
+@@ -585,6 +589,8 @@ static bool isPreLdStPairCandidate(MachineInstr &FirstMI, MachineInstr &MI) {
+     return (OpcB == AArch64::LDRWui) || (OpcB == AArch64::LDURWi);
+   case AArch64::LDRXpre:
+     return (OpcB == AArch64::LDRXui) || (OpcB == AArch64::LDURXi);
++  case AArch64::LDRSWpre:
++    return (OpcB == AArch64::LDRSWui) || (OpcB == AArch64::LDURSWi);
+   }
+ }
+ 
+@@ -1318,6 +1324,10 @@ static bool areCandidatesToMergeOrPair(MachineInstr &FirstMI, MachineInstr &MI,
+   if (OpcA == OpcB)
+     return !AArch64InstrInfo::isPreLdSt(FirstMI);
+ 
++  // Two pre ld/st of different opcodes cannot be merged either
++  if (AArch64InstrInfo::isPreLdSt(FirstMI) && AArch64InstrInfo::isPreLdSt(MI))
++    return false;
++
+   // Try to match a sign-extended load/store with a zero-extended load/store.
+   bool IsValidLdStrOpc, PairIsValidLdStrOpc;
+   unsigned NonSExtOpc = getMatchingNonSExtOpcode(OpcA, &IsValidLdStrOpc);
+@@ -1340,7 +1350,7 @@ static bool areCandidatesToMergeOrPair(MachineInstr &FirstMI, MachineInstr &MI,
+     return false;
+ 
+   // The STR<S,D,Q,W,X>pre - STR<S,D,Q,W,X>ui and
+-  // LDR<S,D,Q,W,X>pre-LDR<S,D,Q,W,X>ui
++  // LDR<S,D,Q,W,X,SW>pre-LDR<S,D,Q,W,X,SW>ui
+   // are candidate pairs that can be merged.
+   if (isPreLdStPairCandidate(FirstMI, MI))
+     return true;
+diff --git a/llvm/test/CodeGen/AArch64/ldrpre-ldr-merge.mir b/llvm/test/CodeGen/AArch64/ldrpre-ldr-merge.mir
+index c0d0d2b441be..eed46939d070 100644
+--- a/llvm/test/CodeGen/AArch64/ldrpre-ldr-merge.mir
++++ b/llvm/test/CodeGen/AArch64/ldrpre-ldr-merge.mir
+@@ -588,7 +588,7 @@ body:             |
+ 
+ 
+ ---
+-name:            21-ldrswpre-ldrswui-no-merge
++name:            21-ldrswpre-ldrswui-merge
+ tracksRegLiveness: true
+ liveins:
+   - { reg: '$x0' }
+@@ -599,10 +599,9 @@ machineFunctionInfo:
+ body:             |
+   bb.0:
+     liveins: $x0, $x1, $x2
+-    ; CHECK-LABEL: name: 21-ldrswpre-ldrswui-no-merge
++    ; CHECK-LABEL: name: 21-ldrswpre-ldrswui-merge
+     ; CHECK: liveins: $x0, $x1, $x2
+-    ; CHECK: early-clobber renamable $x1, renamable $x0 = LDRSWpre renamable $x1, 40, implicit $w1 :: (load (s32))
+-    ; CHECK: renamable $x2 = LDRSWui renamable $x1, 1 :: (load (s32))
++    ; CHECK: early-clobber $x1, renamable $x0, renamable $x2 = LDPSWpre renamable $x1, 10 :: (load (s32))
+     ; CHECK: STPXi renamable $x0, renamable $x2, renamable $x1, 0 :: (store (s64))
+     ; CHECK: RET undef $lr
+     early-clobber renamable $x1, renamable $x0 = LDRSWpre killed renamable $x1, 40 :: (load (s32))
+@@ -614,7 +613,7 @@ body:             |
+ 
+ 
+ ---
+-name:            22-ldrswpre-ldurswi-no-merge
++name:            22-ldrswpre-ldurswi-merge
+ tracksRegLiveness: true
+ liveins:
+   - { reg: '$x0' }
+@@ -625,10 +624,9 @@ machineFunctionInfo:
+ body:             |
+   bb.0:
+     liveins: $x0, $x1, $x2
+-    ; CHECK-LABEL: name: 22-ldrswpre-ldurswi-no-merge
++    ; CHECK-LABEL: name: 22-ldrswpre-ldurswi-merge
+     ; CHECK: liveins: $x0, $x1, $x2
+-    ; CHECK: early-clobber renamable $x1, renamable $x0 = LDRSWpre renamable $x1, 40, implicit $w1 :: (load (s32))
+-    ; CHECK: renamable $x2 = LDURSWi renamable $x1, 4 :: (load (s32))
++    ; CHECK: early-clobber $x1, renamable $x0, renamable $x2 = LDPSWpre renamable $x1, 10 :: (load (s32))
+     ; CHECK: STPXi renamable $x0, renamable $x2, renamable $x1, 0 :: (store (s64))
+     ; CHECK: RET undef $lr
+     early-clobber renamable $x1, renamable $x0 = LDRSWpre killed renamable $x1, 40 :: (load (s32))
+@@ -775,3 +773,61 @@ body:             |
+     STRXui killed renamable $x2, renamable $x1, 1 :: (store (s64))
+     RET undef $lr
+ ...
++
++
++---
++name:            28-ldrswpre-ldrwpre-no-merge
++tracksRegLiveness: true
++liveins:
++  - { reg: '$x11' }
++  - { reg: '$x13' }
++machineFunctionInfo:
++  hasRedZone:      false
++body:             |
++  bb.0:
++    liveins: $x11, $x13
++    ; CHECK-LABEL: name: 28-ldrswpre-ldrwpre-no-merge
++    ; CHECK: liveins: $x11, $x13
++    ; CHECK: early-clobber renamable $x11, dead renamable $x10 = LDRSWpre renamable $x11, 8, implicit $w11 :: (load (s32), align 8)
++    ; CHECK: $x14 = EORXrs renamable $x11, renamable $x13, 0
++    ; CHECK: early-clobber renamable $x11, dead renamable $w12 = LDRWpre renamable $x11, 4, implicit $w11 :: (load (s32))
++    ; CHECK: $x13 = EORXrs renamable $x11, renamable $x13, 0
++    ; CHECK: STPXi renamable $x13, renamable $x14, renamable $x11, 0 :: (store (s64))
++    ; CHECK: RET undef $lr
++    early-clobber renamable $x11, renamable $x10 = LDRSWpre killed renamable $x11, 8 :: (load (s32), align 8)
++    $x14 = EORXrs renamable $x11, renamable $x13, 0
++    early-clobber renamable $x11, renamable $w12 = LDRWpre killed renamable $x11, 4 :: (load (s32))
++    $x13 = EORXrs renamable $x11, killed renamable $x13, 0
++    STRXui killed renamable $x13, renamable $x11, 0 :: (store (s64))
++    STRXui killed renamable $x14, renamable $x11, 1 :: (store (s64))
++    RET undef $lr
++...
++
++
++---
++name:            29-ldrwpre-ldrswpre-no-merge
++tracksRegLiveness: true
++liveins:
++  - { reg: '$x11' }
++  - { reg: '$x13' }
++machineFunctionInfo:
++  hasRedZone:      false
++body:             |
++  bb.0:
++    liveins: $x11, $x13
++    ; CHECK-LABEL: name: 29-ldrwpre-ldrswpre-no-merge
++    ; CHECK: liveins: $x11, $x13
++    ; CHECK: early-clobber renamable $x11, dead renamable $w12 = LDRWpre renamable $x11, 8, implicit $w11 :: (load (s32))
++    ; CHECK: $x14 = EORXrs renamable $x11, renamable $x13, 0
++    ; CHECK: early-clobber renamable $x11, dead renamable $x10 = LDRSWpre renamable $x11, 4, implicit $w11 :: (load (s32), align 8)
++    ; CHECK: $x13 = EORXrs renamable $x11, renamable $x13, 0
++    ; CHECK: STPXi renamable $x13, renamable $x14, renamable $x11, 0 :: (store (s64))
++    ; CHECK: RET undef $lr
++    early-clobber renamable $x11, renamable $w12 = LDRWpre killed renamable $x11, 8 :: (load (s32))
++    $x14 = EORXrs renamable $x11, renamable $x13, 0
++    early-clobber renamable $x11, renamable $x10 = LDRSWpre killed renamable $x11, 4 :: (load (s32), align 8)
++    $x13 = EORXrs renamable $x11, killed renamable $x13, 0
++    STRXui killed renamable $x13, renamable $x11, 0 :: (store (s64))
++    STRXui killed renamable $x14, renamable $x11, 1 :: (store (s64))
++    RET undef $lr
++...
+-- 
+2.43.0.381.gb435a96ce8-goog
+
