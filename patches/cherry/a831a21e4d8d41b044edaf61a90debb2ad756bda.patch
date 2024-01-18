@@ -1,0 +1,127 @@
+From a831a21e4d8d41b044edaf61a90debb2ad756bda Mon Sep 17 00:00:00 2001
+From: Mitch Phillips <31459023+hctim@users.noreply.github.com>
+Date: Mon, 8 Jan 2024 11:22:38 +0100
+Subject: [PATCH] [lld] [MTE] Allow android note for static executables.
+ (#77078)
+
+Florian pointed out that we're accidentally eliding the Android note for
+static executables, as it's guarded behind the "can have memtag globals"
+conditional. Of course, memtag globals are unsupported for static
+executables, but we should still allow static binaries to produce the
+Android note (as that's the only way they get MTE).
+---
+ lld/ELF/Arch/AArch64.cpp                  |  3 +--
+ lld/ELF/SyntheticSections.cpp             |  2 +-
+ lld/ELF/Writer.cpp                        | 16 +++++++++++-----
+ lld/ELF/Writer.h                          |  1 +
+ lld/test/ELF/aarch64-memtag-android-abi.s | 12 ++++++++++++
+ 5 files changed, 26 insertions(+), 8 deletions(-)
+
+diff --git a/lld/ELF/Arch/AArch64.cpp b/lld/ELF/Arch/AArch64.cpp
+index 048f0ec30ebd..54b0a84e5213 100644
+--- a/lld/ELF/Arch/AArch64.cpp
++++ b/lld/ELF/Arch/AArch64.cpp
+@@ -1025,8 +1025,7 @@ addTaggedSymbolReferences(InputSectionBase &sec,
+ // symbols should also be built with tagging. But, to handle these cases, we
+ // demote the symbol to be untagged.
+ void lld::elf::createTaggedSymbols(const SmallVector<ELFFileBase *, 0> &files) {
+-  assert(config->emachine == EM_AARCH64 &&
+-         config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE);
++  assert(hasMemtag());
+ 
+   // First, collect all symbols that are marked as tagged, and count how many
+   // times they're marked as tagged.
+diff --git a/lld/ELF/SyntheticSections.cpp b/lld/ELF/SyntheticSections.cpp
+index 2b32eb3a0fe3..19fced5aff92 100644
+--- a/lld/ELF/SyntheticSections.cpp
++++ b/lld/ELF/SyntheticSections.cpp
+@@ -1450,7 +1450,7 @@ DynamicSection<ELFT>::computeContents() {
+     if (config->zPacPlt)
+       addInt(DT_AARCH64_PAC_PLT, 0);
+ 
+-    if (config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE) {
++    if (hasMemtag()) {
+       addInt(DT_AARCH64_MEMTAG_MODE, config->androidMemtagMode == NT_MEMTAG_LEVEL_ASYNC);
+       addInt(DT_AARCH64_MEMTAG_HEAP, config->androidMemtagHeap);
+       addInt(DT_AARCH64_MEMTAG_STACK, config->androidMemtagStack);
+diff --git a/lld/ELF/Writer.cpp b/lld/ELF/Writer.cpp
+index a84e4864ab0e..7b9880a034bc 100644
+--- a/lld/ELF/Writer.cpp
++++ b/lld/ELF/Writer.cpp
+@@ -291,6 +291,11 @@ static void demoteSymbolsAndComputeIsPreemptible() {
+   }
+ }
+ 
++bool elf::hasMemtag() {
++  return config->emachine == EM_AARCH64 &&
++         config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE;
++}
++
+ // Fully static executables don't support MTE globals at this point in time, as
+ // we currently rely on:
+ //   - A dynamic loader to process relocations, and
+@@ -298,8 +303,7 @@ static void demoteSymbolsAndComputeIsPreemptible() {
+ // This restriction could be removed in future by re-using some of the ideas
+ // that ifuncs use in fully static executables.
+ bool elf::canHaveMemtagGlobals() {
+-  return config->emachine == EM_AARCH64 &&
+-         config->androidMemtagMode != ELF::NT_MEMTAG_LEVEL_NONE &&
++  return hasMemtag() &&
+          (config->relocatable || config->shared || needsInterpSection());
+ }
+ 
+@@ -397,11 +401,13 @@ template <class ELFT> void elf::createSyntheticSections() {
+         std::make_unique<SymbolTableSection<ELFT>>(*part.dynStrTab);
+     part.dynamic = std::make_unique<DynamicSection<ELFT>>();
+ 
+-    if (canHaveMemtagGlobals()) {
++    if (hasMemtag()) {
+       part.memtagAndroidNote = std::make_unique<MemtagAndroidNote>();
+       add(*part.memtagAndroidNote);
+-      part.memtagDescriptors = std::make_unique<MemtagDescriptors>();
+-      add(*part.memtagDescriptors);
++      if (canHaveMemtagGlobals()) {
++        part.memtagDescriptors = std::make_unique<MemtagDescriptors>();
++        add(*part.memtagDescriptors);
++      }
+     }
+ 
+     if (config->androidPackDynRelocs)
+diff --git a/lld/ELF/Writer.h b/lld/ELF/Writer.h
+index eaf021aac42e..aac8176d9098 100644
+--- a/lld/ELF/Writer.h
++++ b/lld/ELF/Writer.h
+@@ -57,6 +57,7 @@ bool isMipsN32Abi(const InputFile *f);
+ bool isMicroMips();
+ bool isMipsR6();
+ 
++bool hasMemtag();
+ bool canHaveMemtagGlobals();
+ } // namespace lld::elf
+ 
+diff --git a/lld/test/ELF/aarch64-memtag-android-abi.s b/lld/test/ELF/aarch64-memtag-android-abi.s
+index e5744483e447..7c6a26aa9524 100644
+--- a/lld/test/ELF/aarch64-memtag-android-abi.s
++++ b/lld/test/ELF/aarch64-memtag-android-abi.s
+@@ -56,6 +56,18 @@
+ # BAD-MODE: error: unknown --android-memtag-mode value: "asymm", should be one of
+ # BAD-MODE: {async, sync, none}
+ 
++# RUN: ld.lld -static --android-memtag-mode=sync --android-memtag-heap \
++# RUN:    --android-memtag-stack %t.o -o %t
++# RUN: llvm-readelf --memtag %t | FileCheck %s --check-prefixes=STATIC
++
++# STATIC:      Memtag Dynamic Entries:
++# STATIC-NEXT: < none found >
++# STATIC:      Memtag Android Note:
++# STATIC-NEXT:  Tagging Mode: SYNC
++# STATIC-NEXT:  Heap: Enabled
++# STATIC-NEXT:  Stack: Enabled
++
++
+ .globl _start
+ _start:
+   ret
+-- 
+2.43.0.275.g3460e3d667-goog
+
