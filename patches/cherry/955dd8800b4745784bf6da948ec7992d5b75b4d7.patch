@@ -1,0 +1,275 @@
+From c10d70afe4647195bdb51ff70be93c6d9230bac6 Mon Sep 17 00:00:00 2001
+From: AdityaK <appujee@google.com>
+Date: Fri, 19 Jan 2024 09:34:43 -0800
+Subject: [PATCH] [UPSTREAM] Revert Reland [clang] Canonicalize system headers
+ in dependency file when -canonical-prefixes
+
+Change-Id: Ifc5b68d4d53d1ae4c708141f715614b0cc77dbdd
+---
+ clang/include/clang/Driver/Options.td         |  3 --
+ .../clang/Frontend/DependencyOutputOptions.h  | 11 +++----
+ clang/include/clang/Frontend/Utils.h          | 11 +------
+ clang/lib/Driver/ToolChains/Clang.cpp         |  3 --
+ clang/lib/Frontend/DependencyFile.cpp         | 32 ++++---------------
+ clang/test/Driver/canonical-system-headers.c  |  6 ----
+ .../Inputs/canonical-system-headers/a.h       |  0
+ .../Preprocessor/canonical-system-headers.c   | 16 ----------
+ 8 files changed, 12 insertions(+), 70 deletions(-)
+ delete mode 100644 clang/test/Driver/canonical-system-headers.c
+ delete mode 100644 clang/test/Preprocessor/Inputs/canonical-system-headers/a.h
+ delete mode 100644 clang/test/Preprocessor/canonical-system-headers.c
+
+diff --git a/clang/include/clang/Driver/Options.td b/clang/include/clang/Driver/Options.td
+index a2a6cf0dcad3..1595edc711bb 100644
+--- a/clang/include/clang/Driver/Options.td
++++ b/clang/include/clang/Driver/Options.td
+@@ -6830,9 +6830,6 @@ let Visibility = [CC1Option] in {
+ def sys_header_deps : Flag<["-"], "sys-header-deps">,
+   HelpText<"Include system headers in dependency output">,
+   MarshallingInfoFlag<DependencyOutputOpts<"IncludeSystemHeaders">>;
+-def canonical_system_headers : Flag<["-"], "canonical-system-headers">,
+-  HelpText<"Canonicalize system headers in dependency output">,
+-  MarshallingInfoFlag<DependencyOutputOpts<"CanonicalSystemHeaders">>;
+ def module_file_deps : Flag<["-"], "module-file-deps">,
+   HelpText<"Include module files in dependency output">,
+   MarshallingInfoFlag<DependencyOutputOpts<"IncludeModuleFiles">>;
+diff --git a/clang/include/clang/Frontend/DependencyOutputOptions.h b/clang/include/clang/Frontend/DependencyOutputOptions.h
+index e4b26d92647d..621acaaa1359 100644
+--- a/clang/include/clang/Frontend/DependencyOutputOptions.h
++++ b/clang/include/clang/Frontend/DependencyOutputOptions.h
+@@ -34,8 +34,6 @@ enum ExtraDepKind {
+ class DependencyOutputOptions {
+ public:
+   unsigned IncludeSystemHeaders : 1; ///< Include system header dependencies.
+-  unsigned
+-      CanonicalSystemHeaders : 1; ///< canonicalize system header dependencies.
+   unsigned ShowHeaderIncludes : 1;   ///< Show header inclusions (-H).
+   unsigned UsePhonyTargets : 1;      ///< Include phony targets for each
+                                      /// dependency, which can avoid some 'make'
+@@ -84,11 +82,10 @@ public:
+ 
+ public:
+   DependencyOutputOptions()
+-      : IncludeSystemHeaders(0), CanonicalSystemHeaders(0),
+-        ShowHeaderIncludes(0), UsePhonyTargets(0), AddMissingHeaderDeps(0),
+-        IncludeModuleFiles(0), ShowSkippedHeaderIncludes(0),
+-        HeaderIncludeFormat(HIFMT_Textual), HeaderIncludeFiltering(HIFIL_None) {
+-  }
++      : IncludeSystemHeaders(0), ShowHeaderIncludes(0), UsePhonyTargets(0),
++        AddMissingHeaderDeps(0), IncludeModuleFiles(0),
++        ShowSkippedHeaderIncludes(0), HeaderIncludeFormat(HIFMT_Textual),
++        HeaderIncludeFiltering(HIFIL_None) {}
+ };
+ 
+ }  // end namespace clang
+diff --git a/clang/include/clang/Frontend/Utils.h b/clang/include/clang/Frontend/Utils.h
+index 8300e45d15fe..143cf4359f00 100644
+--- a/clang/include/clang/Frontend/Utils.h
++++ b/clang/include/clang/Frontend/Utils.h
+@@ -41,7 +41,6 @@ class ExternalSemaSource;
+ class FrontendOptions;
+ class PCHContainerReader;
+ class Preprocessor;
+-class FileManager;
+ class PreprocessorOptions;
+ class PreprocessorOutputOptions;
+ 
+@@ -80,14 +79,11 @@ public:
+   /// Return true if system files should be passed to sawDependency().
+   virtual bool needSystemDependencies() { return false; }
+ 
+-  /// Return true if system files should be canonicalized.
+-  virtual bool shouldCanonicalizeSystemDependencies() { return false; }
+-
+   /// Add a dependency \p Filename if it has not been seen before and
+   /// sawDependency() returns true.
+   virtual void maybeAddDependency(StringRef Filename, bool FromModule,
+                                   bool IsSystem, bool IsModuleFile,
+-                                  FileManager *FileMgr, bool IsMissing);
++                                  bool IsMissing);
+ 
+ protected:
+   /// Return true if the filename was added to the list of dependencies, false
+@@ -116,10 +112,6 @@ public:
+   bool sawDependency(StringRef Filename, bool FromModule, bool IsSystem,
+                      bool IsModuleFile, bool IsMissing) final;
+ 
+-  bool shouldCanonicalizeSystemDependencies() override {
+-    return CanonicalSystemHeaders;
+-  }
+-
+ protected:
+   void outputDependencyFile(llvm::raw_ostream &OS);
+ 
+@@ -129,7 +121,6 @@ private:
+   std::string OutputFile;
+   std::vector<std::string> Targets;
+   bool IncludeSystemHeaders;
+-  bool CanonicalSystemHeaders;
+   bool PhonyTarget;
+   bool AddMissingHeaderDeps;
+   bool SeenMissingHeader;
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index 30fe8f871bf2..463477171594 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -1149,9 +1149,6 @@ void Clang::AddPreprocessingOptions(Compilation &C, const JobAction &JA,
+     if (ArgM->getOption().matches(options::OPT_M) ||
+         ArgM->getOption().matches(options::OPT_MD))
+       CmdArgs.push_back("-sys-header-deps");
+-    if (Args.hasFlag(options::OPT_canonical_prefixes,
+-                     options::OPT_no_canonical_prefixes, true))
+-      CmdArgs.push_back("-canonical-system-headers");
+     if ((isa<PrecompileJobAction>(JA) &&
+          !Args.hasArg(options::OPT_fno_module_file_deps)) ||
+         Args.hasArg(options::OPT_fmodule_file_deps))
+diff --git a/clang/lib/Frontend/DependencyFile.cpp b/clang/lib/Frontend/DependencyFile.cpp
+index 44268e71dc24..fb56eb225c83 100644
+--- a/clang/lib/Frontend/DependencyFile.cpp
++++ b/clang/lib/Frontend/DependencyFile.cpp
+@@ -49,7 +49,6 @@ struct DepCollectorPPCallbacks : public PPCallbacks {
+       DepCollector.maybeAddDependency(
+           llvm::sys::path::remove_leading_dotslash(*Filename),
+           /*FromModule*/ false, isSystem(FileType), /*IsModuleFile*/ false,
+-          &PP.getFileManager(),
+           /*IsMissing*/ false);
+   }
+ 
+@@ -57,11 +56,9 @@ struct DepCollectorPPCallbacks : public PPCallbacks {
+                    SrcMgr::CharacteristicKind FileType) override {
+     StringRef Filename =
+         llvm::sys::path::remove_leading_dotslash(SkippedFile.getName());
+-    DepCollector.maybeAddDependency(Filename,
+-                                    /*FromModule=*/false,
++    DepCollector.maybeAddDependency(Filename, /*FromModule=*/false,
+                                     /*IsSystem=*/isSystem(FileType),
+                                     /*IsModuleFile=*/false,
+-                                    &PP.getFileManager(),
+                                     /*IsMissing=*/false);
+   }
+ 
+@@ -72,11 +69,9 @@ struct DepCollectorPPCallbacks : public PPCallbacks {
+                           StringRef RelativePath, const Module *Imported,
+                           SrcMgr::CharacteristicKind FileType) override {
+     if (!File)
+-      DepCollector.maybeAddDependency(FileName,
+-                                      /*FromModule*/ false,
++      DepCollector.maybeAddDependency(FileName, /*FromModule*/ false,
+                                       /*IsSystem*/ false,
+                                       /*IsModuleFile*/ false,
+-                                      &PP.getFileManager(),
+                                       /*IsMissing*/ true);
+     // Files that actually exist are handled by FileChanged.
+   }
+@@ -88,11 +83,9 @@ struct DepCollectorPPCallbacks : public PPCallbacks {
+       return;
+     StringRef Filename =
+         llvm::sys::path::remove_leading_dotslash(File->getName());
+-    DepCollector.maybeAddDependency(Filename,
+-                                    /*FromModule=*/false,
++    DepCollector.maybeAddDependency(Filename, /*FromModule=*/false,
+                                     /*IsSystem=*/isSystem(FileType),
+                                     /*IsModuleFile=*/false,
+-                                    &PP.getFileManager(),
+                                     /*IsMissing=*/false);
+   }
+ 
+@@ -108,11 +101,9 @@ struct DepCollectorMMCallbacks : public ModuleMapCallbacks {
+   void moduleMapFileRead(SourceLocation Loc, const FileEntry &Entry,
+                          bool IsSystem) override {
+     StringRef Filename = Entry.getName();
+-    DepCollector.maybeAddDependency(Filename,
+-                                    /*FromModule*/ false,
++    DepCollector.maybeAddDependency(Filename, /*FromModule*/ false,
+                                     /*IsSystem*/ IsSystem,
+                                     /*IsModuleFile*/ false,
+-                                    /*FileMgr*/ nullptr,
+                                     /*IsMissing*/ false);
+   }
+ };
+@@ -128,10 +119,8 @@ struct DepCollectorASTListener : public ASTReaderListener {
+   }
+   void visitModuleFile(StringRef Filename,
+                        serialization::ModuleKind Kind) override {
+-    DepCollector.maybeAddDependency(Filename,
+-                                    /*FromModule*/ true,
++    DepCollector.maybeAddDependency(Filename, /*FromModule*/ true,
+                                     /*IsSystem*/ false, /*IsModuleFile*/ true,
+-                                    /*FileMgr*/ nullptr,
+                                     /*IsMissing*/ false);
+   }
+   bool visitInputFile(StringRef Filename, bool IsSystem,
+@@ -145,7 +134,7 @@ struct DepCollectorASTListener : public ASTReaderListener {
+       Filename = FE->getName();
+ 
+     DepCollector.maybeAddDependency(Filename, /*FromModule*/ true, IsSystem,
+-                                    /*IsModuleFile*/ false, /*FileMgr*/ nullptr,
++                                    /*IsModuleFile*/ false,
+                                     /*IsMissing*/ false);
+     return true;
+   }
+@@ -155,15 +144,9 @@ struct DepCollectorASTListener : public ASTReaderListener {
+ void DependencyCollector::maybeAddDependency(StringRef Filename,
+                                              bool FromModule, bool IsSystem,
+                                              bool IsModuleFile,
+-                                             FileManager *FileMgr,
+                                              bool IsMissing) {
+-  if (sawDependency(Filename, FromModule, IsSystem, IsModuleFile, IsMissing)) {
+-    if (IsSystem && FileMgr && shouldCanonicalizeSystemDependencies()) {
+-      if (auto F = FileMgr->getFile(Filename))
+-        Filename = FileMgr->getCanonicalName(*F);
+-    }
++  if (sawDependency(Filename, FromModule, IsSystem, IsModuleFile, IsMissing))
+     addDependency(Filename);
+-  }
+ }
+ 
+ bool DependencyCollector::addDependency(StringRef Filename) {
+@@ -211,7 +194,6 @@ DependencyFileGenerator::DependencyFileGenerator(
+     const DependencyOutputOptions &Opts)
+     : OutputFile(Opts.OutputFile), Targets(Opts.Targets),
+       IncludeSystemHeaders(Opts.IncludeSystemHeaders),
+-      CanonicalSystemHeaders(Opts.CanonicalSystemHeaders),
+       PhonyTarget(Opts.UsePhonyTargets),
+       AddMissingHeaderDeps(Opts.AddMissingHeaderDeps), SeenMissingHeader(false),
+       IncludeModuleFiles(Opts.IncludeModuleFiles),
+diff --git a/clang/test/Driver/canonical-system-headers.c b/clang/test/Driver/canonical-system-headers.c
+deleted file mode 100644
+index a7ab57521fc2..000000000000
+--- a/clang/test/Driver/canonical-system-headers.c
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// RUN: %clang -MD -no-canonical-prefixes -### %s 2>&1 | FileCheck %s --check-prefix=CHECK-NO
+-// RUN: %clang -MD -canonical-prefixes -### %s 2>&1 | FileCheck %s --check-prefix=CHECK-YES
+-// RUN: %clang -MD -### %s 2>&1 | FileCheck %s --check-prefix=CHECK-YES
+-
+-// CHECK-YES: "-canonical-system-headers"
+-// CHECK-NO-NOT: "-canonical-system-headers"
+diff --git a/clang/test/Preprocessor/Inputs/canonical-system-headers/a.h b/clang/test/Preprocessor/Inputs/canonical-system-headers/a.h
+deleted file mode 100644
+index e69de29bb2d1..000000000000
+diff --git a/clang/test/Preprocessor/canonical-system-headers.c b/clang/test/Preprocessor/canonical-system-headers.c
+deleted file mode 100644
+index 0afa73c3e822..000000000000
+--- a/clang/test/Preprocessor/canonical-system-headers.c
++++ /dev/null
+@@ -1,16 +0,0 @@
+-// don't create symlinks on windows
+-// UNSUPPORTED: system-windows
+-// REQUIRES: shell
+-
+-// RUN: rm -rf %t
+-// RUN: mkdir -p %t/foo/
+-// RUN: ln -f -s %S/Inputs/canonical-system-headers %t/foo/include
+-// RUN: %clang_cc1 -isystem %t/foo/include -sys-header-deps -MT foo.o -dependency-file %t2 %s -fsyntax-only
+-// RUN: FileCheck %s --check-prefix=NOCANON --implicit-check-not=a.h < %t2
+-// RUN: %clang_cc1 -isystem %t/foo/include -sys-header-deps -MT foo.o -dependency-file %t2 %s -fsyntax-only -canonical-system-headers
+-// RUN: FileCheck %s --check-prefix=CANON --implicit-check-not=a.h < %t2
+-
+-// NOCANON: foo/include/a.h
+-// CANON: Inputs/canonical-system-headers/a.h
+-
+-#include <a.h>
+-- 
+2.43.0.429.g432eaa2c6b-goog
+

@@ -1,0 +1,281 @@
+From b7f4915644844fb9f32e8763922a070f5fe4fd29 Mon Sep 17 00:00:00 2001
+From: Alexander Kornienko <alexfh@google.com>
+Date: Fri, 1 Sep 2023 11:06:48 +0200
+Subject: [PATCH] Revert "Reapply: [IRGen] Emit lifetime intrinsics around
+ temporary aggregate argument allocas"
+
+This reverts commit e698695fbbf62e6676f8907665187f2d2c4d814b. The commit caused
+invalid AddressSanitizer: stack-use-after-scope errors.
+
+See https://reviews.llvm.org/D74094#4633785 for details.
+
+Differential Revision: https://reviews.llvm.org/D159346
+---
+ clang/lib/CodeGen/CGCall.cpp                  | 23 +-----
+ clang/lib/CodeGen/CGCall.h                    | 20 -----
+ clang/test/CodeGen/lifetime-call-temp.c       | 81 -------------------
+ .../CodeGenCXX/amdgcn-call-with-aggarg.cpp    | 19 -----
+ .../CodeGenCXX/stack-reuse-miscompile.cpp     |  4 -
+ clang/test/CodeGenCoroutines/pr59181.cpp      |  3 -
+ 6 files changed, 1 insertion(+), 149 deletions(-)
+ delete mode 100644 clang/test/CodeGen/lifetime-call-temp.c
+ delete mode 100644 clang/test/CodeGenCXX/amdgcn-call-with-aggarg.cpp
+
+diff --git a/clang/lib/CodeGen/CGCall.cpp b/clang/lib/CodeGen/CGCall.cpp
+index af05eec0ce19..37ccd0d8a2c6 100644
+--- a/clang/lib/CodeGen/CGCall.cpp
++++ b/clang/lib/CodeGen/CGCall.cpp
+@@ -40,7 +40,6 @@
+ #include "llvm/IR/IntrinsicInst.h"
+ #include "llvm/IR/Intrinsics.h"
+ #include "llvm/IR/Type.h"
+-#include "llvm/Support/TypeSize.h"
+ #include "llvm/Transforms/Utils/Local.h"
+ #include <optional>
+ using namespace clang;
+@@ -4616,24 +4615,7 @@ void CodeGenFunction::EmitCallArg(CallArgList &args, const Expr *E,
+     return;
+   }
+ 
+-  AggValueSlot ArgSlot = AggValueSlot::ignored();
+-  if (hasAggregateEvaluationKind(E->getType())) {
+-    Address ArgSlotAlloca = Address::invalid();
+-    ArgSlot = CreateAggTemp(E->getType(), "agg.tmp", &ArgSlotAlloca);
+-
+-    // Emit a lifetime start/end for this temporary. If the type has a
+-    // destructor, then we need to keep it alive. FIXME: We should still be able
+-    // to end the lifetime after the destructor returns.
+-    if (!E->getType().isDestructedType()) {
+-      llvm::TypeSize size =
+-          CGM.getDataLayout().getTypeAllocSize(ConvertTypeForMem(E->getType()));
+-      if (llvm::Value *lifetimeSize =
+-              EmitLifetimeStart(size, ArgSlotAlloca.getPointer()))
+-        args.addLifetimeCleanup({ArgSlotAlloca.getPointer(), lifetimeSize});
+-    }
+-  }
+-
+-  args.add(EmitAnyExpr(E, ArgSlot), type);
++  args.add(EmitAnyExprToTemp(E), type);
+ }
+ 
+ QualType CodeGenFunction::getVarArgType(const Expr *Arg) {
+@@ -5822,9 +5804,6 @@ RValue CodeGenFunction::EmitCall(const CGFunctionInfo &CallInfo,
+   for (CallLifetimeEnd &LifetimeEnd : CallLifetimeEndAfterCall)
+     LifetimeEnd.Emit(*this, /*Flags=*/{});
+ 
+-  for (const CallArgList::EndLifetimeInfo &LT : CallArgs.getLifetimeCleanups())
+-    EmitLifetimeEnd(LT.Size, LT.Addr);
+-
+   if (!ReturnValue.isExternallyDestructed() &&
+       RetTy.isDestructedType() == QualType::DK_nontrivial_c_struct)
+     pushDestroy(QualType::DK_nontrivial_c_struct, Ret.getAggregateAddress(),
+diff --git a/clang/lib/CodeGen/CGCall.h b/clang/lib/CodeGen/CGCall.h
+index cc0b1daf338e..aee86a3242fd 100644
+--- a/clang/lib/CodeGen/CGCall.h
++++ b/clang/lib/CodeGen/CGCall.h
+@@ -278,11 +278,6 @@ public:
+     llvm::Instruction *IsActiveIP;
+   };
+ 
+-  struct EndLifetimeInfo {
+-    llvm::Value *Addr;
+-    llvm::Value *Size;
+-  };
+-
+   void add(RValue rvalue, QualType type) { push_back(CallArg(rvalue, type)); }
+ 
+   void addUncopiedAggregate(LValue LV, QualType type) {
+@@ -299,9 +294,6 @@ public:
+     CleanupsToDeactivate.insert(CleanupsToDeactivate.end(),
+                                 other.CleanupsToDeactivate.begin(),
+                                 other.CleanupsToDeactivate.end());
+-    LifetimeCleanups.insert(LifetimeCleanups.end(),
+-                            other.LifetimeCleanups.begin(),
+-                            other.LifetimeCleanups.end());
+     assert(!(StackBase && other.StackBase) && "can't merge stackbases");
+     if (!StackBase)
+       StackBase = other.StackBase;
+@@ -341,14 +333,6 @@ public:
+   /// memory.
+   bool isUsingInAlloca() const { return StackBase; }
+ 
+-  void addLifetimeCleanup(EndLifetimeInfo Info) {
+-    LifetimeCleanups.push_back(Info);
+-  }
+-
+-  ArrayRef<EndLifetimeInfo> getLifetimeCleanups() const {
+-    return LifetimeCleanups;
+-  }
+-
+ private:
+   SmallVector<Writeback, 1> Writebacks;
+ 
+@@ -357,10 +341,6 @@ private:
+   /// occurs.
+   SmallVector<CallArgCleanup, 1> CleanupsToDeactivate;
+ 
+-  /// Lifetime information needed to call llvm.lifetime.end for any temporary
+-  /// argument allocas.
+-  SmallVector<EndLifetimeInfo, 2> LifetimeCleanups;
+-
+   /// The stacksave call.  It dominates all of the argument evaluation.
+   llvm::CallInst *StackBase = nullptr;
+ };
+diff --git a/clang/test/CodeGen/lifetime-call-temp.c b/clang/test/CodeGen/lifetime-call-temp.c
+deleted file mode 100644
+index fcc225aeb07a..000000000000
+--- a/clang/test/CodeGen/lifetime-call-temp.c
++++ /dev/null
+@@ -1,81 +0,0 @@
+-// RUN: %clang -cc1                  -triple x86_64-apple-macos -O1 -disable-llvm-passes %s -S -emit-llvm -o - | FileCheck %s --implicit-check-not=llvm.lifetime
+-// RUN: %clang -cc1 -xc++ -std=c++17 -triple x86_64-apple-macos -O1 -disable-llvm-passes %s -S -emit-llvm -o - -Wno-return-type-c-linkage | FileCheck %s --implicit-check-not=llvm.lifetime --check-prefix=CHECK --check-prefix=CXX
+-// RUN: %clang -cc1 -xobjective-c    -triple x86_64-apple-macos -O1 -disable-llvm-passes %s -S -emit-llvm -o - | FileCheck %s --implicit-check-not=llvm.lifetime --check-prefix=CHECK --check-prefix=OBJC
+-
+-typedef struct { int x[100]; } aggregate;
+-
+-#ifdef __cplusplus
+-extern "C" {
+-#endif
+-
+-void takes_aggregate(aggregate);
+-aggregate gives_aggregate();
+-
+-// CHECK-LABEL: define void @t1
+-void t1() {
+-  takes_aggregate(gives_aggregate());
+-
+-  // CHECK: [[AGGTMP:%.*]] = alloca %struct.aggregate, align 8
+-  // CHECK: call void @llvm.lifetime.start.p0(i64 400, ptr [[AGGTMP]])
+-  // CHECK: call void{{.*}} @gives_aggregate(ptr sret(%struct.aggregate) align 4 [[AGGTMP]])
+-  // CHECK: call void @takes_aggregate(ptr noundef byval(%struct.aggregate) align 8 [[AGGTMP]])
+-  // CHECK: call void @llvm.lifetime.end.p0(i64 400, ptr [[AGGTMP]])
+-}
+-
+-// CHECK: declare {{.*}}llvm.lifetime.start
+-// CHECK: declare {{.*}}llvm.lifetime.end
+-
+-#ifdef __cplusplus
+-// CXX: define void @t2
+-void t2() {
+-  struct S {
+-    S(aggregate) {}
+-  };
+-  S{gives_aggregate()};
+-
+-  // CXX: [[AGG:%.*]] = alloca %struct.aggregate
+-  // CXX: call void @llvm.lifetime.start.p0(i64 400, ptr
+-  // CXX: call void @gives_aggregate(ptr sret(%struct.aggregate) align 4 [[AGG]])
+-  // CXX: call void @_ZZ2t2EN1SC1E9aggregate(ptr {{.*}}, ptr {{.*}} byval(%struct.aggregate) align 8 [[AGG]])
+-  // CXX: call void @llvm.lifetime.end.p0(i64 400, ptr
+-}
+-
+-struct Dtor {
+-  ~Dtor();
+-};
+-
+-void takes_dtor(Dtor);
+-Dtor gives_dtor();
+-
+-// CXX: define void @t3
+-void t3() {
+-  takes_dtor(gives_dtor());
+-
+-  // CXX-NOT @llvm.lifetime
+-  // CXX: ret void
+-}
+-
+-#endif
+-
+-#ifdef __OBJC__
+-
+-@interface X
+--m:(aggregate)x;
+-@end
+-
+-// OBJC: define void @t4
+-void t4(X *x) {
+-  [x m: gives_aggregate()];
+-
+-  // OBJC: [[AGG:%.*]] = alloca %struct.aggregate
+-  // OBJC: call void @llvm.lifetime.start.p0(i64 400, ptr
+-  // OBJC: call void{{.*}} @gives_aggregate(ptr sret(%struct.aggregate) align 4 [[AGGTMP]])
+-  // OBJC: call {{.*}}@objc_msgSend
+-  // OBJC: call void @llvm.lifetime.end.p0(i64 400, ptr
+-}
+-
+-#endif
+-
+-#ifdef __cplusplus
+-}
+-#endif
+diff --git a/clang/test/CodeGenCXX/amdgcn-call-with-aggarg.cpp b/clang/test/CodeGenCXX/amdgcn-call-with-aggarg.cpp
+deleted file mode 100644
+index 9b598a48f643..000000000000
+--- a/clang/test/CodeGenCXX/amdgcn-call-with-aggarg.cpp
++++ /dev/null
+@@ -1,19 +0,0 @@
+-// RUN: %clang_cc1 -triple amdgcn-amd-amdhsa -emit-llvm -O3 -disable-llvm-passes -o - %s | FileCheck %s
+-
+-struct A {
+-  float x, y, z, w;
+-};
+-
+-void foo(A a);
+-
+-// CHECK-LABEL: @_Z4testv
+-// CHECK:         [[A:%.*]] = alloca [[STRUCT_A:%.*]], align 4, addrspace(5)
+-// CHECK-NEXT:    [[AGG_TMP:%.*]] = alloca [[STRUCT_A]], align 4, addrspace(5)
+-// CHECK-NEXT:    [[A_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[A]] to ptr
+-// CHECK-NEXT:    [[AGG_TMP_ASCAST:%.*]] = addrspacecast ptr addrspace(5) [[AGG_TMP]] to ptr
+-// CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 16, ptr addrspace(5) [[A]]) #[[ATTR4:[0-9]+]]
+-// CHECK-NEXT:    call void @llvm.lifetime.start.p5(i64 16, ptr addrspace(5) [[AGG_TMP]]) #[[ATTR4]]
+-void test() {
+-  A a;
+-  foo(a);
+-}
+diff --git a/clang/test/CodeGenCXX/stack-reuse-miscompile.cpp b/clang/test/CodeGenCXX/stack-reuse-miscompile.cpp
+index 45a1d3ba42c5..dbeea5e32cfb 100644
+--- a/clang/test/CodeGenCXX/stack-reuse-miscompile.cpp
++++ b/clang/test/CodeGenCXX/stack-reuse-miscompile.cpp
+@@ -26,8 +26,6 @@ const char * f(S s)
+ // CHECK: [[T2:%.*]] = alloca %class.T, align 4
+ // CHECK: [[T3:%.*]] = alloca %class.T, align 4
+ //
+-// CHECK: [[AGG:%.*]] = alloca %class.S, align 4
+-//
+ // FIXME: We could defer starting the lifetime of the return object of concat
+ // until the call.
+ // CHECK: call void @llvm.lifetime.start.p0(i64 16, ptr [[T1]])
+@@ -36,9 +34,7 @@ const char * f(S s)
+ // CHECK: [[T4:%.*]] = call noundef ptr @_ZN1TC1EPKc(ptr {{[^,]*}} [[T2]], ptr noundef @.str)
+ //
+ // CHECK: call void @llvm.lifetime.start.p0(i64 16, ptr [[T3]])
+-// CHECK: call void @llvm.lifetime.start.p0(i64 8, ptr [[AGG]])
+ // CHECK: [[T5:%.*]] = call noundef ptr @_ZN1TC1E1S(ptr {{[^,]*}} [[T3]], [2 x i32] %{{.*}})
+-// CHECK: call void @llvm.lifetime.end.p0(i64 8, ptr [[AGG]]
+ //
+ // CHECK: call void @_ZNK1T6concatERKS_(ptr sret(%class.T) align 4 [[T1]], ptr {{[^,]*}} [[T2]], ptr noundef nonnull align 4 dereferenceable(16) [[T3]])
+ // CHECK: [[T6:%.*]] = call noundef ptr @_ZNK1T3strEv(ptr {{[^,]*}} [[T1]])
+diff --git a/clang/test/CodeGenCoroutines/pr59181.cpp b/clang/test/CodeGenCoroutines/pr59181.cpp
+index 2527176d0992..80f4634db252 100644
+--- a/clang/test/CodeGenCoroutines/pr59181.cpp
++++ b/clang/test/CodeGenCoroutines/pr59181.cpp
+@@ -49,7 +49,6 @@ void foo() {
+ }
+ 
+ // CHECK: cleanup.cont:{{.*}}
+-// CHECK-NEXT: call void @llvm.lifetime.start.p0(i64 4, ptr [[AGG:%agg.tmp[0-9]+]])
+ // CHECK-NEXT: load i8
+ // CHECK-NEXT: trunc
+ // CHECK-NEXT: store i1 false
+@@ -57,7 +56,5 @@ void foo() {
+ 
+ // CHECK: await.suspend:{{.*}}
+ // CHECK-NOT: call void @llvm.lifetime.start.p0(i64 8, ptr [[REF]])
+-// CHECK-NOT: call void @llvm.lifetime.start.p0(i64 8, ptr [[AGG]])
+ // CHECK: call void @_ZZN4Task12promise_type15await_transformES_EN10Suspension13await_suspendESt16coroutine_handleIvE
+-// CHECK-NEXT: call void @llvm.lifetime.end.p0(i64 8, ptr [[AGG2:%agg.tmp[0-9]+]])
+ // CHECK-NEXT: call void @llvm.lifetime.end.p0(i64 8, ptr [[REF]])
+-- 
+2.43.0.381.gb435a96ce8-goog
+

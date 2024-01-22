@@ -1,0 +1,508 @@
+From 27313b68ef0ec9a94c4288eca9af6ca25cd17f8f Mon Sep 17 00:00:00 2001
+From: "Yaxun (Sam) Liu" <yaxun.liu@amd.com>
+Date: Thu, 31 Aug 2023 09:02:49 -0400
+Subject: [PATCH] Revert "[CUDA][HIP] Fix overloading resolution in global
+ variable initializer"
+
+This reverts commit de0df639724b10001ea9a74539381ea494296be9.
+
+It was reverted due to regression in HIP unit test on Windows:
+
+ In file included from C:\hip-tests\catch\unit\graph\hipGraphClone.cc:37:
+
+ In file included from C:\hip-tests\catch\.\include\hip_test_common.hh:24:
+
+ In file included from C:\hip-tests\catch\.\include/hip_test_context.hh:24:
+
+ In file included from C:/install/native/Release/x64/hip/include\hip/hip_runtime.h:54:
+
+ C:/dk/win\vc\14.31.31107\include\thread:76:70: error: cannot initialize a parameter of type '_beginthreadex_proc_type' (aka 'unsigned int (*)(void *) __attribute__((stdcall))') with an lvalue of type 'const unsigned int (*)(void *) noexcept __attribute__((stdcall))': different exception specifications
+
+    76 |             reinterpret_cast<void*>(_CSTD _beginthreadex(nullptr, 0, _Invoker_proc, _Decay_copied.get(), 0, &_Thr._Id));
+
+       |                                                                      ^~~~~~~~~~~~~
+
+ C:\hip-tests\catch\unit\graph\hipGraphClone.cc:290:21) &>' requested here
+
+    90 |         _Start(_STD forward<_Fn>(_Fx), _STD forward<_Args>(_Ax)...);
+
+       |         ^
+
+ C:\hip-tests\catch\unit\graph\hipGraphClone.cc:290:21) &, 0>' requested here
+
+   311 |     std::thread t(lambdaFunc);
+
+       |                 ^
+
+ C:/dk/win\ms_wdk\e22621\Include\10.0.22621.0\ucrt\process.h:99:40: note: passing argument to parameter '_StartAddress' here
+
+    99 |     _In_      _beginthreadex_proc_type _StartAddress,
+
+       |                                        ^
+
+ 1 error generated when compiling for gfx1030.
+---
+ clang/include/clang/Sema/Sema.h               | 46 +++---------
+ clang/lib/Parse/ParseDecl.cpp                 |  1 -
+ clang/lib/Sema/SemaCUDA.cpp                   | 24 +------
+ clang/lib/Sema/SemaDeclAttr.cpp               |  6 +-
+ clang/lib/Sema/SemaOverload.cpp               | 45 ++++++------
+ clang/lib/Sema/SemaType.cpp                   |  3 +-
+ clang/test/CodeGenCUDA/global-initializers.cu | 51 -------------
+ .../SemaCUDA/amdgpu-windows-vectorcall.cu     |  1 -
+ clang/test/SemaCUDA/function-overload.cu      |  6 --
+ .../test/SemaCUDA/global-initializers-host.cu | 32 +++++++++
+ clang/test/SemaCUDA/global-initializers.cu    | 72 -------------------
+ 11 files changed, 68 insertions(+), 219 deletions(-)
+ delete mode 100644 clang/test/CodeGenCUDA/global-initializers.cu
+ create mode 100644 clang/test/SemaCUDA/global-initializers-host.cu
+ delete mode 100644 clang/test/SemaCUDA/global-initializers.cu
+
+diff --git a/clang/include/clang/Sema/Sema.h b/clang/include/clang/Sema/Sema.h
+index 28e085ccebbb..1980571e6656 100644
+--- a/clang/include/clang/Sema/Sema.h
++++ b/clang/include/clang/Sema/Sema.h
+@@ -1012,14 +1012,6 @@ public:
+     }
+   } DelayedDiagnostics;
+ 
+-  enum CUDAFunctionTarget {
+-    CFT_Device,
+-    CFT_Global,
+-    CFT_Host,
+-    CFT_HostDevice,
+-    CFT_InvalidTarget
+-  };
+-
+   /// A RAII object to temporarily push a declaration context.
+   class ContextRAII {
+   private:
+@@ -4765,13 +4757,8 @@ public:
+   bool isValidPointerAttrType(QualType T, bool RefOkay = false);
+ 
+   bool CheckRegparmAttr(const ParsedAttr &attr, unsigned &value);
+-
+-  /// Check validaty of calling convention attribute \p attr. If \p FD
+-  /// is not null pointer, use \p FD to determine the CUDA/HIP host/device
+-  /// target. Otherwise, it is specified by \p CFT.
+   bool CheckCallingConvAttr(const ParsedAttr &attr, CallingConv &CC,
+-                            const FunctionDecl *FD = nullptr,
+-                            CUDAFunctionTarget CFT = CFT_InvalidTarget);
++                            const FunctionDecl *FD = nullptr);
+   bool CheckAttrTarget(const ParsedAttr &CurrAttr);
+   bool CheckAttrNoArgs(const ParsedAttr &CurrAttr);
+   bool checkStringLiteralArgumentAttr(const AttributeCommonInfo &CI,
+@@ -13278,6 +13265,14 @@ public:
+   void checkTypeSupport(QualType Ty, SourceLocation Loc,
+                         ValueDecl *D = nullptr);
+ 
++  enum CUDAFunctionTarget {
++    CFT_Device,
++    CFT_Global,
++    CFT_Host,
++    CFT_HostDevice,
++    CFT_InvalidTarget
++  };
++
+   /// Determines whether the given function is a CUDA device/host/kernel/etc.
+   /// function.
+   ///
+@@ -13296,29 +13291,6 @@ public:
+   /// Determines whether the given variable is emitted on host or device side.
+   CUDAVariableTarget IdentifyCUDATarget(const VarDecl *D);
+ 
+-  /// Defines kinds of CUDA global host/device context where a function may be
+-  /// called.
+-  enum CUDATargetContextKind {
+-    CTCK_Unknown,       /// Unknown context
+-    CTCK_InitGlobalVar, /// Function called during global variable
+-                        /// initialization
+-  };
+-
+-  /// Define the current global CUDA host/device context where a function may be
+-  /// called. Only used when a function is called outside of any functions.
+-  struct CUDATargetContext {
+-    CUDAFunctionTarget Target = CFT_HostDevice;
+-    CUDATargetContextKind Kind = CTCK_Unknown;
+-    Decl *D = nullptr;
+-  } CurCUDATargetCtx;
+-
+-  struct CUDATargetContextRAII {
+-    Sema &S;
+-    CUDATargetContext SavedCtx;
+-    CUDATargetContextRAII(Sema &S_, CUDATargetContextKind K, Decl *D);
+-    ~CUDATargetContextRAII() { S.CurCUDATargetCtx = SavedCtx; }
+-  };
+-
+   /// Gets the CUDA target for the current context.
+   CUDAFunctionTarget CurrentCUDATarget() {
+     return IdentifyCUDATarget(dyn_cast<FunctionDecl>(CurContext));
+diff --git a/clang/lib/Parse/ParseDecl.cpp b/clang/lib/Parse/ParseDecl.cpp
+index 7c27a02ee4af..4a9f2caf6547 100644
+--- a/clang/lib/Parse/ParseDecl.cpp
++++ b/clang/lib/Parse/ParseDecl.cpp
+@@ -2571,7 +2571,6 @@ Decl *Parser::ParseDeclarationAfterDeclaratorAndAttributes(
+     }
+   }
+ 
+-  Sema::CUDATargetContextRAII X(Actions, Sema::CTCK_InitGlobalVar, ThisDecl);
+   switch (TheInitKind) {
+   // Parse declarator '=' initializer.
+   case InitKind::Equal: {
+diff --git a/clang/lib/Sema/SemaCUDA.cpp b/clang/lib/Sema/SemaCUDA.cpp
+index 88f5484575db..cfea6493ced7 100644
+--- a/clang/lib/Sema/SemaCUDA.cpp
++++ b/clang/lib/Sema/SemaCUDA.cpp
+@@ -105,37 +105,19 @@ Sema::IdentifyCUDATarget(const ParsedAttributesView &Attrs) {
+ }
+ 
+ template <typename A>
+-static bool hasAttr(const Decl *D, bool IgnoreImplicitAttr) {
++static bool hasAttr(const FunctionDecl *D, bool IgnoreImplicitAttr) {
+   return D->hasAttrs() && llvm::any_of(D->getAttrs(), [&](Attr *Attribute) {
+            return isa<A>(Attribute) &&
+                   !(IgnoreImplicitAttr && Attribute->isImplicit());
+          });
+ }
+ 
+-Sema::CUDATargetContextRAII::CUDATargetContextRAII(Sema &S_,
+-                                                   CUDATargetContextKind K,
+-                                                   Decl *D)
+-    : S(S_) {
+-  SavedCtx = S.CurCUDATargetCtx;
+-  assert(K == CTCK_InitGlobalVar);
+-  auto *VD = dyn_cast_or_null<VarDecl>(D);
+-  if (VD && VD->hasGlobalStorage() && !VD->isStaticLocal()) {
+-    auto Target = CFT_Host;
+-    if ((hasAttr<CUDADeviceAttr>(VD, /*IgnoreImplicit=*/true) &&
+-         !hasAttr<CUDAHostAttr>(VD, /*IgnoreImplicit=*/true)) ||
+-        hasAttr<CUDASharedAttr>(VD, /*IgnoreImplicit=*/true) ||
+-        hasAttr<CUDAConstantAttr>(VD, /*IgnoreImplicit=*/true))
+-      Target = CFT_Device;
+-    S.CurCUDATargetCtx = {Target, K, VD};
+-  }
+-}
+-
+ /// IdentifyCUDATarget - Determine the CUDA compilation target for this function
+ Sema::CUDAFunctionTarget Sema::IdentifyCUDATarget(const FunctionDecl *D,
+                                                   bool IgnoreImplicitHDAttr) {
+-  // Code that lives outside a function gets the target from CurCUDATargetCtx.
++  // Code that lives outside a function is run on the host.
+   if (D == nullptr)
+-    return CurCUDATargetCtx.Target;
++    return CFT_Host;
+ 
+   if (D->hasAttr<CUDAInvalidTargetAttr>())
+     return CFT_InvalidTarget;
+diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
+index 4c9807e90df0..949d5bec0893 100644
+--- a/clang/lib/Sema/SemaDeclAttr.cpp
++++ b/clang/lib/Sema/SemaDeclAttr.cpp
+@@ -5317,8 +5317,7 @@ static void handleNoRandomizeLayoutAttr(Sema &S, Decl *D,
+ }
+ 
+ bool Sema::CheckCallingConvAttr(const ParsedAttr &Attrs, CallingConv &CC,
+-                                const FunctionDecl *FD,
+-                                CUDAFunctionTarget CFT) {
++                                const FunctionDecl *FD) {
+   if (Attrs.isInvalid())
+     return true;
+ 
+@@ -5417,8 +5416,7 @@ bool Sema::CheckCallingConvAttr(const ParsedAttr &Attrs, CallingConv &CC,
+   // on their host/device attributes.
+   if (LangOpts.CUDA) {
+     auto *Aux = Context.getAuxTargetInfo();
+-    assert(FD || CFT != CFT_InvalidTarget);
+-    auto CudaTarget = FD ? IdentifyCUDATarget(FD) : CFT;
++    auto CudaTarget = IdentifyCUDATarget(FD);
+     bool CheckHost = false, CheckDevice = false;
+     switch (CudaTarget) {
+     case CFT_HostDevice:
+diff --git a/clang/lib/Sema/SemaOverload.cpp b/clang/lib/Sema/SemaOverload.cpp
+index 78eb8d689b11..5d0299dfa752 100644
+--- a/clang/lib/Sema/SemaOverload.cpp
++++ b/clang/lib/Sema/SemaOverload.cpp
+@@ -6699,19 +6699,17 @@ void Sema::AddOverloadCandidate(
+   }
+ 
+   // (CUDA B.1): Check for invalid calls between targets.
+-  if (getLangOpts().CUDA) {
+-    const FunctionDecl *Caller = getCurFunctionDecl(/*AllowLambda=*/true);
+-    // Skip the check for callers that are implicit members, because in this
+-    // case we may not yet know what the member's target is; the target is
+-    // inferred for the member automatically, based on the bases and fields of
+-    // the class.
+-    if (!(Caller && Caller->isImplicit()) &&
+-        !IsAllowedCUDACall(Caller, Function)) {
+-      Candidate.Viable = false;
+-      Candidate.FailureKind = ovl_fail_bad_target;
+-      return;
+-    }
+-  }
++  if (getLangOpts().CUDA)
++    if (const FunctionDecl *Caller = getCurFunctionDecl(/*AllowLambda=*/true))
++      // Skip the check for callers that are implicit members, because in this
++      // case we may not yet know what the member's target is; the target is
++      // inferred for the member automatically, based on the bases and fields of
++      // the class.
++      if (!Caller->isImplicit() && !IsAllowedCUDACall(Caller, Function)) {
++        Candidate.Viable = false;
++        Candidate.FailureKind = ovl_fail_bad_target;
++        return;
++      }
+ 
+   if (Function->getTrailingRequiresClause()) {
+     ConstraintSatisfaction Satisfaction;
+@@ -7223,11 +7221,12 @@ Sema::AddMethodCandidate(CXXMethodDecl *Method, DeclAccessPair FoundDecl,
+ 
+   // (CUDA B.1): Check for invalid calls between targets.
+   if (getLangOpts().CUDA)
+-    if (!IsAllowedCUDACall(getCurFunctionDecl(/*AllowLambda=*/true), Method)) {
+-      Candidate.Viable = false;
+-      Candidate.FailureKind = ovl_fail_bad_target;
+-      return;
+-    }
++    if (const FunctionDecl *Caller = getCurFunctionDecl(/*AllowLambda=*/true))
++      if (!IsAllowedCUDACall(Caller, Method)) {
++        Candidate.Viable = false;
++        Candidate.FailureKind = ovl_fail_bad_target;
++        return;
++      }
+ 
+   if (Method->getTrailingRequiresClause()) {
+     ConstraintSatisfaction Satisfaction;
+@@ -12498,12 +12497,10 @@ private:
+       return false;
+ 
+     if (FunctionDecl *FunDecl = dyn_cast<FunctionDecl>(Fn)) {
+-      if (S.getLangOpts().CUDA) {
+-        FunctionDecl *Caller = S.getCurFunctionDecl(/*AllowLambda=*/true);
+-        if (!(Caller && Caller->isImplicit()) &&
+-            !S.IsAllowedCUDACall(Caller, FunDecl))
+-          return false;
+-      }
++      if (S.getLangOpts().CUDA)
++        if (FunctionDecl *Caller = S.getCurFunctionDecl(/*AllowLambda=*/true))
++          if (!Caller->isImplicit() && !S.IsAllowedCUDACall(Caller, FunDecl))
++            return false;
+       if (FunDecl->isMultiVersion()) {
+         const auto *TA = FunDecl->getAttr<TargetAttr>();
+         if (TA && !TA->isDefaultVersion())
+diff --git a/clang/lib/Sema/SemaType.cpp b/clang/lib/Sema/SemaType.cpp
+index 836cfa4fc29b..94d170af8671 100644
+--- a/clang/lib/Sema/SemaType.cpp
++++ b/clang/lib/Sema/SemaType.cpp
+@@ -4055,8 +4055,7 @@ static CallingConv getCCForDeclaratorChunk(
+       // function type.  We'll diagnose the failure to apply them in
+       // handleFunctionTypeAttr.
+       CallingConv CC;
+-      if (!S.CheckCallingConvAttr(AL, CC, /*FunctionDecl=*/nullptr,
+-                                  S.IdentifyCUDATarget(D.getAttributes())) &&
++      if (!S.CheckCallingConvAttr(AL, CC) &&
+           (!FTI.isVariadic || supportsVariadicCall(CC))) {
+         return CC;
+       }
+diff --git a/clang/test/CodeGenCUDA/global-initializers.cu b/clang/test/CodeGenCUDA/global-initializers.cu
+deleted file mode 100644
+index 821260e9c746..000000000000
+--- a/clang/test/CodeGenCUDA/global-initializers.cu
++++ /dev/null
+@@ -1,51 +0,0 @@
+-// RUN: %clang_cc1 %s -triple x86_64-linux-unknown -emit-llvm -o - \
+-// RUN:   | FileCheck -check-prefix=HOST %s
+-// RUN: %clang_cc1 %s -fcuda-is-device \
+-// RUN:   -emit-llvm -o - -triple nvptx64 \
+-// RUN:   -aux-triple x86_64-unknown-linux-gnu | FileCheck \
+-// RUN:   -check-prefix=DEV %s
+-
+-#include "Inputs/cuda.h"
+-
+-// Check host/device-based overloding resolution in global variable initializer.
+-double pow(double, double) { return 1.0; }
+-
+-__device__ double pow(double, int) { return 2.0; }
+-
+-// HOST-DAG: call {{.*}}double @_Z3powdd(double noundef 1.000000e+00, double noundef 1.000000e+00)
+-double X = pow(1.0, 1);
+-
+-constexpr double cpow(double, double) { return 11.0; }
+-
+-constexpr __device__ double cpow(double, int) { return 12.0; }
+-
+-// HOST-DAG: @CX = global double 1.100000e+01
+-double CX = cpow(11.0, 1);
+-
+-// DEV-DAG: @CY = addrspace(1) externally_initialized global double 1.200000e+01
+-__device__ double CY = cpow(12.0, 1);
+-
+-struct A {
+-  double pow(double, double) { return 3.0; }
+-
+-  __device__ double pow(double, int) { return 4.0; }
+-};
+-
+-A a;
+-
+-// HOST-DAG: call {{.*}}double @_ZN1A3powEdd(ptr {{.*}}@a, double noundef 3.000000e+00, double noundef 1.000000e+00)
+-double AX = a.pow(3.0, 1);
+-
+-struct CA {
+-  constexpr double cpow(double, double) const { return 13.0; }
+-
+-  constexpr __device__ double cpow(double, int) const { return 14.0; }
+-};
+-
+-const CA ca;
+-
+-// HOST-DAG: @CAX = global double 1.300000e+01
+-double CAX = ca.cpow(13.0, 1);
+-
+-// DEV-DAG: @CAY = addrspace(1) externally_initialized global double 1.400000e+01
+-__device__ double CAY = ca.cpow(14.0, 1);
+diff --git a/clang/test/SemaCUDA/amdgpu-windows-vectorcall.cu b/clang/test/SemaCUDA/amdgpu-windows-vectorcall.cu
+index 7ef8a94750b4..7636572f6983 100644
+--- a/clang/test/SemaCUDA/amdgpu-windows-vectorcall.cu
++++ b/clang/test/SemaCUDA/amdgpu-windows-vectorcall.cu
+@@ -1,5 +1,4 @@
+ // RUN: %clang_cc1 -triple amdgcn-amd-amdhsa -aux-triple x86_64-pc-windows-msvc -fms-compatibility -fcuda-is-device -fsyntax-only -verify %s
+-// RUN: %clang_cc1 -triple x86_64-pc-windows-msvc -fms-compatibility -fsyntax-only -verify %s
+ 
+ __cdecl void hostf1();
+ __vectorcall void (*hostf2)() = hostf1; // expected-error {{cannot initialize a variable of type 'void ((*))() __attribute__((vectorcall))' with an lvalue of type 'void () __attribute__((cdecl))'}}
+diff --git a/clang/test/SemaCUDA/function-overload.cu b/clang/test/SemaCUDA/function-overload.cu
+index 163648cd9a87..822e25996820 100644
+--- a/clang/test/SemaCUDA/function-overload.cu
++++ b/clang/test/SemaCUDA/function-overload.cu
+@@ -222,13 +222,7 @@ __host__ __device__ void hostdevicef() {
+ // Test for address of overloaded function resolution in the global context.
+ HostFnPtr fp_h = h;
+ HostFnPtr fp_ch = ch;
+-#if defined (__CUDA_ARCH__)
+-__device__
+-#endif
+ CurrentFnPtr fp_dh = dh;
+-#if defined (__CUDA_ARCH__)
+-__device__
+-#endif
+ CurrentFnPtr fp_cdh = cdh;
+ GlobalFnPtr fp_g = g;
+ 
+diff --git a/clang/test/SemaCUDA/global-initializers-host.cu b/clang/test/SemaCUDA/global-initializers-host.cu
+new file mode 100644
+index 000000000000..810c6b977786
+--- /dev/null
++++ b/clang/test/SemaCUDA/global-initializers-host.cu
+@@ -0,0 +1,32 @@
++// RUN: %clang_cc1 %s --std=c++11 -triple x86_64-linux-unknown -fsyntax-only -o - -verify
++
++#include "Inputs/cuda.h"
++
++// Check that we get an error if we try to call a __device__ function from a
++// module initializer.
++
++struct S {
++  __device__ S() {}
++  // expected-note@-1 {{'S' declared here}}
++};
++
++S s;
++// expected-error@-1 {{reference to __device__ function 'S' in global initializer}}
++
++struct T {
++  __host__ __device__ T() {}
++};
++T t;  // No error, this is OK.
++
++struct U {
++  __host__ U() {}
++  __device__ U(int) {}
++  // expected-note@-1 {{'U' declared here}}
++};
++U u(42);
++// expected-error@-1 {{reference to __device__ function 'U' in global initializer}}
++
++__device__ int device_fn() { return 42; }
++// expected-note@-1 {{'device_fn' declared here}}
++int n = device_fn();
++// expected-error@-1 {{reference to __device__ function 'device_fn' in global initializer}}
+diff --git a/clang/test/SemaCUDA/global-initializers.cu b/clang/test/SemaCUDA/global-initializers.cu
+deleted file mode 100644
+index 29e386134a3d..000000000000
+--- a/clang/test/SemaCUDA/global-initializers.cu
++++ /dev/null
+@@ -1,72 +0,0 @@
+-// RUN: %clang_cc1 %s -triple x86_64-linux-unknown -fsyntax-only -o - -verify
+-// RUN: %clang_cc1 %s -fcuda-is-device -triple nvptx -fsyntax-only -o - -verify
+-
+-#include "Inputs/cuda.h"
+-
+-// Check that we get an error if we try to call a __device__ function from a
+-// module initializer.
+-
+-struct S {
+-  // expected-note@-1 {{candidate constructor (the implicit copy constructor) not viable: requires 1 argument, but 0 were provided}}
+-  // expected-note@-2 {{candidate constructor (the implicit move constructor) not viable: requires 1 argument, but 0 were provided}}
+-  __device__ S() {}
+-  // expected-note@-1 {{candidate constructor not viable: call to __device__ function from __host__ function}}
+-};
+-
+-S s;
+-// expected-error@-1 {{no matching constructor for initialization of 'S'}}
+-
+-struct T {
+-  __host__ __device__ T() {}
+-};
+-T t;  // No error, this is OK.
+-
+-struct U {
+-  // expected-note@-1 {{candidate constructor (the implicit copy constructor) not viable: no known conversion from 'int' to 'const U' for 1st argument}}
+-  // expected-note@-2 {{candidate constructor (the implicit move constructor) not viable: no known conversion from 'int' to 'U' for 1st argument}}
+-  __host__ U() {}
+-  // expected-note@-1 {{candidate constructor not viable: requires 0 arguments, but 1 was provided}}
+-  __device__ U(int) {}
+-  // expected-note@-1 {{candidate constructor not viable: call to __device__ function from __host__ function}}
+-};
+-U u(42);
+-// expected-error@-1 {{no matching constructor for initialization of 'U'}}
+-
+-__device__ int device_fn() { return 42; }
+-// expected-note@-1 {{candidate function not viable: call to __device__ function from __host__ function}}
+-int n = device_fn();
+-// expected-error@-1 {{no matching function for call to 'device_fn'}}
+-
+-// Check host/device-based overloding resolution in global variable initializer.
+-double pow(double, double);
+-
+-__device__ double pow(double, int);
+-
+-double X = pow(1.0, 1);
+-__device__ double Y = pow(2.0, 2); // expected-error{{dynamic initialization is not supported for __device__, __constant__, __shared__, and __managed__ variables}}
+-
+-constexpr double cpow(double, double) { return 1.0; }
+-
+-constexpr __device__ double cpow(double, int) { return 2.0; }
+-
+-const double CX = cpow(1.0, 1);
+-const __device__ double CY = cpow(2.0, 2);
+-
+-struct A {
+-  double pow(double, double);
+-
+-  __device__ double pow(double, int);
+-
+-  constexpr double cpow(double, double) const { return 1.0; }
+-
+-  constexpr __device__ double cpow(double, int) const { return 1.0; }
+-
+-};
+-
+-A a;
+-double AX = a.pow(1.0, 1);
+-__device__ double AY = a.pow(2.0, 2); // expected-error{{dynamic initialization is not supported for __device__, __constant__, __shared__, and __managed__ variables}}
+-
+-const A ca;
+-const double CAX = ca.cpow(1.0, 1);
+-const __device__ double CAY = ca.cpow(2.0, 2);
+-- 
+2.43.0.381.gb435a96ce8-goog
+

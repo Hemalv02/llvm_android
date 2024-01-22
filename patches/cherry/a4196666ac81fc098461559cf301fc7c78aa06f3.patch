@@ -1,0 +1,45 @@
+From 35eb861974d392d37024d64475948efff3a41f42 Mon Sep 17 00:00:00 2001
+From: AdityaK <appujee@google.com>
+Date: Fri, 19 Jan 2024 09:45:46 -0800
+Subject: [PATCH] Revert "[AMDGPU] Preliminary patch for divergence driven
+ instruction selection. Operands Folding 1."
+
+This reverts commit 201f892b3b597f24287ab6a712a286e25a45a7d9.
+
+Change-Id: I1bb559782a9f5403adb040d30422d80c6193200e
+---
+ llvm/lib/Target/AMDGPU/SIFoldOperands.cpp | 18 ------------------
+ 1 file changed, 18 deletions(-)
+
+diff --git a/llvm/lib/Target/AMDGPU/SIFoldOperands.cpp b/llvm/lib/Target/AMDGPU/SIFoldOperands.cpp
+index 3adaa092aaef..1c58b403c555 100644
+--- a/llvm/lib/Target/AMDGPU/SIFoldOperands.cpp
++++ b/llvm/lib/Target/AMDGPU/SIFoldOperands.cpp
+@@ -671,24 +671,6 @@ void SIFoldOperands::foldOperand(
+ 
+     const TargetRegisterClass *DestRC = TRI->getRegClassForReg(*MRI, DestReg);
+     if (!DestReg.isPhysical()) {
+-      if (TRI->isSGPRClass(SrcRC) && TRI->hasVectorRegisters(DestRC)) {
+-        SmallVector<FoldCandidate, 4> CopyUses;
+-        for (auto &Use : MRI->use_nodbg_operands(DestReg)) {
+-          // There's no point trying to fold into an implicit operand.
+-          if (Use.isImplicit())
+-            continue;
+-
+-          CopyUses.emplace_back(Use.getParent(),
+-                                Use.getParent()->getOperandNo(&Use),
+-                                &UseMI->getOperand(1));
+-        }
+-
+-        for (auto &F : CopyUses) {
+-          foldOperand(*F.OpToFold, F.UseMI, F.UseOpNo, FoldList,
+-                      CopiesToReplace);
+-        }
+-      }
+-
+       if (DestRC == &AMDGPU::AGPR_32RegClass &&
+           TII->isInlineConstant(OpToFold, AMDGPU::OPERAND_REG_INLINE_C_INT32)) {
+         UseMI->setDesc(TII->get(AMDGPU::V_ACCVGPR_WRITE_B32_e64));
+-- 
+2.43.0.429.g432eaa2c6b-goog
+
