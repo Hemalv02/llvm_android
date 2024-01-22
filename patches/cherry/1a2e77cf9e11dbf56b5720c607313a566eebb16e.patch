@@ -1,0 +1,460 @@
+From 1a2e77cf9e11dbf56b5720c607313a566eebb16e Mon Sep 17 00:00:00 2001
+From: Amara Emerson <amara@apple.com>
+Date: Sat, 28 Oct 2023 22:32:00 -0700
+Subject: [PATCH] Revert "Revert "Inlining: Run the legacy AlwaysInliner before
+ the regular inliner.""
+
+This reverts commit 86bfeb906e3a95ae428f3e97d78d3d22a7c839f3.
+
+This is a long time coming re-application that was originally reverted due to
+regressions, unrelated to the actual inlining change. These regressions have since
+been fixed due to another long-in-the-making change of a66051c6 landing.
+
+Original commit message for reference:
+---
+    We have several situations where it's beneficial for code size to ensure that every
+    call to always-inline functions are inlined before normal inlining decisions are
+    made. While the normal inliner runs in a "MandatoryOnly" mode to try to do this,
+    it only does it on a per-SCC basis, rather than the whole module. Ensuring that
+    all mandatory inlinings are done before any heuristic based decisions are made
+    just makes sense.
+
+    Despite being referred to the "legacy" AlwaysInliner pass, it's already necessary
+    for -O0 because the CGSCC inliner is too expensive in compile time to run at -O0.
+
+    This also fixes an exponential compile time blow up in
+    https://github.com/llvm/llvm-project/issues/59126
+
+    Differential Revision: https://reviews.llvm.org/D143624
+---
+---
+ .../optimization-remark-with-hotness-new-pm.c |    2 +-
+ clang/test/OpenMP/bug57757.cpp                |   15 +-
+ llvm/lib/Passes/PassBuilderPipelines.cpp      |    4 +-
+ llvm/test/Other/new-pm-defaults.ll            |    4 +-
+ llvm/test/Other/new-pm-print-pipeline.ll      |    2 +-
+ .../Other/new-pm-thinlto-postlink-defaults.ll |    3 +-
+ .../new-pm-thinlto-postlink-pgo-defaults.ll   |    2 +-
+ ...-pm-thinlto-postlink-samplepgo-defaults.ll |    3 +-
+ .../Other/new-pm-thinlto-prelink-defaults.ll  |    4 +-
+ .../new-pm-thinlto-prelink-pgo-defaults.ll    |    2 +-
+ ...w-pm-thinlto-prelink-samplepgo-defaults.ll |    2 +-
+ .../Inline/always-inline-phase-ordering.ll    |  164 +++
+ 13 files changed, 692 insertions(+), 525 deletions(-)
+ create mode 100644 llvm/test/Transforms/Inline/always-inline-phase-ordering.ll
+
+diff --git a/clang/test/Frontend/optimization-remark-with-hotness-new-pm.c b/clang/test/Frontend/optimization-remark-with-hotness-new-pm.c
+index cb1992ec4cb8..173b43ba41bf 100644
+--- a/clang/test/Frontend/optimization-remark-with-hotness-new-pm.c
++++ b/clang/test/Frontend/optimization-remark-with-hotness-new-pm.c
+@@ -73,7 +73,7 @@ void bar(int x) {
+   // THRESHOLD-NOT: hotness
+   // NO_PGO: '-fdiagnostics-show-hotness' requires profile-guided optimization information
+   // NO_PGO: '-fdiagnostics-hotness-threshold=' requires profile-guided optimization information
+-  // expected-remark@+1 {{'foo' inlined into 'bar': always inline attribute at callsite bar:8:10; (hotness:}}
++  // expected-remark@+1 {{'foo' inlined into 'bar' with (cost=always): always inline attribute at callsite bar:8:10; (hotness:}}
+   sum += foo(x, x - 2);
+ }
+
+diff --git a/clang/test/OpenMP/bug57757.cpp b/clang/test/OpenMP/bug57757.cpp
+index 7894796ac462..7acfe134ddd0 100644
+--- a/clang/test/OpenMP/bug57757.cpp
++++ b/clang/test/OpenMP/bug57757.cpp
+@@ -32,24 +32,23 @@ void foo() {
+ // CHECK-NEXT:  entry:
+ // CHECK-NEXT:    [[TMP2:%.*]] = getelementptr inbounds [[STRUCT_KMP_TASK_T:%.*]], ptr [[TMP1]], i64 0, i32 2
+ // CHECK-NEXT:    tail call void @llvm.experimental.noalias.scope.decl(metadata [[META13:![0-9]+]])
+-// CHECK-NEXT:    tail call void @llvm.experimental.noalias.scope.decl(metadata [[META16:![0-9]+]])
+-// CHECK-NEXT:    [[TMP3:%.*]] = load i32, ptr [[TMP2]], align 4, !tbaa [[TBAA18:![0-9]+]], !alias.scope !13, !noalias !16
++// CHECK-NEXT:    [[TMP3:%.*]] = load i32, ptr [[TMP2]], align 4, !tbaa [[TBAA16:![0-9]+]], !alias.scope !13, !noalias !17
+ // CHECK-NEXT:    switch i32 [[TMP3]], label [[DOTOMP_OUTLINED__EXIT:%.*]] [
+ // CHECK-NEXT:    i32 0, label [[DOTUNTIED_JMP__I:%.*]]
+ // CHECK-NEXT:    i32 1, label [[DOTUNTIED_NEXT__I:%.*]]
+ // CHECK-NEXT:    ]
+ // CHECK:       .untied.jmp..i:
+-// CHECK-NEXT:    store i32 1, ptr [[TMP2]], align 4, !tbaa [[TBAA18]], !alias.scope !13, !noalias !16
+-// CHECK-NEXT:    [[TMP4:%.*]] = tail call i32 @__kmpc_omp_task(ptr nonnull @[[GLOB1]], i32 [[TMP0]], ptr [[TMP1]]), !noalias !19
++// CHECK-NEXT:    store i32 1, ptr [[TMP2]], align 4, !tbaa [[TBAA16]], !alias.scope !13, !noalias !17
++// CHECK-NEXT:    [[TMP4:%.*]] = tail call i32 @__kmpc_omp_task(ptr nonnull @[[GLOB1]], i32 [[TMP0]], ptr [[TMP1]]), !noalias !13
+ // CHECK-NEXT:    br label [[DOTOMP_OUTLINED__EXIT]]
+ // CHECK:       .untied.next..i:
+ // CHECK-NEXT:    [[TMP5:%.*]] = getelementptr inbounds [[STRUCT_KMP_TASK_T_WITH_PRIVATES:%.*]], ptr [[TMP1]], i64 0, i32 1
+ // CHECK-NEXT:    [[TMP6:%.*]] = getelementptr inbounds [[STRUCT_KMP_TASK_T_WITH_PRIVATES]], ptr [[TMP1]], i64 0, i32 1, i32 2
+ // CHECK-NEXT:    [[TMP7:%.*]] = getelementptr inbounds [[STRUCT_KMP_TASK_T_WITH_PRIVATES]], ptr [[TMP1]], i64 0, i32 1, i32 1
+-// CHECK-NEXT:    [[TMP8:%.*]] = load ptr, ptr [[TMP5]], align 8, !tbaa [[TBAA20:![0-9]+]], !alias.scope !16, !noalias !13
+-// CHECK-NEXT:    [[TMP9:%.*]] = load i32, ptr [[TMP7]], align 4, !tbaa [[TBAA18]], !alias.scope !16, !noalias !13
+-// CHECK-NEXT:    [[TMP10:%.*]] = load float, ptr [[TMP6]], align 4, !tbaa [[TBAA21:![0-9]+]], !alias.scope !16, !noalias !13
+-// CHECK-NEXT:    tail call void [[TMP8]](i32 noundef [[TMP9]], float noundef [[TMP10]]) #[[ATTR2:[0-9]+]], !noalias !19
++// CHECK-NEXT:    [[TMP8:%.*]] = load ptr, ptr [[TMP5]], align 8, !tbaa [[TBAA19:![0-9]+]], !noalias !13
++// CHECK-NEXT:    [[TMP9:%.*]] = load i32, ptr [[TMP7]], align 4, !tbaa [[TBAA16]], !noalias !13
++// CHECK-NEXT:    [[TMP10:%.*]] = load float, ptr [[TMP6]], align 4, !tbaa [[TBAA20:![0-9]+]], !noalias !13
++// CHECK-NEXT:    tail call void [[TMP8]](i32 noundef [[TMP9]], float noundef [[TMP10]]) #[[ATTR2:[0-9]+]], !noalias !13
+ // CHECK-NEXT:    br label [[DOTOMP_OUTLINED__EXIT]]
+ // CHECK:       .omp_outlined..exit:
+ // CHECK-NEXT:    ret i32 0
+diff --git a/llvm/lib/Passes/PassBuilderPipelines.cpp b/llvm/lib/Passes/PassBuilderPipelines.cpp
+index 600f8d43caaf..baea2913338c 100644
+--- a/llvm/lib/Passes/PassBuilderPipelines.cpp
++++ b/llvm/lib/Passes/PassBuilderPipelines.cpp
+@@ -164,7 +164,7 @@ static cl::opt<bool> EnableModuleInliner("enable-module-inliner",
+                                          cl::desc("Enable module inliner"));
+ 
+ static cl::opt<bool> PerformMandatoryInliningsFirst(
+-    "mandatory-inlining-first", cl::init(true), cl::Hidden,
++    "mandatory-inlining-first", cl::init(false), cl::Hidden,
+     cl::desc("Perform mandatory inlinings module-wide, before performing "
+              "inlining"));
+ 
+@@ -1127,6 +1127,8 @@ PassBuilder::buildModuleSimplificationPipeline(OptimizationLevel Level,
+   if (EnableSyntheticCounts && !PGOOpt)
+     MPM.addPass(SyntheticCountsPropagation());
+ 
++  MPM.addPass(AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
++
+   if (EnableModuleInliner)
+     MPM.addPass(buildModuleInlinerPipeline(Level, Phase));
+   else
+diff --git a/llvm/test/Other/new-pm-defaults.ll b/llvm/test/Other/new-pm-defaults.ll
+index 098db2b959a2..ecdb5a5e010d 100644
+--- a/llvm/test/Other/new-pm-defaults.ll
++++ b/llvm/test/Other/new-pm-defaults.ll
+@@ -121,6 +121,8 @@
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy
+ ; CHECK-EP-PEEPHOLE-NEXT: Running pass: NoOpFunctionPass
+ ; CHECK-O-NEXT: Running pass: SimplifyCFGPass
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
++; CHECK-O-NEXT: Running analysis: ProfileSummaryAnalysis
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -129,14 +131,12 @@
+ ; CHECK-O-NEXT: Running pass: InvalidateAnalysisPass<{{.*}}AAManager
+ ; CHECK-O-NEXT: Invalidating analysis: AAManager
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}ProfileSummaryAnalysis
+-; CHECK-O-NEXT: Running analysis: ProfileSummaryAnalysis
+ ; CHECK-O-NEXT: Running analysis: InnerAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running analysis: LazyCallGraphAnalysis
+ ; CHECK-O-NEXT: Running analysis: FunctionAnalysisManagerCGSCCProxy
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy<{{.*}}LazyCallGraph::SCC{{.*}}>
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass on (foo)
+diff --git a/llvm/test/Other/new-pm-print-pipeline.ll b/llvm/test/Other/new-pm-print-pipeline.ll
+index 6214d6abcef3..c9b06ac7e6e8 100644
+--- a/llvm/test/Other/new-pm-print-pipeline.ll
++++ b/llvm/test/Other/new-pm-print-pipeline.ll
+@@ -62,7 +62,7 @@
+ ; CHECK-20: cgscc(inline<only-mandatory>,inline),cgscc(inline)
+ 
+ ; RUN: opt -disable-output -disable-verify -print-pipeline-passes -passes='scc-oz-module-inliner' < %s | FileCheck %s --match-full-lines --check-prefixes=CHECK-21
+-; CHECK-21: require<globals-aa>,function(invalidate<aa>),require<profile-summary>,cgscc(devirt<4>(inline<only-mandatory>,inline,{{.*}},instcombine{{.*}}))
++; CHECK-21: require<globals-aa>,function(invalidate<aa>),require<profile-summary>,cgscc(devirt<4>(inline,{{.*}},instcombine{{.*}}))
+ 
+ ; RUN: opt -disable-output -disable-verify -print-pipeline-passes -passes='cgscc(function<eager-inv>(no-op-function)),function<eager-inv>(no-op-function)' < %s | FileCheck %s --match-full-lines --check-prefixes=CHECK-22
+ ; CHECK-22: cgscc(function<eager-inv>(no-op-function)),function<eager-inv>(no-op-function)
+diff --git a/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll b/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll
+index 1103c8f984fa..064362eabbf8 100644
+--- a/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll
++++ b/llvm/test/Other/new-pm-thinlto-postlink-defaults.ll
+@@ -61,6 +61,8 @@
+ ; CHECK-O-NEXT: Running analysis: TypeBasedAA
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running pass: SimplifyCFGPass
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
++; CHECK-PRELINK-O-NEXT: Running analysis: ProfileSummaryAnalysis
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -75,7 +77,6 @@
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass on (foo)
+diff --git a/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
+index 05d165ae399f..19a44867e434 100644
+--- a/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
++++ b/llvm/test/Other/new-pm-thinlto-postlink-pgo-defaults.ll
+@@ -50,6 +50,7 @@
+ ; CHECK-O-NEXT: Running analysis: LoopAnalysis on foo
+ ; CHECK-O-NEXT: Running analysis: PostDominatorTreeAnalysis on foo
+ ; CHECK-O-NEXT: Running pass: SimplifyCFGPass
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -64,7 +65,6 @@
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy<{{.*}}LazyCallGraph::SCC{{.*}}>
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass
+diff --git a/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
+index 2393ba9dbde4..ac80a31d8fd4 100644
+--- a/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
++++ b/llvm/test/Other/new-pm-thinlto-postlink-samplepgo-defaults.ll
+@@ -58,6 +58,8 @@
+ ; CHECK-O-NEXT: Running analysis: LoopAnalysis on foo
+ ; CHECK-O-NEXT: Running analysis: PostDominatorTreeAnalysis on foo
+ ; CHECK-O-NEXT: Running pass: SimplifyCFGPass on foo
++
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -71,7 +73,6 @@
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass
+diff --git a/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll b/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll
+index 722d586c8690..6486639e07b4 100644
+--- a/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll
++++ b/llvm/test/Other/new-pm-thinlto-prelink-defaults.ll
+@@ -92,6 +92,8 @@
+ ; CHECK-O-NEXT: Running analysis: TypeBasedAA
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running pass: SimplifyCFGPass
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
++; CHECK-O-NEXT: Running analysis: ProfileSummaryAnalysis
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -100,14 +102,12 @@
+ ; CHECK-O-NEXT: Running pass: InvalidateAnalysisPass<{{.*}}AAManager
+ ; CHECK-O-NEXT: Invalidating analysis: AAManager
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}ProfileSummaryAnalysis
+-; CHECK-O-NEXT: Running analysis: ProfileSummaryAnalysis
+ ; CHECK-O-NEXT: Running analysis: InnerAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running analysis: LazyCallGraphAnalysis
+ ; CHECK-O-NEXT: Running analysis: FunctionAnalysisManagerCGSCCProxy
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass on (foo)
+diff --git a/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
+index 7e4c82666f0c..09f9f0f48bad 100644
+--- a/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
++++ b/llvm/test/Other/new-pm-thinlto-prelink-pgo-defaults.ll
+@@ -83,6 +83,7 @@
+ ; CHECK-O-NEXT: Running pass: PGOIndirectCallPromotion on
+ ; CHECK-O-NEXT: Running analysis: InnerAnalysisManagerProxy
+ ; CHECK-O-NEXT: Running analysis: OptimizationRemarkEmitterAnalysis on foo
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -97,7 +98,6 @@
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy<{{.*}}LazyCallGraph::SCC{{.*}}>
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass
+diff --git a/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll b/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
+index c609fbe31de2..47bdbfd2d357 100644
+--- a/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
++++ b/llvm/test/Other/new-pm-thinlto-prelink-samplepgo-defaults.ll
+@@ -63,6 +63,7 @@
+ ; CHECK-O-NEXT: Running analysis: LoopAnalysis on foo
+ ; CHECK-O-NEXT: Running analysis: PostDominatorTreeAnalysis on foo
+ ; CHECK-O-NEXT: Running pass: SimplifyCFGPass on foo
++; CHECK-O-NEXT: Running pass: AlwaysInlinerPass
+ ; CHECK-O-NEXT: Running pass: ModuleInlinerWrapperPass
+ ; CHECK-O-NEXT: Running analysis: InlineAdvisorAnalysis
+ ; CHECK-O-NEXT: Running pass: RequireAnalysisPass<{{.*}}GlobalsAA
+@@ -76,7 +77,6 @@
+ ; CHECK-O-NEXT: Running analysis: OuterAnalysisManagerProxy<{{.*}}LazyCallGraph::SCC{{.*}}>
+ ; CHECK-O-NEXT: Running pass: DevirtSCCRepeatedPass
+ ; CHECK-O-NEXT: Running pass: InlinerPass
+-; CHECK-O-NEXT: Running pass: InlinerPass
+ ; CHECK-O-NEXT: Running pass: PostOrderFunctionAttrsPass
+ ; CHECK-O3-NEXT: Running pass: ArgumentPromotionPass
+ ; CHECK-O2-NEXT: Running pass: OpenMPOptCGSCCPass
+diff --git a/llvm/test/Transforms/Inline/always-inline-phase-ordering.ll b/llvm/test/Transforms/Inline/always-inline-phase-ordering.ll
+new file mode 100644
+index 000000000000..e69ca4834490
+--- /dev/null
++++ b/llvm/test/Transforms/Inline/always-inline-phase-ordering.ll
+@@ -0,0 +1,164 @@
++; RUN: opt --Os -pass-remarks=inline -S < %s 2>&1 | FileCheck %s
++target datalayout = "e-m:o-i64:64-i128:128-n32:64-S128"
++target triple = "arm64e-apple-macosx13"
++
++; CHECK: remark: <unknown>:0:0: 'wibble' inlined into 'bar.8' with (cost=always): always inline attribute
++; CHECK: remark: <unknown>:0:0: 'wibble' inlined into 'pluto' with (cost=always): always inline attribute
++; CHECK: remark: <unknown>:0:0: 'snork' inlined into 'blam' with (cost=always): always inline attribute
++; CHECK: remark: <unknown>:0:0: 'wobble' inlined into 'blam' with (cost=always): always inline attribute
++; CHECK: remark: <unknown>:0:0: 'wobble' inlined into 'snork' with (cost=always): always inline attribute
++; CHECK: remark: <unknown>:0:0: 'spam' inlined into 'blam' with (cost=65, threshold=75)
++; CHECK: remark: <unknown>:0:0: 'wibble.1' inlined into 'widget' with (cost=30, threshold=75)
++; CHECK: remark: <unknown>:0:0: 'widget' inlined into 'bar.8' with (cost=30, threshold=75)
++; CHECK: remark: <unknown>:0:0: 'barney' inlined into 'wombat' with (cost=30, threshold=75)
++
++define linkonce_odr void @wombat(ptr %arg) #0 {
++bb:
++  call void @barney()
++  ret void
++}
++
++define i1 @foo() {
++bb:
++  call void @wombat(ptr null)
++  unreachable
++}
++
++define linkonce_odr void @pluto() #1 !prof !38 {
++bb:
++  call void @wibble()
++  ret void
++}
++
++; Function Attrs: alwaysinline
++define linkonce_odr void @wibble() #2 {
++bb:
++  call void @widget()
++  ret void
++}
++
++define linkonce_odr void @widget() {
++bb:
++  call void @wibble.1()
++  ret void
++}
++
++define linkonce_odr void @wibble.1() {
++bb:
++  %0 = call i32 @foo.2()
++  call void @blam()
++  ret void
++}
++
++declare i32 @foo.2()
++
++define linkonce_odr void @blam() {
++bb:
++  %tmp = call i32 @snork()
++  %tmpv1 = call ptr @wombat.3()
++  call void @eggs()
++  %tmpv2 = call ptr @wombat.3()
++  ret void
++}
++
++; Function Attrs: alwaysinline
++define linkonce_odr i32 @snork() #2 {
++bb:
++  %tmpv1 = call i32 @spam()
++  %tmpv2 = call i32 @wobble()
++  call void @widget.4(i32 %tmpv2)
++  ret i32 0
++}
++
++declare void @eggs()
++
++declare ptr @wombat.3()
++
++define linkonce_odr i32 @spam() {
++bb:
++  %tmpv1 = call i32 @wombat.6()
++  %tmpv2 = call i64 @wobble.5(i8 0)
++  %tmpv3 = call i64 @bar()
++  ret i32 0
++}
++
++; Function Attrs: alwaysinline
++define linkonce_odr i32 @wobble() #2 {
++bb:
++  %tmpv = call i64 @wobble.5(i8 0)
++  %tmpv1 = call i64 @eggs.7()
++  %tmpv2 = call i64 @wobble.5(i8 0)
++  %tmpv3 = call i64 @eggs.7()
++  %tmpv4 = lshr i64 %tmpv1, 1
++  %tmpv5 = trunc i64 %tmpv4 to i32
++  %tmpv6 = xor i32 %tmpv5, 23
++  ret i32 %tmpv6
++}
++
++declare void @widget.4(i32)
++
++declare i64 @bar()
++
++declare i64 @wobble.5(i8)
++
++declare i32 @wombat.6()
++
++declare i64 @eggs.7()
++
++define linkonce_odr void @barney() {
++bb:
++  call void @bar.8()
++  call void @pluto()
++  unreachable
++}
++
++define linkonce_odr void @bar.8() {
++bb:
++  call void @wibble()
++  ret void
++}
++
++attributes #0 = { "frame-pointer"="non-leaf" }
++attributes #1 = { "target-cpu"="apple-m1" }
++attributes #2 = { alwaysinline }
++
++!llvm.module.flags = !{!0, !1, !30, !31, !32, !36, !37}
++
++!0 = !{i32 2, !"SDK Version", [2 x i32] [i32 13, i32 3]}
++!1 = !{i32 1, !"ProfileSummary", !2}
++!2 = !{!3, !4, !5, !6, !7, !8, !9, !10, !11, !12}
++!3 = !{!"ProfileFormat", !"InstrProf"}
++!4 = !{!"TotalCount", i64 864540306756}
++!5 = !{!"MaxCount", i64 6596759955}
++!6 = !{!"MaxInternalCount", i64 2828618424}
++!7 = !{!"MaxFunctionCount", i64 6596759955}
++!8 = !{!"NumCounts", i64 268920}
++!9 = !{!"NumFunctions", i64 106162}
++!10 = !{!"IsPartialProfile", i64 0}
++!11 = !{!"PartialProfileRatio", double 0.000000e+00}
++!12 = !{!"DetailedSummary", !13}
++!13 = !{!14, !15, !16, !17, !18, !19, !20, !21, !22, !23, !24, !25, !26, !27, !28, !29}
++!14 = !{i32 10000, i64 5109654023, i32 2}
++!15 = !{i32 100000, i64 2480859832, i32 25}
++!16 = !{i32 200000, i64 1566552109, i32 70}
++!17 = !{i32 300000, i64 973667919, i32 140}
++!18 = !{i32 400000, i64 552159773, i32 263}
++!19 = !{i32 500000, i64 353879860, i32 463}
++!20 = !{i32 600000, i64 187122455, i32 799}
++!21 = !{i32 700000, i64 105465980, i32 1419}
++!22 = !{i32 800000, i64 49243829, i32 2620}
++!23 = !{i32 900000, i64 15198227, i32 5898}
++!24 = !{i32 950000, i64 5545670, i32 10696}
++!25 = !{i32 990000, i64 804816, i32 25738}
++!26 = !{i32 999000, i64 73999, i32 53382}
++!27 = !{i32 999900, i64 6530, i32 83503}
++!28 = !{i32 999990, i64 899, i32 110416}
++!29 = !{i32 999999, i64 120, i32 130201}
++!30 = !{i32 7, !"Dwarf Version", i32 4}
++!31 = !{i32 2, !"Debug Info Version", i32 3}
++!32 = !{i32 1, !"wchar_size", i32 4}
++!34 = !{!35}
++!35 = !{i32 0, i1 false}
++!36 = !{i32 8, !"PIC Level", i32 2}
++!37 = !{i32 7, !"frame-pointer", i32 1}
++!38 = !{!"function_entry_count", i64 15128150}
+-- 
+2.43.0.381.gb435a96ce8-goog
+
