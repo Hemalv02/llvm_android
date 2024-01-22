@@ -398,7 +398,7 @@ def main():
     else:
         cmd = [paths.SCRIPTS_DIR / 'build.py', '--no-build=windows,lldb']
         if not args.no_mlgo:
-            cmd += '--mlgo'
+            cmd.append('--mlgo')
         if args.clang_bootstrap_path:
             cmd.append(f'--bootstrap-use={args.clang_bootstrap_path}')
         if args.profile:
