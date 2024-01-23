@@ -483,6 +483,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [clang] Add clang support for Machine Function Splitting on AArch64"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/776e3b052738a76518da1f4800a114f3733c35b0.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 511712
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"Reapply \"Revert \"[MemCpyOpt] implement multi BB stack-move optimization\"\""
         },
         "platforms": [
@@ -917,6 +931,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] Fix MFS warning format"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/3ea92ea2f9d236569f82825cdba6d59bcc22495c.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 525168
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] [RISCV] Correct copyPhysReg for GPRPF64. (#70419)"
         },
         "platforms": [
@@ -1264,6 +1292,4 @@
             "until": null
         }
     }
-
-    
 ]
