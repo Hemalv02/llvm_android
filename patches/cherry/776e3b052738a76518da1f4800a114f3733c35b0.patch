@@ -1,0 +1,46 @@
+From 776e3b052738a76518da1f4800a114f3733c35b0 Mon Sep 17 00:00:00 2001
+From: Daniel Hoekwater <hoekwater@google.com>
+Date: Fri, 4 Aug 2023 23:09:53 +0000
+Subject: [PATCH] [clang] Add clang support for Machine Function Splitting on
+ AArch64
+
+On x86 targets, -fsplit-machine-functions enables splitting of machine
+functions using profile information. This patch rolls out the flag for
+AArch64 targets.
+
+Depends on D158647
+
+Differential Revision: https://reviews.llvm.org/D157157
+---
+ clang/lib/Driver/ToolChains/Clang.cpp        | 4 ++--
+ clang/test/Driver/fsplit-machine-functions.c | 1 +
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/clang/lib/Driver/ToolChains/Clang.cpp b/clang/lib/Driver/ToolChains/Clang.cpp
+index da5edda6b385..531677e92f73 100644
+--- a/clang/lib/Driver/ToolChains/Clang.cpp
++++ b/clang/lib/Driver/ToolChains/Clang.cpp
+@@ -5878,8 +5878,8 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
+   if (Arg *A = Args.getLastArg(options::OPT_fsplit_machine_functions,
+                                options::OPT_fno_split_machine_functions)) {
+     if (!A->getOption().matches(options::OPT_fno_split_machine_functions)) {
+-      // This codegen pass is only available on x86-elf targets.
+-      if (Triple.isX86() && Triple.isOSBinFormatELF())
++      // This codegen pass is only available on x86 and AArch64 ELF targets.
++      if ((Triple.isX86() || Triple.isAArch64()) && Triple.isOSBinFormatELF())
+         A->render(Args, CmdArgs);
+       else
+         D.Diag(diag::err_drv_unsupported_opt_for_target)
+diff --git a/clang/test/Driver/fsplit-machine-functions.c b/clang/test/Driver/fsplit-machine-functions.c
+index abd722c0e239..02bab476e831 100644
+--- a/clang/test/Driver/fsplit-machine-functions.c
++++ b/clang/test/Driver/fsplit-machine-functions.c
+@@ -1,4 +1,5 @@
+ // RUN: %clang -### --target=x86_64 -fprofile-use=default.profdata -fsplit-machine-functions %s 2>&1 | FileCheck %s --check-prefixes=CHECK,LTO-NEG
++// RUN: %clang -### --target=aarch64 -fprofile-use=default.profdata -fsplit-machine-functions %s 2>&1 | FileCheck %s --check-prefixes=CHECK,LTO-NEG
+ // RUN: %clang -### --target=x86_64 -fprofile-use=default.profdata -fsplit-machine-functions -fno-split-machine-functions %s -c 2>&1 | FileCheck -check-prefix=NEG %s
+ 
+ // CHECK:      "-fsplit-machine-functions"
+-- 
+2.43.0.429.g432eaa2c6b-goog
+

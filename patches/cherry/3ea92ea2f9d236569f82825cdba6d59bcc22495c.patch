@@ -1,0 +1,26 @@
+From 3ea92ea2f9d236569f82825cdba6d59bcc22495c Mon Sep 17 00:00:00 2001
+From: Yi Kong <yikong@google.com>
+Date: Tue, 23 Jan 2024 17:01:23 +0900
+Subject: [PATCH] Fix MFS warning format
+
+WithColor::warning() does not append new line automatically.
+---
+ llvm/lib/CodeGen/TargetPassConfig.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/llvm/lib/CodeGen/TargetPassConfig.cpp b/llvm/lib/CodeGen/TargetPassConfig.cpp
+index 76ba8da547e6..46697480db52 100644
+--- a/llvm/lib/CodeGen/TargetPassConfig.cpp
++++ b/llvm/lib/CodeGen/TargetPassConfig.cpp
+@@ -1246,7 +1246,7 @@ void TargetPassConfig::addMachinePasses() {
+         // enabled, this may result in performance regression.
+         WithColor::warning()
+             << "Using AutoFDO without FSDiscriminator for MFS may regress "
+-               "performance.";
++               "performance.\n";
+       }
+     }
+     addPass(createMachineFunctionSplitterPass());
+-- 
+2.43.0.429.g432eaa2c6b-goog
+
