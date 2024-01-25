@@ -203,6 +203,7 @@ def build_runtimes(build_lldb_server: bool,
     builders.LibUnwindBuilder().build()
     builders.DeviceLibcxxBuilder().build()
     builders.CompilerRTBuilder().build()
+    builders.DeviceLibcxxBuilder(builders.DeviceLibcxxBuilder.hwasan_config_list).build()
     builders.TsanBuilder().build()
     # Build musl runtimes and 32-bit glibc for Linux
     if hosts.build_host().is_linux:

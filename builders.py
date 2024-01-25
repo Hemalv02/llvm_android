@@ -1047,15 +1047,42 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
     src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
     config_list: List[configs.Config] = (
-        configs.android_configs(platform=True) +
-        configs.android_configs(platform=False)
+        configs.android_configs(platform=True, extra_config={'hwasan': False}) +
+        configs.android_configs(platform=False, extra_config={'hwasan': False})
     )
+
+    def _hwasan_config(platform: bool) -> configs.Config:
+        result = configs.AndroidAArch64Config()
+        result.platform = platform
+        result.extra_config = {'hwasan': True}
+        # Increase the NDK's API level to the minimum API level for HWASan.
+        if not platform:
+            result.override_api_level = 29
+        return result
+
+    # Use a separate config list so that HWASan libc++ can be built after
+    # compiler-rt, so that libc++.so can be linked against the HWASan lib.
+    hwasan_config_list: List[configs.Config] = [
+        _hwasan_config(platform=True), _hwasan_config(platform=False)
+    ]
+
+    @property
+    def _is_hwasan(self) -> bool:
+        return self._config.extra_config['hwasan']
+
+    @property
+    def output_dir(self) -> Path:
+        old_path = super().output_dir
+        suffix = '-hwasan' if self._is_hwasan else ''
+        return old_path.parent / (old_path.name + suffix)
 
     @property
     def cflags(self) -> list[str]:
         result = super().cflags
         if self._config.target_arch is hosts.Arch.ARM:
             result.append('-mthumb')
+        if self._is_hwasan:
+            result.append('-fsanitize=hwaddress')
         return result
 
     @property
@@ -1085,6 +1112,9 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
             result.append('-unwindlib=none')
         else:
             result.append('-unwindlib=libunwind')
+
+        if self._is_hwasan:
+            result.append('-fsanitize=hwaddress')
 
         return result
 
@@ -1124,25 +1154,26 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         arch = self._config.target_arch
         sysroot_lib = self._config.sysroot / 'usr' / 'lib'
 
-        # Copy libc++ headers into the NDK+platform sysroot.
-        shutil.copytree(self.output_dir / 'include',
-                        self._config.sysroot / 'usr' / 'include',
-                        dirs_exist_ok=True, symlinks=True)
+        if not self._is_hwasan:
+            # Copy libc++ headers into the NDK+platform sysroot.
+            shutil.copytree(self.output_dir / 'include',
+                            self._config.sysroot / 'usr' / 'include',
+                            dirs_exist_ok=True, symlinks=True)
 
-        # Copy libraries into the NDK sysroot, and generate libc++.{a,so} linker
-        # scripts.
-        if not self._config.platform:
-            for name in ['libc++abi.a', 'libc++_shared.so', 'libc++_static.a']:
-                shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
-            with open(sysroot_lib / 'libc++.a', 'w') as out:
-                out.write('INPUT(-lc++_static -lc++abi)\n')
-            with open(sysroot_lib / 'libc++.so', 'w') as out:
-                out.write('INPUT(-lc++_shared)\n')
+            # Copy libraries into the NDK sysroot, and generate libc++.{a,so}
+            # linker scripts.
+            if not self._config.platform:
+                for name in ['libc++abi.a', 'libc++_shared.so', 'libc++_static.a']:
+                    shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
+                with open(sysroot_lib / 'libc++.a', 'w') as out:
+                    out.write('INPUT(-lc++_static -lc++abi)\n')
+                with open(sysroot_lib / 'libc++.so', 'w') as out:
+                    out.write('INPUT(-lc++_shared)\n')
 
-        # Copy libraries into the platform sysroot.
-        if self._config.platform:
-            for name in ['libc++abi.a', 'libc++.so']:
-                shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
+            # Copy libraries into the platform sysroot.
+            if self._config.platform:
+                for name in ['libc++abi.a', 'libc++.so']:
+                    shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
 
         # Copy the output files to a directory structure for use with (a) Soong
         # and (b) the NDK's checkbuild.py. Offer the experimental library in the
@@ -1154,6 +1185,8 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         else:
             kind = 'ndk'
             libs = ['libc++abi.a', 'libc++_static.a', 'libc++_shared.so', 'libc++experimental.a']
+        if self._is_hwasan:
+            kind += '_hwasan'
         dst_dir = self.output_toolchain.path / 'android_libc++' / kind / arch.value
         dst_lib_dir = dst_dir / 'lib'
         dst_lib_dir.mkdir(parents=True, exist_ok=True)
