@@ -1,0 +1,65 @@
+From 3747cde5e84f7415dbad8d56fb7443237656c820 Mon Sep 17 00:00:00 2001
+From: Ryan Prichard <rprichard@google.com>
+Date: Thu, 2 Nov 2023 14:07:39 -0700
+Subject: [PATCH] [Fuzzer] Enable custom libc++ for Android (#70407)
+
+The Android LLVM build system builds the arm64 fuzzer lib without
+HWASan, but then applications that enable HWASan can generated an object
+file with a HWASan-ified version of some libc++ symbols (e.g.
+`std::__1::piecewise_construct`). The linker can choose the HWASan-ified
+definition, but then it cannot resolve the relocation from
+libclang_rt.fuzzer-aarch64-android.a to this symbol because the high
+bits of the address are unexpectedly set. This produces an error:
+
+```
+relocation R_AARCH64_ADR_PREL_PG_HI21 out of range
+```
+
+Fix this problem by linking a custom isolated libc++ into Android's
+fuzzer library.
+
+We need to pass through ANDROID_NATIVE_API_LEVEL so that the libc++ for
+32-bit Android (API < 24) uses LLVM_FORCE_SMALLFILE_FOR_ANDROID.
+---
+ compiler-rt/cmake/Modules/AddCompilerRT.cmake | 2 ++
+ compiler-rt/lib/fuzzer/CMakeLists.txt         | 4 ++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/compiler-rt/cmake/Modules/AddCompilerRT.cmake b/compiler-rt/cmake/Modules/AddCompilerRT.cmake
+index 5ed49f0f5588..9c9d256a58b6 100644
+--- a/compiler-rt/cmake/Modules/AddCompilerRT.cmake
++++ b/compiler-rt/cmake/Modules/AddCompilerRT.cmake
+@@ -625,6 +625,8 @@ macro(add_custom_libcxx name prefix)
+   set_target_properties(${name}-clobber PROPERTIES FOLDER "Compiler-RT Misc")
+ 
+   set(PASSTHROUGH_VARIABLES
++    ANDROID
++    ANDROID_NATIVE_API_LEVEL
+     CMAKE_C_COMPILER_TARGET
+     CMAKE_CXX_COMPILER_TARGET
+     CMAKE_SHARED_LINKER_FLAGS
+diff --git a/compiler-rt/lib/fuzzer/CMakeLists.txt b/compiler-rt/lib/fuzzer/CMakeLists.txt
+index a9a10f724d1a..fb5adf1e5c9e 100644
+--- a/compiler-rt/lib/fuzzer/CMakeLists.txt
++++ b/compiler-rt/lib/fuzzer/CMakeLists.txt
+@@ -59,7 +59,7 @@ CHECK_CXX_SOURCE_COMPILES("
+ 
+ set(LIBFUZZER_CFLAGS ${COMPILER_RT_COMMON_CFLAGS})
+ 
+-if(OS_NAME MATCHES "Linux|Fuchsia" AND
++if(OS_NAME MATCHES "Android|Linux|Fuchsia" AND
+    COMPILER_RT_LIBCXX_PATH AND
+    COMPILER_RT_LIBCXXABI_PATH)
+   list(APPEND LIBFUZZER_CFLAGS -D_LIBCPP_ABI_VERSION=Fuzzer)
+@@ -135,7 +135,7 @@ add_compiler_rt_runtime(clang_rt.fuzzer_interceptors
+   CFLAGS ${LIBFUZZER_CFLAGS}
+   PARENT_TARGET fuzzer)
+ 
+-if(OS_NAME MATCHES "Linux|Fuchsia" AND
++if(OS_NAME MATCHES "Android|Linux|Fuchsia" AND
+    COMPILER_RT_LIBCXX_PATH AND
+    COMPILER_RT_LIBCXXABI_PATH)
+   macro(partially_link_libcxx name dir arch)
+-- 
+2.43.0.429.g432eaa2c6b-goog
+

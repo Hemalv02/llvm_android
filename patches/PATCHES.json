@@ -847,6 +847,20 @@
     {
         "metadata": {
             "info": [],
+            "title": "[UPSTREAM] [Fuzzer] Enable custom libc++ for Android (#70407)"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "cherry/3747cde5e84f7415dbad8d56fb7443237656c820.patch",
+        "version_range": {
+            "from": 510928,
+            "until": 517489
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
             "title": "[UPSTREAM] Revert \"Reland [clang] Canonicalize system headers in dependency file when -canonical-prefixes\" (#71697)"
         },
         "platforms": [
