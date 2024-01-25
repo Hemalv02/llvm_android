@@ -1046,37 +1046,10 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
     name = 'device-libcxx'
     src_dir: Path = paths.LLVM_PATH / 'runtimes'
 
-    def gen_configs(platform: bool, apex: bool):
-        result = configs.android_configs(platform=platform,
-            extra_config={'apex': apex})
-        # The non-APEX system libc++.so needs to be built against a newer API so
-        # it uses the unwinder from libc.so. RISC-V uses API 10000 instead
-        # currently.
-        if platform and not apex:
-            for config in result:
-                if config.target_arch != hosts.Arch.RISCV64:
-                    config.override_api_level = 33
-        return result
-
     config_list: List[configs.Config] = (
-        gen_configs(platform=False, apex=False) +
-        gen_configs(platform=True, apex=False) +
-        gen_configs(platform=True, apex=True)
+        configs.android_configs(platform=True) +
+        configs.android_configs(platform=False)
     )
-
-    @property
-    def _is_ndk(self) -> bool:
-        return not self._config.platform
-
-    @property
-    def _is_apex(self) -> bool:
-        return self._config.extra_config['apex']
-
-    @property
-    def output_dir(self) -> Path:
-        old_path = super().output_dir
-        suffix = '-apex' if self._config.extra_config['apex'] else ''
-        return old_path.parent / (old_path.name + suffix)
 
     @property
     def cflags(self) -> list[str]:
@@ -1108,10 +1081,10 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         # For the platform (including APEX) libc++ builds, use the unwinder API
         # exported from libc.so. Link libunwind.a for NDK builds, which must run
         # on older platforms where libc.so didn't export the unwinder.
-        if self._is_ndk:
-            result.append('-unwindlib=libunwind')
-        else:
+        if self._config.platform:
             result.append('-unwindlib=none')
+        else:
+            result.append('-unwindlib=libunwind')
 
         return result
 
@@ -1121,7 +1094,7 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LLVM_ENABLE_RUNTIMES'] ='libcxx;libcxxabi'
         defines['LIBCXXABI_ENABLE_SHARED'] = 'OFF'
         defines['LIBCXXABI_TARGET_TRIPLE'] = self._config.llvm_triple
-        if not self._is_ndk:
+        if self._config.platform:
             defines['LIBCXXABI_NON_DEMANGLING_TERMINATE'] = 'ON'
             defines['LIBCXXABI_STATIC_DEMANGLE_LIBRARY'] = 'ON'
 
@@ -1131,13 +1104,13 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         defines['LIBCXX_ENABLE_STATIC_ABI_LIBRARY'] = 'ON'
         defines['LIBCXX_STATICALLY_LINK_ABI_IN_SHARED_LIBRARY'] = 'ON'
         defines['LIBCXX_STATIC_OUTPUT_NAME'] = 'c++_static'
-        if self._is_ndk:
+        if self._config.platform:
+            defines['LIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY'] = 'ON'
+        else:
             defines['LIBCXX_SHARED_OUTPUT_NAME'] = 'c++_shared'
             defines['LIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY'] = 'OFF'
             defines['LIBCXX_ABI_VERSION'] = '1'
             defines['LIBCXX_ABI_NAMESPACE'] = '__ndk1'
-        else:
-            defines['LIBCXX_STATICALLY_LINK_ABI_IN_STATIC_LIBRARY'] = 'ON'
 
         # There is a check for ANDROID_NATIVE_API_LEVEL in
         # HandleLLVMOptions.cmake that determines the value of
@@ -1152,14 +1125,13 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         sysroot_lib = self._config.sysroot / 'usr' / 'lib'
 
         # Copy libc++ headers into the NDK+platform sysroot.
-        if self._is_ndk or self._is_apex:
-            shutil.copytree(self.output_dir / 'include',
-                            self._config.sysroot / 'usr' / 'include',
-                            dirs_exist_ok=True, symlinks=True)
+        shutil.copytree(self.output_dir / 'include',
+                        self._config.sysroot / 'usr' / 'include',
+                        dirs_exist_ok=True, symlinks=True)
 
         # Copy libraries into the NDK sysroot, and generate libc++.{a,so} linker
         # scripts.
-        if self._is_ndk:
+        if not self._config.platform:
             for name in ['libc++abi.a', 'libc++_shared.so', 'libc++_static.a']:
                 shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
             with open(sysroot_lib / 'libc++.a', 'w') as out:
@@ -1167,9 +1139,8 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
             with open(sysroot_lib / 'libc++.so', 'w') as out:
                 out.write('INPUT(-lc++_shared)\n')
 
-        # Copy libraries into the platform sysroot. Use the APEX build, which
-        # targets a lower API level.
-        if self._is_apex:
+        # Copy libraries into the platform sysroot.
+        if self._config.platform:
             for name in ['libc++abi.a', 'libc++.so']:
                 shutil.copy2(self.output_dir / 'lib' / name, sysroot_lib / name)
 
@@ -1177,15 +1148,12 @@ class DeviceLibcxxBuilder(base_builders.LLVMRuntimeBuilder):
         # and (b) the NDK's checkbuild.py. Offer the experimental library in the
         # NDK but omit it from the platform because we want to discourage
         # platform developers from using unstable APIs.
-        if self._is_ndk:
+        if self._config.platform:
+            kind = 'platform'
+            libs = ['libc++abi.a', 'libc++_static.a', 'libc++.so', 'libc++demangle.a']
+        else:
             kind = 'ndk'
             libs = ['libc++abi.a', 'libc++_static.a', 'libc++_shared.so', 'libc++experimental.a']
-        else:
-            libs = ['libc++abi.a', 'libc++_static.a', 'libc++.so', 'libc++demangle.a']
-            if self._is_apex:
-                kind = 'apex'
-            else:
-                kind = 'platform'
         dst_dir = self.output_toolchain.path / 'android_libc++' / kind / arch.value
         dst_lib_dir = dst_dir / 'lib'
         dst_lib_dir.mkdir(parents=True, exist_ok=True)
