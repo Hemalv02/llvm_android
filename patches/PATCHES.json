@@ -1291,19 +1291,5 @@
             "from": 510928,
             "until": null
         }
-    },
-    {
-        "metadata": {
-            "info": [],
-            "title": "Revert Ignore load store until stack address computation"
-        },
-        "platforms": [
-            "android"
-        ],
-        "rel_patch_path": "Revert-Ignore-load-store-until-stack-address-computa.patch",
-        "version_range": {
-            "from": 510928,
-            "until": null
-        }
     }
 ]
