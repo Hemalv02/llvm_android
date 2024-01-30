@@ -19,5 +19,6 @@ trap cleanup EXIT
 
 mkdir "${DIST}"
 DIST_DIR="${DIST}" OUT_DIR="${OUT}" $TOP/prebuilts/python/linux-x86/bin/python3 \
-  $TOP/toolchain/llvm_android/test_compiler.py --build-only --target aosp_cf_arm64_phone-staging-userdebug \
+  $TOP/toolchain/llvm_android/test_compiler.py --build-only --no-mlgo \
+  --target aosp_cf_arm64_phone-staging-userdebug \
   --clang-package-path ${KOKORO_GFILE_DIR} $TOP
