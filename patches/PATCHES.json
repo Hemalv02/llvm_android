@@ -556,7 +556,7 @@
         "rel_patch_path": "cherry/116eb323b15c4bd616775dfb59e2e81badc1453a.patch",
         "version_range": {
             "from": 510928,
-            "until": null
+            "until": 516802
         }
     },
     {
@@ -570,7 +570,7 @@
         "rel_patch_path": "cherry/aae30f9e2c25e2a4bada91a290c9beb530a75571.patch",
         "version_range": {
             "from": 510928,
-            "until": null
+            "until": 518264
         }
     },
     {
@@ -654,6 +654,20 @@
         "rel_patch_path": "Revert-Driver-Allow-target-override-containing-.-in-executable-name.patch",
         "version_range": {
             "from": 477979,
+            "until": 521684
+        }
+    },
+    {
+        "metadata": {
+            "info": [],
+            "title": "Revert [Driver] Allow target override containing . in executable name"
+        },
+        "platforms": [
+            "android"
+        ],
+        "rel_patch_path": "Revert-Driver-Allow-target-override-containing-.-in-executable-name-v2.patch",
+        "version_range": {
+            "from": 521684,
             "until": null
         }
     },
