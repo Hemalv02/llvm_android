@@ -19,6 +19,7 @@
 """Update the prebuilt clang from the build server."""
 
 import argparse
+import glob
 import inspect
 import logging
 import os
@@ -29,6 +30,9 @@ import sys
 import utils
 
 import paths
+
+PGO_PROFILE_PATTERN = 'pgo-*.tar.xz'
+BOLT_PROFILE_PATTERN = 'bolt-*.tar.xz'
 
 def logger():
     """Returns the module level logger."""
@@ -67,6 +71,13 @@ class ArgParser(argparse.ArgumentParser):
             action='store_true',
             default=False,
             help='Skip the cleanup, and leave intermediate files')
+
+        self.add_argument(
+            '--skip-update-profiles',
+            '-sp',
+            action='store_true',
+            default=False,
+            help='Skip updating PGO and BOLT profiles')
 
         self.add_argument(
             '--overwrite', action='store_true',
@@ -301,6 +312,29 @@ def install_clang_directory(extract_subdir: str, install_subdir: str, overwrite:
     os.rename(extract_subdir, install_subdir)
 
 
+def update_profiles(download_dir, build_number, bug):
+    profiles_dir = paths.PREBUILTS_DIR / 'clang' / 'host' / 'linux-x86' / 'profiles'
+
+    # First, delete the old profiles.
+    for f in glob.glob(f'{profiles_dir}/{PGO_PROFILE_PATTERN}'):
+        os.remove(f)
+    for f in glob.glob(f'{profiles_dir}/{BOLT_PROFILE_PATTERN}'):
+        os.remove(f)
+
+    # Replace with the downloaded new profiles.
+    shutil.copy(glob.glob(f'{download_dir}/{PGO_PROFILE_PATTERN}')[0], str(profiles_dir))
+    shutil.copy(glob.glob(f'{download_dir}/{BOLT_PROFILE_PATTERN}')[0], str(profiles_dir))
+
+    utils.check_call(['git', 'add', profiles_dir])
+    message_lines = [f'Check in profiles from build {build_number}']
+    if bug is not None:
+        message_lines.append('')
+        message_lines.append(f'Bug: {format_bug(bug)}')
+    message_lines.append('Test: N/A')
+    message = '\n'.join(message_lines)
+    utils.check_call(['git', 'commit', '-m', message])
+
+
 def main():
     args = ArgParser().parse_args()
     logging.basicConfig(level=logging.DEBUG)
@@ -355,10 +389,17 @@ def main():
             for target in targets:
                 fetch_artifact(branch, target, args.build, clang_pattern)
 
+            if not args.skip_update_profiles and 'linux-x86' in hosts:
+                fetch_artifact(branch, 'linux', args.build, PGO_PROFILE_PATTERN)
+                fetch_artifact(branch, 'linux', args.build, BOLT_PROFILE_PATTERN)
+
         for host in hosts:
             update_clang(host, args.build, args.use_current_branch,
                          download_dir, args.bug, manifest, args.overwrite,
                          not args.no_validity_check, is_testing)
+
+        if not args.skip_update_profiles and 'linux-x86' in hosts:
+            update_profiles(download_dir, args.build, args.bug)
 
         if args.repo_upload:
             topic = f'clang-prebuilt-{args.build}'
